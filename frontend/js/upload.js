@@ -229,6 +229,12 @@
             <span class="file-item-name" title="${safeName}">${safeName}</span>
             <span class="file-item-size">${sizeStr}</span>
           </div>
+          <button type="button" class="btn-icon file-item-preview" data-action="preview" data-index="${index}" title="Previsualizar archivo" aria-label="Previsualizar ${safeName}">
+            <svg class="icon-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
           <button type="button" class="btn-icon file-item-remove" data-action="remove" data-index="${index}" title="Quitar archivo" aria-label="Quitar ${safeName}">
             <svg class="icon-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -324,9 +330,9 @@
 
       Array.from(newFiles).forEach((newFile) => {
         // Evita duplicados basados en nombre, tamaño y fecha
-        const exists = state.files.some((f) => 
-          f.name === newFile.name && 
-          f.size === newFile.size && 
+        const exists = state.files.some((f) =>
+          f.name === newFile.name &&
+          f.size === newFile.size &&
           f.lastModified === newFile.lastModified
         );
         if (!exists) {
@@ -344,6 +350,9 @@
     function removeFile(index) {
       if (index >= 0 && index < state.files.length) {
         state.files.splice(index, 1);
+        if (state.files.length === 0 && window.previewManager && window.previewManager.isOpen()) {
+          window.previewManager.close();
+        }
         updateUI();
       }
     }
@@ -354,6 +363,9 @@
     function clearAllFiles() {
       state.files = [];
       fileInput.value = '';
+      if (window.previewManager && window.previewManager.isOpen()) {
+        window.previewManager.close();
+      }
       updateUI();
     }
 
@@ -416,8 +428,20 @@
       }
     });
 
-    // Delegación de eventos para la lista de archivos (remover archivo)
+    // Delegación de eventos para la lista de archivos (previsualizar o remover archivo)
     fileListContent.addEventListener('click', (e) => {
+      // Acción de previsualizar
+      const previewBtn = e.target.closest('[data-action="preview"]');
+      if (previewBtn) {
+        e.stopPropagation();
+        const idx = parseInt(previewBtn.getAttribute('data-index'), 10);
+        if (!isNaN(idx) && window.previewManager) {
+          window.previewManager.open(state.files, idx);
+        }
+        return;
+      }
+
+      // Acción de remover
       const removeBtn = e.target.closest('[data-action="remove"]');
       if (removeBtn) {
         e.stopPropagation();
