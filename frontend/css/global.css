@@ -1327,8 +1327,8 @@ body {
   width: 72px;
   height: 72px;
   border-radius: 50%;
-  background-color: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
+  background-color: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
