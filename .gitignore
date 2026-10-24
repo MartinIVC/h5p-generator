@@ -40,6 +40,10 @@ yarn-debug.log*
 yarn-error.log*
 Crashpad/
 
+# Datos locales y almacén de pruebas
+data/
+*.tmp.*
+
 # Sistema operativo y editores
 .DS_Store
 Thumbs.db
