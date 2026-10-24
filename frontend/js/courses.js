@@ -8,14 +8,61 @@
 (function () {
   'use strict';
 
-  // Paleta de colores temáticos para los ramos (Material Design 3 tokens)
+  // Paleta de colores temáticos para los ramos (Tokens de Material Design 3 en light.css)
   const COLOR_PALETTES = [
-    { id: 'cyan', label: 'Cian', bg: 'var(--md-sys-color-primary)', light: 'rgb(224 247 250)', text: 'rgb(0 104 116)' },
-    { id: 'emerald', label: 'Verde', bg: 'rgb(24 134 75)', light: 'rgb(220 252 231)', text: 'rgb(22 101 52)' },
-    { id: 'blue', label: 'Azul', bg: 'rgb(29 78 216)', light: 'rgb(219 234 254)', text: 'rgb(30 64 175)' },
-    { id: 'purple', label: 'Púrpura', bg: 'var(--md-sys-color-tertiary)', light: 'rgb(243 232 255)', text: 'rgb(107 33 168)' },
-    { id: 'amber', label: 'Ámbar', bg: 'rgb(217 119 6)', light: 'rgb(254 243 199)', text: 'rgb(146 64 14)' }
+    {
+      id: 'primary',
+      label: 'Cian Primario',
+      bg: 'var(--md-sys-color-primary)',
+      light: 'var(--md-sys-color-primary-container)',
+      text: 'var(--md-sys-color-on-primary-container)'
+    },
+    {
+      id: 'secondary',
+      label: 'Verde Azulado',
+      bg: 'var(--md-sys-color-secondary)',
+      light: 'var(--md-sys-color-secondary-container)',
+      text: 'var(--md-sys-color-on-secondary-container)'
+    },
+    {
+      id: 'tertiary',
+      label: 'Púrpura Docente',
+      bg: 'var(--md-sys-color-tertiary)',
+      light: 'var(--md-sys-color-tertiary-container)',
+      text: 'var(--md-sys-color-on-tertiary-container)'
+    },
+    {
+      id: 'secondary-fixed',
+      label: 'Turquesa Suave',
+      bg: 'var(--md-sys-color-secondary-fixed-dim)',
+      light: 'var(--md-sys-color-secondary-fixed)',
+      text: 'var(--md-sys-color-on-secondary-fixed-variant)'
+    },
+    {
+      id: 'tertiary-fixed',
+      label: 'Lavanda Suave',
+      bg: 'var(--md-sys-color-tertiary-fixed-dim)',
+      light: 'var(--md-sys-color-tertiary-fixed)',
+      text: 'var(--md-sys-color-on-tertiary-fixed-variant)'
+    }
   ];
+
+  /**
+   * Resuelve la paleta del ramo utilizando estrictamente tokens de light.css
+   * @param {string} colorTag
+   * @returns {object}
+   */
+  function resolveCoursePalette(colorTag) {
+    const aliasMap = {
+      cyan: 'primary',
+      emerald: 'secondary',
+      blue: 'secondary-fixed',
+      purple: 'tertiary',
+      amber: 'tertiary-fixed'
+    };
+    const targetId = aliasMap[colorTag] || colorTag;
+    return COLOR_PALETTES.find(p => p.id === targetId) || COLOR_PALETTES[0];
+  }
 
   // Estado interno del módulo
   const state = {
@@ -270,7 +317,7 @@
     if (!banner) return;
 
     if (course) {
-      const palette = COLOR_PALETTES.find(p => p.id === course.colorTag) || COLOR_PALETTES[0];
+      const palette = resolveCoursePalette(course.colorTag);
       banner.innerHTML = `
         <div class="course-context-content">
           <div class="course-context-tag" style="background-color: ${palette.light}; color: ${palette.text};">
@@ -398,7 +445,7 @@
       coursesCardsHTML = `
         <div class="courses-grid" role="list" aria-label="Lista de ramos">
           ${filteredCourses.map(course => {
-            const palette = COLOR_PALETTES.find(p => p.id === course.colorTag) || COLOR_PALETTES[0];
+            const palette = resolveCoursePalette(course.colorTag);
             return `
               <article class="course-card" data-course-id="${course.id}" role="listitem" tabindex="0">
                 <div class="course-card-accent" style="background-color: ${palette.bg};"></div>
@@ -578,7 +625,7 @@
       return;
     }
 
-    const palette = COLOR_PALETTES.find(p => p.id === course.colorTag) || COLOR_PALETTES[0];
+    const palette = resolveCoursePalette(course.colorTag);
 
     const filteredProjects = state.projects.filter(p => {
       if (!state.searchProjectsQuery) return true;
@@ -831,7 +878,7 @@
       code: '',
       name: '',
       term: '',
-      colorTag: 'cyan',
+      colorTag: 'primary',
       description: ''
     };
 
@@ -842,7 +889,7 @@
           code: course.code || '',
           name: course.name || '',
           term: course.term || '',
-          colorTag: course.colorTag || 'cyan',
+          colorTag: course.colorTag || 'primary',
           description: course.description || ''
         };
       }
@@ -918,7 +965,7 @@
                     type="radio"
                     name="course-color"
                     value="${p.id}"
-                    ${initialData.colorTag === p.id ? 'checked' : ''}
+                    ${resolveCoursePalette(initialData.colorTag).id === p.id ? 'checked' : ''}
                   />
                   <span class="color-swatch" style="background-color: ${p.bg};"></span>
                 </label>
@@ -968,7 +1015,7 @@
         const name = document.getElementById('input-course-name').value.trim();
         const term = document.getElementById('input-course-term').value.trim();
         const desc = document.getElementById('input-course-desc').value.trim();
-        const selectedColor = form.querySelector('input[name="course-color"]:checked')?.value || 'cyan';
+        const selectedColor = form.querySelector('input[name="course-color"]:checked')?.value || 'primary';
 
         if (!name) {
           alert('Por favor ingresa el nombre de la asignatura.');

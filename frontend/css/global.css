@@ -1166,7 +1166,7 @@ body {
 .search-input:focus {
   outline: none;
   border-color: var(--md-sys-color-primary);
-  box-shadow: 0 0 0 3px rgba(0, 104, 116, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent);
 }
 
 .search-input-wrap .search-icon {
@@ -1209,7 +1209,7 @@ body {
 
 .course-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--md-sys-color-shadow) 10%, transparent);
   border-color: var(--md-sys-color-primary);
 }
 
@@ -1632,7 +1632,7 @@ body {
 .modal-dialog-content {
   background-color: var(--md-sys-color-surface-container-lowest);
   border-radius: 14px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--md-sys-color-shadow) 25%, transparent);
   border: 1px solid var(--md-sys-color-outline-variant);
   max-width: 520px;
   width: 90%;
@@ -1709,7 +1709,7 @@ body {
 .form-control:focus {
   outline: none;
   border-color: var(--md-sys-color-primary);
-  box-shadow: 0 0 0 3px rgba(0, 104, 116, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent);
 }
 
 .form-textarea {
