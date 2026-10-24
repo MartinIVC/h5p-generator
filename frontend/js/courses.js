@@ -402,6 +402,7 @@
     });
 
     const totalProjects = state.courses.reduce((acc, c) => acc + (c.projectsCount || 0), 0);
+    const hasApiKey = window.configManager ? window.configManager.hasApiKey() : true;
 
     let coursesCardsHTML = '';
     if (filteredCourses.length === 0) {
@@ -516,6 +517,21 @@
           </div>
         </header>
 
+        ${!hasApiKey ? `
+          <div class="api-key-home-banner" id="api-key-home-banner">
+            <div class="api-key-banner-content">
+              <svg class="icon-svg banner-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              <span>Para generar actividades didácticas con IA necesitas tu clave de Google Gemini.</span>
+            </div>
+            <button type="button" class="btn-secondary btn-sm" id="btn-banner-config-key">
+              Configurar Clave
+            </button>
+          </div>
+        ` : ''}
+
         ${state.courses.length > 0 ? `
           <div class="home-search-bar">
             <div class="search-input-wrap">
@@ -550,6 +566,11 @@
   }
 
   function attachHomeEventListeners() {
+    const btnBannerKey = document.getElementById('btn-banner-config-key');
+    if (btnBannerKey && window.configManager) {
+      btnBannerKey.addEventListener('click', () => window.configManager.openSettingsModal());
+    }
+
     const btnTopCreate = document.getElementById('btn-top-create-course');
     if (btnTopCreate) btnTopCreate.addEventListener('click', () => openCourseModal());
 
@@ -809,11 +830,19 @@
     const btnEdit = document.getElementById('btn-detail-edit-course');
     if (btnEdit) btnEdit.addEventListener('click', () => openCourseModal(state.activeCourseId));
 
+    const handleCreateProject = () => {
+      if (window.configManager && typeof window.configManager.requireApiKey === 'function') {
+        window.configManager.requireApiKey(() => startProjectCreation(state.activeCourseId));
+      } else {
+        startProjectCreation(state.activeCourseId);
+      }
+    };
+
     const btnCreateProj = document.getElementById('btn-course-create-project');
-    if (btnCreateProj) btnCreateProj.addEventListener('click', () => startProjectCreation(state.activeCourseId));
+    if (btnCreateProj) btnCreateProj.addEventListener('click', handleCreateProject);
 
     const btnEmptyCreateProj = document.getElementById('btn-empty-start-project');
-    if (btnEmptyCreateProj) btnEmptyCreateProj.addEventListener('click', () => startProjectCreation(state.activeCourseId));
+    if (btnEmptyCreateProj) btnEmptyCreateProj.addEventListener('click', handleCreateProject);
 
     // Acción Abrir Proyecto (Lumi)
     const btnOpenProj = document.getElementById('btn-course-open-project');
@@ -1203,6 +1232,15 @@
     // Inicialmente cargar ramos y mostrar panel de inicio
     await loadCourses();
     navigateToHome();
+
+    // Escuchar cambios en la API Key para actualizar banner de inicio
+    if (window.configManager && typeof window.configManager.onStatusChange === 'function') {
+      window.configManager.onStatusChange(() => {
+        if (!state.activeCourseId && panelHome && !panelHome.classList.contains('hidden')) {
+          renderHomeView();
+        }
+      });
+    }
   }
 
   // Interfaz pública

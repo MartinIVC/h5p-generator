@@ -21,5 +21,10 @@ contextBridge.exposeInMainWorld('academicAPI', {
 
   // Sistema de Archivos Local
   revealFile: (filePath) => ipcRenderer.invoke('academic:revealFile', filePath),
-  verifyFileExists: (filePath) => ipcRenderer.invoke('academic:verifyFileExists', filePath)
+  verifyFileExists: (filePath) => ipcRenderer.invoke('academic:verifyFileExists', filePath),
+
+  // Configuración y Clave API de Gemini
+  getApiKeyStatus: () => ipcRenderer.invoke('academic:getApiKeyStatus'),
+  saveApiKey: (apiKey) => ipcRenderer.invoke('academic:saveApiKey', apiKey),
+  removeApiKey: () => ipcRenderer.invoke('academic:removeApiKey')
 });

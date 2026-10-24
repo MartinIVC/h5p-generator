@@ -46,7 +46,8 @@ class AcademicStorage {
     if (!fs.existsSync(this.filePath)) {
       const initialData = {
         courses: [],
-        projects: []
+        projects: [],
+        settings: {}
       };
       this._writeData(initialData);
     }
@@ -55,7 +56,7 @@ class AcademicStorage {
   /**
    * Lee los datos desde el archivo JSON de manera segura
    * @private
-   * @returns {{ courses: Array<any>, projects: Array<any> }}
+   * @returns {{ courses: Array<any>, projects: Array<any>, settings: object }}
    */
   _readData() {
     try {
@@ -66,11 +67,12 @@ class AcademicStorage {
       const parsed = JSON.parse(raw);
       return {
         courses: Array.isArray(parsed.courses) ? parsed.courses : [],
-        projects: Array.isArray(parsed.projects) ? parsed.projects : []
+        projects: Array.isArray(parsed.projects) ? parsed.projects : [],
+        settings: parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {}
       };
     } catch (err) {
       console.error('[AcademicStorage] Error leyendo academic_store.json:', err);
-      return { courses: [], projects: [] };
+      return { courses: [], projects: [], settings: {} };
     }
   }
 
@@ -278,6 +280,121 @@ class AcademicStorage {
   verifyFileExists(filePath) {
     if (!filePath || typeof filePath !== 'string') return false;
     return fs.existsSync(filePath);
+  }
+
+  // ==========================================
+  // GESTIÓN DE CONFIGURACIÓN Y CREDENCIALES
+  // ==========================================
+
+  /**
+   * Encripta una cadena usando safeStorage si está disponible en Electron
+   * @private
+   */
+  _encryptString(plainText) {
+    try {
+      const { safeStorage } = require('electron');
+      if (safeStorage && safeStorage.isEncryptionAvailable()) {
+        const encrypted = safeStorage.encryptString(plainText);
+        return { isEncrypted: true, payload: encrypted.toString('base64') };
+      }
+    } catch {
+      // safeStorage no disponible (ej. headless sin keyring o entorno de test)
+    }
+    return { isEncrypted: false, payload: Buffer.from(plainText).toString('base64') };
+  }
+
+  /**
+   * Desencripta una cadena previamente guardada
+   * @private
+   */
+  _decryptString(envelope) {
+    if (!envelope || !envelope.payload) return '';
+    try {
+      if (envelope.isEncrypted) {
+        const { safeStorage } = require('electron');
+        if (safeStorage) {
+          const buffer = Buffer.from(envelope.payload, 'base64');
+          return safeStorage.decryptString(buffer);
+        }
+      }
+    } catch (err) {
+      console.warn('[AcademicStorage] Error desencriptando con safeStorage:', err);
+    }
+    try {
+      return Buffer.from(envelope.payload, 'base64').toString('utf-8');
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Enmascara una API key para mostrarla segura en la UI (ej. AIza••••••••7890)
+   * @private
+   */
+  _maskApiKey(key) {
+    if (!key || typeof key !== 'string') return '';
+    if (key.length <= 8) return '••••••••';
+    const start = key.slice(0, 4);
+    const end = key.slice(-4);
+    return `${start}••••••••••••${end}`;
+  }
+
+  /**
+   * Obtiene el estado de configuración de la clave API de Gemini
+   * @returns {{ hasKey: boolean, maskedKey: string }}
+   */
+  getApiKeyStatus() {
+    const data = this._readData();
+    const envelope = data.settings && data.settings.geminiApiKey;
+    if (!envelope) {
+      return { hasKey: false, maskedKey: '' };
+    }
+    const decrypted = this._decryptString(envelope);
+    if (!decrypted) {
+      return { hasKey: false, maskedKey: '' };
+    }
+    return { hasKey: true, maskedKey: this._maskApiKey(decrypted) };
+  }
+
+  /**
+   * Obtiene la clave en texto claro para llamadas a la API de Gemini
+   * @returns {string}
+   */
+  getApiKey() {
+    const data = this._readData();
+    const envelope = data.settings && data.settings.geminiApiKey;
+    if (!envelope) return '';
+    return this._decryptString(envelope);
+  }
+
+  /**
+   * Guarda de forma segura la clave API de Gemini
+   * @param {string} apiKey
+   * @returns {{ hasKey: boolean, maskedKey: string }}
+   */
+  saveApiKey(apiKey) {
+    if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
+      throw new Error('La clave API no puede estar vacía.');
+    }
+    const trimmed = apiKey.trim();
+    const data = this._readData();
+    if (!data.settings) data.settings = {};
+    data.settings.geminiApiKey = this._encryptString(trimmed);
+    this._writeData(data);
+    return { hasKey: true, maskedKey: this._maskApiKey(trimmed) };
+  }
+
+  /**
+   * Elimina la clave API guardada
+   * @returns {{ hasKey: boolean, maskedKey: string }}
+   */
+  removeApiKey() {
+    const data = this._readData();
+    if (data.settings && data.settings.geminiApiKey) {
+      delete data.settings.geminiApiKey;
+      this._writeData(data);
+    }
+    return { hasKey: false, maskedKey: '' };
   }
 }
 

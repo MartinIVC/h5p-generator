@@ -72,6 +72,19 @@ function registerIpcHandlers() {
   ipcMain.handle('academic:verifyFileExists', async (_event, filePath) => {
     return academicStorage.verifyFileExists(filePath);
   });
+
+  // Credenciales y Configuración (Gemini API Key)
+  ipcMain.handle('academic:getApiKeyStatus', async () => {
+    return academicStorage.getApiKeyStatus();
+  });
+
+  ipcMain.handle('academic:saveApiKey', async (_event, apiKey) => {
+    return academicStorage.saveApiKey(apiKey);
+  });
+
+  ipcMain.handle('academic:removeApiKey', async () => {
+    return academicStorage.removeApiKey();
+  });
 }
 
 app.whenReady().then(() => {
