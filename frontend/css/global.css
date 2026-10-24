@@ -1834,7 +1834,7 @@ body {
 }
 
 /* ==========================================================================
-   Banner y Modal de Configuración (API Key Gemini)
+   Banner de Clave API y Modal de Opciones (Tema y Clave Gemini)
    ========================================================================== */
 .api-key-home-banner {
   display: flex;
@@ -1871,14 +1871,15 @@ body {
 }
 
 .settings-dialog-box {
-  max-width: 540px;
+  max-width: 580px;
+  width: 92%;
 }
 
 .settings-dialog-body {
   padding: 1.4rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.5rem;
 }
 
 .settings-section {
@@ -1901,6 +1902,111 @@ body {
   line-height: 1.45;
 }
 
+.settings-divider {
+  border: 0;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  margin: 0.25rem 0;
+}
+
+/* Selector de Tema */
+.theme-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 600px) {
+  .theme-selector-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.theme-option-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1.25rem 0.85rem;
+  background-color: var(--md-sys-color-surface-container-high);
+  border: 2px solid var(--md-sys-color-outline-variant);
+  border-radius: 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.18s ease, transform 0.15s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.theme-option-card:hover {
+  border-color: var(--md-sys-color-primary);
+  transform: translateY(-2px);
+}
+
+.theme-option-card:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.theme-option-card.active {
+  border-color: var(--md-sys-color-primary);
+  background-color: var(--md-sys-color-surface-container-highest);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
+}
+
+.hidden-radio {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.theme-icon-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.75rem;
+  transition: transform 0.15s ease;
+}
+
+.theme-option-card:hover .theme-icon-circle {
+  transform: scale(1.08);
+}
+
+.theme-icon-light {
+  background-color: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-primary);
+}
+
+.theme-icon-dark {
+  background-color: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-tertiary);
+}
+
+.theme-icon-system {
+  background-color: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-secondary);
+}
+
+.theme-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.theme-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--md-sys-color-on-surface);
+}
+
+.theme-card-desc {
+  font-size: 0.75rem;
+  color: var(--md-sys-color-on-surface-variant);
+  line-height: 1.35;
+}
+
+/* Formulario y Tarjeta de API Key de Gemini */
 .api-key-form {
   display: flex;
   flex-direction: column;
@@ -2002,4 +2108,3 @@ body {
   gap: 0.75rem;
   margin-top: 0.25rem;
 }
-
