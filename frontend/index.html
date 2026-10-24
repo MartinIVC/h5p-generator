@@ -19,7 +19,16 @@
 
 <body>
   <header class="topbar">
-    <h1 class="app-title">Generador H5P</h1>
+    <div class="topbar-brand-wrap">
+      <button id="btn-topbar-back" class="btn-icon hidden" title="Volver a Mis Ramos" type="button" aria-label="Volver">
+        <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+      </button>
+      <h1 class="app-title" id="app-topbar-title">Generador H5P</h1>
+    </div>
     <button id="btn-menu" class="btn-icon" title="Abrir menu" type="button" aria-label="Abrir menu"
       aria-controls="side-menu" aria-expanded="false">
       <svg class="icon-svg" aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none"
@@ -47,9 +56,10 @@
       <button class="menu-item" type="button" id="menu-opt-history">
         <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
         </svg>
-        <span>Archivos Creados</span>
+        <span>Mis Ramos y Proyectos</span>
       </button>
 
       <button class="menu-item" type="button" id="menu-opt-settings">
@@ -68,13 +78,20 @@
   <div id="menu-overlay" class="menu-overlay" aria-hidden="true"></div>
 
   <main class="step-container">
-    <section id="panel-upload" class="step-panel"></section>
+    <!-- Panel de Inicio: Hub de Ramos -->
+    <section id="panel-home" class="step-panel"></section>
+
+    <!-- Vista de Detalle de Ramo y Proyectos Realizados -->
+    <section id="panel-course-detail" class="step-panel hidden"></section>
+
+    <!-- Asistente de Creación de Contenido H5P (Paso 1, 2, 3) -->
+    <section id="panel-upload" class="step-panel hidden"></section>
     <section id="panel-selector" class="step-panel hidden"></section>
     <section id="panel-export" class="step-panel hidden"></section>
   </main>
 
-  <!-- Pie de ventana permanente con el stepper -->
-  <footer class="app-footer">
+  <!-- Pie de ventana permanente con el stepper (visible solo durante el asistente) -->
+  <footer class="app-footer hidden" id="app-footer">
     <ol class="stepper" aria-label="Pasos del proceso">
       <li class="step-item active" id="step-indicator-1" aria-current="step">
         <span class="step-num">1</span>
@@ -138,6 +155,13 @@
     </div>
   </div>
 
+  <!-- Modal de Formulario Crear/Editar Ramo -->
+  <div id="modal-course-form" class="preview-modal-overlay hidden" role="dialog" aria-modal="true" aria-hidden="true"></div>
+
+  <!-- Modal de Diálogo de Confirmación e Información (Lumi) -->
+  <div id="modal-confirm-dialog" class="preview-modal-overlay hidden" role="dialog" aria-modal="true" aria-hidden="true"></div>
+
+  <script src="js/courses.js"></script>
   <script src="js/menu.js"></script>
   <script src="js/upload.js"></script>
   <script src="js/preview.js"></script>
