@@ -140,9 +140,10 @@ async function processDocumentToChunks(filePath, options = {}) {
     };
 }
 
-// Exportamos las funciones para el backend-bridge
+// ============================================================================
+// EXPORTACIÓN DEL MÓDULO
+// ============================================================================
 module.exports = {
     extractTextFromFile,
-    chunkTextSemantically,
-    processDocumentToChunks
+    cleanText
 };
