@@ -136,6 +136,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .menu-item {
@@ -763,9 +766,9 @@ body {
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
+  padding: 1.25rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   animation: fadeIn 0.2s ease-out;
 }
 
@@ -787,6 +790,7 @@ body {
   max-width: 95vw;
   height: 85vh;
   max-height: 800px;
+  margin: auto;
   display: flex;
   flex-direction: column;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
@@ -841,7 +845,7 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 580px;
+  max-width: 100%;
 }
 
 .preview-subtitle {
@@ -1635,28 +1639,36 @@ body {
   box-shadow: 0 12px 32px color-mix(in srgb, var(--md-sys-color-shadow) 25%, transparent);
   border: 1px solid var(--md-sys-color-outline-variant);
   max-width: 520px;
-  width: 90%;
+  width: 92%;
+  max-height: calc(100vh - 2.5rem);
+  max-height: calc(100dvh - 2.5rem);
+  margin: auto;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  animation: scaleUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .modal-dialog-header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 1.15rem 1.4rem;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  background-color: var(--md-sys-color-surface-container-lowest);
 }
 
 .modal-dialog-title-wrap {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  min-width: 0;
 }
 
 .modal-header-icon {
   color: var(--md-sys-color-primary);
+  flex-shrink: 0;
 }
 
 .modal-dialog-title {
@@ -1664,6 +1676,9 @@ body {
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--md-sys-color-on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .modal-dialog-form {
@@ -1671,12 +1686,21 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.15rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .form-row-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
+}
+
+@media (max-width: 520px) {
+  .form-row-2 {
+    grid-template-columns: 1fr;
+  }
 }
 
 .form-group {
@@ -1758,12 +1782,20 @@ body {
 }
 
 .modal-dialog-footer {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 0.75rem;
-  padding-top: 0.75rem;
+  padding: 0.9rem 1.4rem;
   border-top: 1px solid var(--md-sys-color-outline-variant);
+  background-color: var(--md-sys-color-surface-container-lowest);
+}
+
+.modal-dialog-form .modal-dialog-footer {
+  padding: 0.85rem 0 0 0;
+  margin-top: 0.5rem;
+  background-color: transparent;
 }
 
 /* Diálogo de Confirmación */
@@ -1779,6 +1811,9 @@ body {
   font-size: 0.95rem;
   line-height: 1.5;
   color: var(--md-sys-color-on-surface);
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .danger-text {
@@ -1813,6 +1848,9 @@ body {
   gap: 0.85rem;
   font-size: 0.95rem;
   line-height: 1.5;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .lumi-badge-hero {
@@ -1833,8 +1871,32 @@ body {
   color: var(--md-sys-color-on-surface-variant);
 }
 
+/* Scrollbars personalizados y discretos para modales */
+.settings-dialog-body,
+.modal-dialog-form,
+.confirm-dialog-body,
+.lumi-dialog-body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--md-sys-color-outline-variant) transparent;
+}
+
+.settings-dialog-body::-webkit-scrollbar,
+.modal-dialog-form::-webkit-scrollbar,
+.confirm-dialog-body::-webkit-scrollbar,
+.lumi-dialog-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.settings-dialog-body::-webkit-scrollbar-thumb,
+.modal-dialog-form::-webkit-scrollbar-thumb,
+.confirm-dialog-body::-webkit-scrollbar-thumb,
+.lumi-dialog-body::-webkit-scrollbar-thumb {
+  background-color: var(--md-sys-color-outline-variant);
+  border-radius: 4px;
+}
+
 /* ==========================================================================
-   Banner y Modal de Configuración (API Key Gemini)
+   Banner de Clave API y Modal de Opciones (Tema y Clave Gemini)
    ========================================================================== */
 .api-key-home-banner {
   display: flex;
@@ -1871,40 +1933,149 @@ body {
 }
 
 .settings-dialog-box {
-  max-width: 540px;
+  max-width: 560px;
+  width: 92%;
 }
 
 .settings-dialog-body {
-  padding: 1.4rem;
+  padding: 1.25rem 1.4rem;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .settings-section {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.85rem;
 }
 
 .settings-section-title {
-  margin: 0 0 0.35rem 0;
-  font-size: 1.15rem;
+  margin: 0 0 0.25rem 0;
+  font-size: 1.05rem;
   font-weight: 700;
   color: var(--md-sys-color-on-surface);
 }
 
 .settings-section-desc {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   color: var(--md-sys-color-on-surface-variant);
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
+.settings-divider {
+  border: 0;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  margin: 0.15rem 0;
+}
+
+/* Selector de Tema */
+.theme-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+@media (max-width: 520px) {
+  .theme-selector-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.theme-option-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0.85rem 0.65rem;
+  background-color: var(--md-sys-color-surface-container-high);
+  border: 2px solid var(--md-sys-color-outline-variant);
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.18s ease, transform 0.15s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.theme-option-card:hover {
+  border-color: var(--md-sys-color-primary);
+  transform: translateY(-2px);
+}
+
+.theme-option-card:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.theme-option-card.active {
+  border-color: var(--md-sys-color-primary);
+  background-color: var(--md-sys-color-surface-container-highest);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
+}
+
+.hidden-radio {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.theme-icon-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.45rem;
+  transition: transform 0.15s ease;
+}
+
+.theme-option-card:hover .theme-icon-circle {
+  transform: scale(1.08);
+}
+
+.theme-icon-light {
+  background-color: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-primary);
+}
+
+.theme-icon-dark {
+  background-color: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-tertiary);
+}
+
+.theme-icon-system {
+  background-color: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-secondary);
+}
+
+.theme-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.theme-card-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--md-sys-color-on-surface);
+}
+
+.theme-card-desc {
+  font-size: 0.72rem;
+  color: var(--md-sys-color-on-surface-variant);
+  line-height: 1.3;
+}
+
+/* Formulario y Tarjeta de API Key de Gemini */
 .api-key-form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.85rem;
 }
 
 .api-key-input-wrap {
@@ -2002,4 +2173,3 @@ body {
   gap: 0.75rem;
   margin-top: 0.25rem;
 }
-

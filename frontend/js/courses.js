@@ -677,14 +677,7 @@
               </svg>
             </div>
             <h4>Sin proyectos exportados aún</h4>
-            <p>Genera actividades H5P interactivas para esta asignatura a partir de tus documentos docentes.</p>
-            <button type="button" class="btn-primary" id="btn-empty-start-project">
-              <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              <span>Crear Proyecto H5P</span>
-            </button>
+            <p>Usa el botón <strong>"+ Crear Proyecto"</strong> de arriba para generar actividades interactivas H5P a partir de tus documentos docentes.</p>
           </div>
         `;
       }
@@ -841,8 +834,6 @@
     const btnCreateProj = document.getElementById('btn-course-create-project');
     if (btnCreateProj) btnCreateProj.addEventListener('click', handleCreateProject);
 
-    const btnEmptyCreateProj = document.getElementById('btn-empty-start-project');
-    if (btnEmptyCreateProj) btnEmptyCreateProj.addEventListener('click', handleCreateProject);
 
     // Acción Abrir Proyecto (Lumi)
     const btnOpenProj = document.getElementById('btn-course-open-project');
