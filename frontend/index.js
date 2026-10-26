@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('node:path');
+app.setName('h5p-generator');
 const { academicStorage } = require(path.join(__dirname, '..', 'backend', 'storage.js'));
 
 const createWindow = () => {
