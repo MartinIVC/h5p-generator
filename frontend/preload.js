@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('academicAPI', {
   removeApiKey: () => ipcRenderer.invoke('academic:removeApiKey'),
 
   // Notificaciones del Sistema
-  showNotification: (title, body) => ipcRenderer.invoke('show-notification', { title, body })
+  showNotification: (title, body) => ipcRenderer.invoke('show-notification', { title, body }),
+
+  // Enlaces Externos
+  openExternalUrl: (url) => ipcRenderer.invoke('app:openExternalUrl', url)
 });
 

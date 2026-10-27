@@ -16,6 +16,13 @@ const createWindow = () => {
     }
   });
 
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://') || url.startsWith('http://')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
   win.loadFile(path.join(__dirname, 'index.html'));
 };
 
@@ -85,6 +92,15 @@ function registerIpcHandlers() {
 
   ipcMain.handle('academic:removeApiKey', async () => {
     return academicStorage.removeApiKey();
+  });
+
+  // Enlaces Externos
+  ipcMain.handle('app:openExternalUrl', async (_event, url) => {
+    if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+      await shell.openExternal(url);
+      return true;
+    }
+    return false;
   });
 }
 
