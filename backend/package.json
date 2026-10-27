@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test_extractors.js"
   },
   "keywords": [],
   "author": "",
@@ -13,6 +13,10 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "dotenv": "^18.0.7",
-    "pdf-parse": "^2.4.5"
+    "mammoth": "^1.13.0",
+    "officeparser": "^8.3.0",
+    "pdf-parse": "^2.4.5",
+    "word-extractor": "^1.0.4",
+    "xlsx": "^0.18.5"
   }
 }
