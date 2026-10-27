@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Notification } = require('electron');
 const path = require('node:path');
 app.setName('h5p-generator');
 const { academicStorage } = require(path.join(__dirname, '..', 'backend', 'storage.js'));
@@ -110,3 +110,16 @@ module.exports = {
   createWindow
 };
 
+// =============================================================================
+// NOTIFICACIONES DEL SISTEMA
+// =============================================================================
+ipcMain.handle('show-notification', (event, { title, body }) => {
+  if (Notification.isSupported()) {
+    new Notification({
+      title: title || 'H5P RAG Generator',
+      body: body || ''
+    }).show();
+    return { success: true };
+  }
+  return { success: false, error: 'Notificaciones no soportadas' };
+});
