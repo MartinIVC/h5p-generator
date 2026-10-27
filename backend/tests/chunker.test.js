@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const XLSX = require('xlsx');
-const { extractTextFromFile, cleanText } = require('./chunker');
+const { extractTextFromFile, cleanText } = require('../chunker');
 
 describe('Módulo Chunker - Extracción y Normalización de Texto', () => {
     let tmpDir;
