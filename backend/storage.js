@@ -139,8 +139,17 @@ class AcademicStorage {
       }
       const raw = fs.readFileSync(this.filePath, 'utf-8');
       const parsed = JSON.parse(raw);
+      const courses = (Array.isArray(parsed.courses) ? parsed.courses : []).map(c => {
+        if (!c.section) {
+          const secFromDesc = c.description && /^s\d+$/i.test(c.description.trim())
+            ? c.description.trim().replace(/^s/i, '')
+            : '1';
+          return { ...c, section: secFromDesc };
+        }
+        return c;
+      });
       return {
-        courses: Array.isArray(parsed.courses) ? parsed.courses : [],
+        courses,
         projects: Array.isArray(parsed.projects) ? parsed.projects : [],
         settings: parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {},
         drafts: Array.isArray(parsed.drafts) ? parsed.drafts : [],
@@ -220,6 +229,58 @@ class AcademicStorage {
   }
 
   /**
+   * Normaliza una sección a su identificador canónico.
+   * Por defecto, cualquier sección vacía o indefinida se considera "1".
+   * Normaliza variaciones como "s1", "sec 1", "sección 1", "01" -> "1".
+   * @private
+   * @param {string} sec
+   * @returns {string}
+   */
+  _normalizeSection(sec) {
+    if (!sec || typeof sec !== 'string') return '1';
+    const trimmed = sec.trim().toLowerCase();
+    if (!trimmed) return '1';
+    const match = trimmed.match(/^(?:sec(?:ci[oó]n)?\.?|s)?\s*0*([0-9]+)$/i);
+    if (match) return match[1];
+    const letterMatch = trimmed.match(/^(?:sec(?:ci[oó]n)?\.?|s)?\s*([a-z])$/i);
+    if (letterMatch) return letterMatch[1];
+    return trimmed;
+  }
+
+  /**
+   * Verifica si existe otro curso con la misma combinación identificadora
+   * Regla: mismo (código o nombre) + mismo semestre (term) + misma sección.
+   * @private
+   * @param {object} courseInput
+   * @param {Array<object>} courses
+   * @param {string|null} [excludeId]
+   * @returns {object|null}
+   */
+  _findDuplicateCourse(courseInput, courses, excludeId = null) {
+    const inputCode = (courseInput.code || '').trim().toLowerCase();
+    const inputName = (courseInput.name || '').trim().toLowerCase();
+    const inputTerm = (courseInput.term || '').trim().toLowerCase();
+    const inputSection = this._normalizeSection(courseInput.section);
+
+    return courses.find(c => {
+      if (excludeId && c.id === excludeId) return false;
+
+      const cCode = (c.code || '').trim().toLowerCase();
+      const cName = (c.name || '').trim().toLowerCase();
+      const cTerm = (c.term || '').trim().toLowerCase();
+      const cSection = this._normalizeSection(c.section);
+
+      const sameTerm = inputTerm === cTerm;
+      const sameSection = inputSection === cSection;
+
+      if (!sameTerm || !sameSection) return false;
+
+      const sameSubject = (inputCode && cCode && inputCode === cCode) || (inputName === cName);
+      return sameSubject;
+    }) || null;
+  }
+
+  /**
    * Crea o actualiza un ramo
    * @param {object} courseInput
    * @returns {object} Ramo guardado
@@ -228,9 +289,20 @@ class AcademicStorage {
     if (!courseInput.name || !courseInput.name.trim()) {
       throw new Error('El nombre de la asignatura es obligatorio');
     }
+    if (!courseInput.code || !courseInput.code.trim()) {
+      throw new Error('El código de la asignatura es obligatorio');
+    }
 
     const data = this._readData();
     const now = new Date().toISOString();
+
+    // Validación de duplicados (mismo código/nombre + semestre + sección)
+    const duplicate = this._findDuplicateCourse(courseInput, data.courses, courseInput.id || null);
+    if (duplicate) {
+      const secDetail = duplicate.section ? `, sección "${duplicate.section}"` : '';
+      const termDetail = duplicate.term ? ` (${duplicate.term})` : '';
+      throw new Error(`Ya existe un ramo registrado para "${duplicate.name}"${termDetail}${secDetail}. Modifica la sección o el periodo para evitar duplicados.`);
+    }
 
     if (courseInput.id) {
       // Actualización de ramo existente
@@ -244,6 +316,7 @@ class AcademicStorage {
         code: (courseInput.code || '').trim().toUpperCase(),
         name: courseInput.name.trim(),
         term: (courseInput.term || '').trim(),
+        section: (courseInput.section || '').trim(),
         colorTag: courseInput.colorTag || existing.colorTag || 'primary',
         description: (courseInput.description || '').trim(),
         updatedAt: now
@@ -259,6 +332,7 @@ class AcademicStorage {
       code: (courseInput.code || '').trim().toUpperCase(),
       name: courseInput.name.trim(),
       term: (courseInput.term || '').trim(),
+      section: (courseInput.section || '').trim(),
       colorTag: courseInput.colorTag || 'primary',
       description: (courseInput.description || '').trim(),
       createdAt: now,

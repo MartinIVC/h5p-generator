@@ -1266,6 +1266,16 @@ body {
   color: var(--md-sys-color-on-surface-variant);
 }
 
+.course-section-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  background-color: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface-variant);
+  border: 1px solid var(--md-sys-color-outline-variant, rgba(0, 0, 0, 0.12));
+}
+
 .course-card-actions {
   display: flex;
   align-items: center;
@@ -1687,6 +1697,7 @@ body {
   flex-direction: column;
   gap: 1.15rem;
   overflow-y: auto;
+  overflow-x: hidden;
   flex: 1;
   min-height: 0;
 }
@@ -1701,6 +1712,82 @@ body {
   .form-row-2 {
     grid-template-columns: 1fr;
   }
+}
+
+.form-row-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 600px) {
+  .form-row-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.period-regime-toggle {
+  display: flex;
+  background-color: var(--md-sys-color-surface-container);
+  border-radius: 8px;
+  padding: 4px;
+  gap: 4px;
+  margin-bottom: 0.35rem;
+}
+
+.btn-regime {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.65rem;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.825rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.btn-regime:hover {
+  color: var(--md-sys-color-on-surface);
+  background-color: color-mix(in srgb, var(--md-sys-color-surface-container-high) 60%, transparent);
+}
+
+.btn-regime.active {
+  background-color: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+select.form-control {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 16px;
+  padding-right: 2.2rem;
+  cursor: pointer;
+}
+
+select.form-control option {
+  background-color: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-on-surface);
+}
+
+.form-error-banner {
+  padding: 0.65rem 0.85rem;
+  border-radius: 6px;
+  background-color: var(--md-sys-color-error-container, #fee2e2);
+  color: var(--md-sys-color-on-error-container, #991b1b);
+  font-size: 0.825rem;
+  font-weight: 500;
+  line-height: 1.35;
+  border: 1px solid var(--md-sys-color-error, #f87171);
 }
 
 .form-group {

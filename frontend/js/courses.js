@@ -111,7 +111,37 @@
       if (window.academicAPI && typeof window.academicAPI.saveCourse === 'function') {
         return window.academicAPI.saveCourse(courseData);
       }
+      if (!courseData.name || !courseData.name.trim()) {
+        throw new Error('El nombre de la asignatura es obligatorio');
+      }
+      if (!courseData.code || !courseData.code.trim()) {
+        throw new Error('El código de la asignatura es obligatorio');
+      }
       const courses = await this.getCourses();
+      const normSec = (s) => {
+        if (!s || typeof s !== 'string') return '1';
+        const t = s.trim().toLowerCase();
+        if (!t) return '1';
+        const m = t.match(/^(?:sec(?:ci[oó]n)?\.?|s)?\s*0*([0-9]+)$/i);
+        if (m) return m[1];
+        const lm = t.match(/^(?:sec(?:ci[oó]n)?\.?|s)?\s*([a-z])$/i);
+        if (lm) return lm[1];
+        return t;
+      };
+      const duplicate = courses.find(c => {
+        if (courseData.id && c.id === courseData.id) return false;
+        const sameTerm = (c.term || '').trim().toLowerCase() === (courseData.term || '').trim().toLowerCase();
+        const sameSection = normSec(c.section) === normSec(courseData.section);
+        const cCode = (c.code || '').trim().toLowerCase();
+        const inCode = (courseData.code || '').trim().toLowerCase();
+        const sameSubject = (inCode && cCode && inCode === cCode) || ((c.name || '').trim().toLowerCase() === (courseData.name || '').trim().toLowerCase());
+        return sameSubject && sameTerm && sameSection;
+      });
+      if (duplicate) {
+        const secDetail = duplicate.section ? `, sección "${duplicate.section}"` : '';
+        const termDetail = duplicate.term ? ` (${duplicate.term})` : '';
+        throw new Error(`Ya existe un ramo registrado para "${duplicate.name}"${termDetail}${secDetail}. Modifica la sección o el periodo para evitar duplicados.`);
+      }
       const id = courseData.id || `c_${Date.now()}`;
       const item = { ...courseData, id, projectsCount: courseData.projectsCount || 0 };
       const idx = courses.findIndex(c => c.id === id);
@@ -346,7 +376,7 @@
   async function navigateToHome() {
     await window.uploadManager?.flushDraft?.();
     state.activeCourseId = null;
-    
+
     // Visibilidad de secciones
     if (panelHome) panelHome.classList.remove('hidden');
     if (panelCourseDetail) panelCourseDetail.classList.add('hidden');
@@ -425,7 +455,7 @@
       topbarBackBtn.onclick = navigateToHome;
     }
     if (topbarTitle) {
-      topbarTitle.textContent = `${course.code ? course.code + ' - ' : ''}${course.name}`;
+      topbarTitle.textContent = `${course.code ? course.code + ' - ' : ''}${course.name}${course.section ? ' (Sec. ' + course.section + ')' : ''}`;
     }
 
     await loadProjectsForActiveCourse();
@@ -618,6 +648,7 @@
             <div class="course-badge-wrap">
               ${course.code ? `<span class="course-code-badge" style="background-color: ${palette.light}; color: ${palette.text};">${escapeHTML(course.code)}</span>` : ''}
               ${course.term ? `<span class="course-term-badge">${escapeHTML(course.term)}</span>` : ''}
+              ${course.section ? `<span class="course-section-badge">Sec. ${escapeHTML(course.section)}</span>` : ''}
               ${isArchived ? '<span class="course-term-badge">Archivado</span>' : ''}
             </div>
             <div class="course-card-actions">
@@ -656,7 +687,8 @@
       return (
         (c.code && c.code.toLowerCase().includes(q)) ||
         (c.name && c.name.toLowerCase().includes(q)) ||
-        (c.term && c.term.toLowerCase().includes(q))
+        (c.term && c.term.toLowerCase().includes(q)) ||
+        (c.section && c.section.toLowerCase().includes(q))
       );
     }).sort((a, b) => {
       if (state.courseSortOrder === 'name') return a.name.localeCompare(b.name, 'es');
@@ -1237,7 +1269,7 @@
                 </div>
               </div>
             `;
-          }).join('')}
+      }).join('')}
         </div>
       `;
     }
@@ -1269,6 +1301,7 @@
             <div class="course-badge-wrap">
               ${course.code ? `<span class="course-code-badge" style="background-color: ${palette.light}; color: ${palette.text};">${escapeHTML(course.code)}</span>` : ''}
               ${course.term ? `<span class="course-term-badge">${escapeHTML(course.term)}</span>` : ''}
+              ${course.section ? `<span class="course-section-badge">Sec. ${escapeHTML(course.section)}</span>` : ''}
             </div>
             <h2 class="course-detail-title">${escapeHTML(course.name)}</h2>
             ${course.description ? `<p class="course-detail-desc">${escapeHTML(course.description)}</p>` : ''}
@@ -1468,6 +1501,7 @@
       code: '',
       name: '',
       term: '',
+      section: '1',
       colorTag: 'primary',
       description: ''
     };
@@ -1479,11 +1513,59 @@
           code: course.code || '',
           name: course.name || '',
           term: course.term || '',
+          section: course.section || '1',
           colorTag: course.colorTag || 'primary',
           description: course.description || ''
         };
       }
     }
+
+    const currentYear = new Date().getFullYear();
+
+    const detectInitialPeriod = (rawTerm) => {
+      const t = (rawTerm || '').trim();
+      const isTrimester = /^(?:[0-9]{4}-)?t[1-4]|trimestre/i.test(t);
+      const regime = isTrimester ? 'trimestre' : 'semestre';
+      const upper = t.toUpperCase();
+
+      let matchedOption = null;
+      let customValue = '';
+
+      if (regime === 'semestre') {
+        if (upper === '1' || upper === `${currentYear}-1` || /PRIMER|1ER|1°/.test(upper)) {
+          matchedOption = `${currentYear}-1`;
+        } else if (upper === '2' || upper === `${currentYear}-2` || /SEGUNDO|2DO|2°/.test(upper)) {
+          matchedOption = `${currentYear}-2`;
+        } else if (upper === '0' || upper === `${currentYear}-0` || /VERANO/.test(upper)) {
+          matchedOption = `${currentYear}-0`;
+        } else if (t) {
+          matchedOption = 'custom';
+          customValue = t;
+        } else {
+          matchedOption = `${currentYear}-1`;
+        }
+      } else {
+        if (upper === 'T1' || upper === '1' || upper === `${currentYear}-T1` || /PRIMER|1ER|1°/.test(upper)) {
+          matchedOption = `${currentYear}-T1`;
+        } else if (upper === 'T2' || upper === '2' || upper === `${currentYear}-T2` || /SEGUNDO|2DO|2°/.test(upper)) {
+          matchedOption = `${currentYear}-T2`;
+        } else if (upper === 'T3' || upper === '3' || upper === `${currentYear}-T3` || /TERCER|3ER|3°/.test(upper)) {
+          matchedOption = `${currentYear}-T3`;
+        } else if (upper === 'T4' || upper === '4' || upper === `${currentYear}-T4` || /CUARTO|4TO|4°/.test(upper)) {
+          matchedOption = `${currentYear}-T4`;
+        } else if (t) {
+          matchedOption = 'custom';
+          customValue = t;
+        } else {
+          matchedOption = `${currentYear}-T1`;
+        }
+      }
+
+      return { regime, matchedOption, customValue };
+    };
+
+    const periodInfo = detectInitialPeriod(initialData.term);
+    let currentRegime = periodInfo.regime;
 
     const modal = document.getElementById('modal-course-form');
     if (!modal) return;
@@ -1507,32 +1589,7 @@
         </header>
 
         <form id="form-course" class="modal-dialog-form">
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="input-course-code" class="form-label">Código Asignatura</label>
-              <input
-                type="text"
-                id="input-course-code"
-                class="form-control"
-                placeholder="ej: INF-220, MAT-101"
-                value="${escapeHTML(initialData.code)}"
-                maxlength="20"
-              />
-              <span class="form-hint">Opcional pero recomendado</span>
-            </div>
-
-            <div class="form-group">
-              <label for="input-course-term" class="form-label">Semestre / Periodo</label>
-              <input
-                type="text"
-                id="input-course-term"
-                class="form-control"
-                placeholder="ej: 2026-1, Otoño"
-                value="${escapeHTML(initialData.term)}"
-                maxlength="30"
-              />
-            </div>
-          </div>
+          <div id="course-form-error" class="form-error-banner hidden" role="alert"></div>
 
           <div class="form-group">
             <label for="input-course-name" class="form-label">Nombre de la Asignatura <span class="required-star">*</span></label>
@@ -1543,9 +1600,73 @@
               placeholder="ej: Estructuras de Datos y Algoritmos"
               value="${escapeHTML(initialData.name)}"
               required
-              aria-describedby="course-save-error"
+              aria-describedby="course-form-error"
             />
-            <p class="form-error hidden" id="course-save-error" role="alert"></p>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="input-course-code" class="form-label">Código Asignatura <span class="required-star">*</span></label>
+              <input
+                type="text"
+                id="input-course-code"
+                class="form-control"
+                placeholder="ej: INF-220, MAT-101"
+                value="${escapeHTML(initialData.code)}"
+                maxlength="20"
+                required
+              />
+              <span class="form-hint">Obligatorio</span>
+            </div>
+
+            <div class="form-group">
+              <label for="input-course-section" class="form-label">Sección</label>
+              <input
+                type="text"
+                id="input-course-section"
+                class="form-control"
+                placeholder="ej: 1, 2, A"
+                value="${escapeHTML(initialData.section || '1')}"
+                maxlength="20"
+              />
+              <span class="form-hint">ej: 1, 2 o A (por defecto 1)</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Periodo Académico</label>
+
+            <div class="period-regime-toggle" role="group" aria-label="Régimen de Periodo">
+              <button type="button" class="btn-regime ${currentRegime === 'semestre' ? 'active' : ''}" data-regime="semestre" id="btn-regime-semestre">
+                <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
+                  <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+                </svg>
+                <span>Semestral</span>
+              </button>
+              <button type="button" class="btn-regime ${currentRegime === 'trimestre' ? 'active' : ''}" data-regime="trimestre" id="btn-regime-trimestre">
+                <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                <span>Trimestral</span>
+              </button>
+            </div>
+
+            <select id="select-course-term" class="form-control" aria-label="Seleccionar periodo académico">
+              <!-- Opciones dinámicas -->
+            </select>
+
+            <input
+              type="text"
+              id="input-course-term-custom"
+              class="form-control ${periodInfo.matchedOption === 'custom' ? '' : 'hidden'}"
+              placeholder="Escribe el periodo personalizado (ej: Anual 2026, Intensivo Enero...)"
+              value="${escapeHTML(periodInfo.customValue)}"
+              style="margin-top: 0.4rem;"
+            />
           </div>
 
           <div class="form-group">
@@ -1572,7 +1693,7 @@
               id="input-course-desc"
               class="form-control form-textarea"
               rows="2"
-              placeholder="ej: Sección 1 - Martes y Jueves, Campus Central..."
+              placeholder="ej: Campus Central, Martes y Jueves..."
             >${escapeHTML(initialData.description)}</textarea>
           </div>
 
@@ -1596,6 +1717,84 @@
     const btnCancel = document.getElementById('btn-cancel-course-modal');
     if (btnCancel) btnCancel.addEventListener('click', closeModal);
 
+    // Configuración del Selector de Periodos (Semestral vs Trimestral)
+    const selectTerm = document.getElementById('select-course-term');
+    const customInput = document.getElementById('input-course-term-custom');
+    const btnSemestre = document.getElementById('btn-regime-semestre');
+    const btnTrimestre = document.getElementById('btn-regime-trimestre');
+
+    const semesterOptions = [
+      { value: `${currentYear}-1`, label: `1° Semestre (${currentYear}-1)` },
+      { value: `${currentYear}-2`, label: `2° Semestre (${currentYear}-2)` },
+      { value: `${currentYear}-0`, label: `Semestre de Verano (${currentYear}-0)` },
+      { value: 'custom', label: 'Otro periodo...' }
+    ];
+
+    const trimesterOptions = [
+      { value: `${currentYear}-T1`, label: `1° Trimestre (${currentYear}-T1)` },
+      { value: `${currentYear}-T2`, label: `2° Trimestre (${currentYear}-T2)` },
+      { value: `${currentYear}-T3`, label: `3° Trimestre (${currentYear}-T3)` },
+      { value: `${currentYear}-T4`, label: `4° Trimestre / Verano (${currentYear}-T4)` },
+      { value: 'custom', label: 'Otro periodo...' }
+    ];
+
+    const updatePeriodOptions = (regime, selectedVal = null) => {
+      const options = regime === 'semestre' ? semesterOptions : trimesterOptions;
+      if (selectTerm) {
+        selectTerm.innerHTML = options.map(opt => `<option value="${opt.value}">${opt.label}</option>`).join('');
+        if (selectedVal && options.some(o => o.value === selectedVal)) {
+          selectTerm.value = selectedVal;
+        } else {
+          selectTerm.value = options[0].value;
+        }
+      }
+
+      if (customInput) {
+        if (selectTerm && selectTerm.value === 'custom') {
+          customInput.classList.remove('hidden');
+        } else {
+          customInput.classList.add('hidden');
+        }
+      }
+    };
+
+    updatePeriodOptions(currentRegime, periodInfo.matchedOption);
+
+    if (btnSemestre) {
+      btnSemestre.addEventListener('click', () => {
+        if (currentRegime === 'semestre') return;
+        currentRegime = 'semestre';
+        btnSemestre.classList.add('active');
+        if (btnTrimestre) btnTrimestre.classList.remove('active');
+        updatePeriodOptions('semestre');
+      });
+    }
+
+    if (btnTrimestre) {
+      btnTrimestre.addEventListener('click', () => {
+        if (currentRegime === 'trimestre') return;
+        currentRegime = 'trimestre';
+        btnTrimestre.classList.add('active');
+        if (btnSemestre) btnSemestre.classList.remove('active');
+        updatePeriodOptions('trimestre');
+      });
+    }
+
+    if (selectTerm) {
+      selectTerm.addEventListener('change', () => {
+        if (selectTerm.value === 'custom') {
+          if (customInput) {
+            customInput.classList.remove('hidden');
+            customInput.focus();
+          }
+        } else {
+          if (customInput) {
+            customInput.classList.add('hidden');
+          }
+        }
+      });
+    }
+
     // Guardado
     const form = document.getElementById('form-course');
     if (form) {
@@ -1603,25 +1802,87 @@
         e.preventDefault();
         const code = document.getElementById('input-course-code').value.trim();
         const name = document.getElementById('input-course-name').value.trim();
-        const term = document.getElementById('input-course-term').value.trim();
+        const section = document.getElementById('input-course-section').value.trim() || '1';
+
+        let term = selectTerm ? selectTerm.value : `${currentYear}-1`;
+        if (term === 'custom') {
+          term = customInput ? customInput.value.trim() : '';
+          if (!term) {
+            term = currentRegime === 'semestre' ? `${currentYear}-1` : `${currentYear}-T1`;
+          }
+        }
         const desc = document.getElementById('input-course-desc').value.trim();
         const selectedColor = form.querySelector('input[name="course-color"]:checked')?.value || 'primary';
-        const errorMessage = document.getElementById('course-save-error');
+        const errBanner = document.getElementById('course-form-error');
         const submitButton = document.getElementById('btn-save-course');
-        errorMessage?.classList.add('hidden');
+        if (errBanner) {
+          errBanner.classList.add('hidden');
+          errBanner.textContent = '';
+        }
         document.getElementById('input-course-name')?.removeAttribute('aria-invalid');
+
+        if (!name) {
+          if (errBanner) {
+            errBanner.textContent = 'Por favor ingresa el nombre de la asignatura.';
+            errBanner.classList.remove('hidden');
+          }
+          document.getElementById('input-course-name')?.focus();
+          document.getElementById('input-course-name')?.setAttribute('aria-invalid', 'true');
+          return;
+        }
+
+        if (!code) {
+          if (errBanner) {
+            errBanner.textContent = 'Por favor ingresa el código de la asignatura (ej: INF-220).';
+            errBanner.classList.remove('hidden');
+          }
+          document.getElementById('input-course-code')?.focus();
+          return;
+        }
+
+        // Validación inmediata en cliente contra cursos existentes
+        const normSec = (s) => {
+          if (!s || typeof s !== 'string') return '1';
+          const t = s.trim().toLowerCase();
+          if (!t) return '1';
+          const m = t.match(/^(?:sec(?:ci[oó]n)?\.?|s)?\s*0*([0-9]+)$/i);
+          if (m) return m[1];
+          const lm = t.match(/^(?:sec(?:ci[oó]n)?\.?|s)?\s*([a-z])$/i);
+          if (lm) return lm[1];
+          return t;
+        };
+
+        const inSection = normSec(section);
+        const inTerm = term.toLowerCase();
+        const inCode = code.toLowerCase();
+        const inName = name.toLowerCase();
+
+        const clientDuplicate = state.courses.find(c => {
+          if (state.isEditingCourse && c.id === state.editingCourseId) return false;
+          const sameTerm = (c.term || '').trim().toLowerCase() === inTerm;
+          const sameSection = normSec(c.section) === inSection;
+          if (!sameTerm || !sameSection) return false;
+
+          const cCode = (c.code || '').trim().toLowerCase();
+          const cName = (c.name || '').trim().toLowerCase();
+          const sameSubject = (inCode && cCode && inCode === cCode) || (inName === cName);
+          return sameSubject;
+        });
+
+        if (clientDuplicate) {
+          const secDetail = clientDuplicate.section ? `, sección "${clientDuplicate.section}"` : '';
+          const termDetail = clientDuplicate.term ? ` (${clientDuplicate.term})` : '';
+          const msg = `Ya existe un ramo registrado para "${clientDuplicate.name}"${termDetail}${secDetail}. Modifica la sección o el periodo para evitar duplicados.`;
+          if (errBanner) {
+            errBanner.textContent = msg;
+            errBanner.classList.remove('hidden');
+          }
+          return;
+        }
+
         if (submitButton) {
           submitButton.disabled = true;
           submitButton.querySelector('span').textContent = 'Guardando…';
-        }
-
-        if (!name) {
-          document.getElementById('input-course-name')?.focus();
-          if (submitButton) {
-            submitButton.disabled = false;
-            submitButton.querySelector('span').textContent = state.isEditingCourse ? 'Guardar Cambios' : 'Crear Ramo';
-          }
-          return;
         }
 
         try {
@@ -1630,6 +1891,7 @@
             code,
             name,
             term,
+            section,
             colorTag: selectedColor,
             description: desc
           };
@@ -1645,9 +1907,9 @@
           }
         } catch (err) {
           console.error('[courses.js] Error guardando ramo:', err);
-          if (errorMessage) {
-            errorMessage.textContent = `No se pudo guardar el ramo: ${err.message}`;
-            errorMessage.classList.remove('hidden');
+          if (errBanner) {
+            errBanner.textContent = `No se pudo guardar el ramo: ${err.message}`;
+            errBanner.classList.remove('hidden');
           }
           document.getElementById('input-course-name')?.setAttribute('aria-invalid', 'true');
         } finally {
