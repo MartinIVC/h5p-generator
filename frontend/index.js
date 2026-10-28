@@ -3,6 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 app.setName('h5p-generator');
+app.commandLine.appendSwitch('lang', 'es');
 const { academicStorage } = require(path.join(__dirname, '..', 'backend', 'storage.js'));
 
 const createWindow = () => {

@@ -1588,7 +1588,7 @@
           </button>
         </header>
 
-        <form id="form-course" class="modal-dialog-form">
+        <form id="form-course" class="modal-dialog-form" novalidate>
           <div id="course-form-error" class="form-error-banner hidden" role="alert"></div>
 
           <div class="form-group">
