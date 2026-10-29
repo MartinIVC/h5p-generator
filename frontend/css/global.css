@@ -2727,3 +2727,31 @@ body {
   .saved-draft-card { align-items: stretch; flex-direction: column; }
   .saved-draft-actions { justify-content: flex-start; }
 }
+.backup-actions-row,
+.backup-restore-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+.backup-preview {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 12px;
+  background: var(--md-sys-color-surface-container-low);
+}
+.backup-preview p,
+.backup-operation-status { margin: 0; color: var(--md-sys-color-on-surface-variant); font-size: 0.9rem; }
+.backup-privacy-note { padding-top: 0.25rem; }
+.backup-replace-confirm {
+  display: grid;
+  gap: 0.7rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+.backup-replace-confirm p { color: var(--md-sys-color-error); }
+.backup-operation-status { min-height: 1.2em; margin-top: 0.65rem; overflow-wrap: anywhere; }
+.backup-settings-section .settings-section-desc { max-width: 65ch; }

@@ -29,6 +29,7 @@
     onSuccessCallback: null,
     listeners: []
   };
+  let pendingBackupId = null;
 
   // =========================================================================
   // GESTIÓN DE TEMAS (CLARO / OSCURO / SISTEMA)
@@ -405,6 +406,38 @@
     `;
   }
 
+  function getDataBackupSectionHTML() {
+    return `
+      <section class="settings-section backup-settings-section">
+        <div class="settings-section-header">
+          <h4 class="settings-section-title">Datos y copias de seguridad</h4>
+          <p class="settings-section-desc">La copia guarda ramos, proyectos y borradores. No incluye la clave de Gemini, documentos fuente ni archivos .h5p; las ubicaciones de archivo se omiten.</p>
+        </div>
+        <div class="backup-actions-row">
+          <button type="button" class="btn-secondary" id="btn-export-backup">Crear copia</button>
+          <button type="button" class="btn-secondary" id="btn-preview-backup">Restaurar copia</button>
+        </div>
+        <div class="backup-preview hidden" id="backup-preview" aria-live="polite">
+          <strong>Contenido de la copia</strong>
+          <p id="backup-preview-summary"></p>
+          <p class="backup-privacy-note">La clave actual de Gemini se conservará. Los proyectos restaurados no tendrán una ubicación de archivo; sus archivos .h5p originales no se copian.</p>
+          <div class="backup-restore-options" id="backup-restore-options">
+            <button type="button" class="btn-secondary" id="btn-merge-backup">Combinar con mis datos</button>
+            <button type="button" class="btn-text-danger" id="btn-prepare-replace-backup">Reemplazar mis datos</button>
+          </div>
+          <div class="backup-replace-confirm hidden" id="backup-replace-confirm" role="group" aria-label="Confirmar reemplazo de datos">
+            <p>Se reemplazarán tus ramos, proyectos y borradores actuales. Se creará una copia local automática antes del cambio.</p>
+            <div class="backup-actions-row">
+              <button type="button" class="btn-secondary" id="btn-cancel-replace-backup">Cancelar</button>
+              <button type="button" class="btn-text-danger" id="btn-confirm-replace-backup">Confirmar reemplazo</button>
+            </div>
+          </div>
+        </div>
+        <p class="backup-operation-status" id="backup-operation-status" role="status" aria-live="polite"></p>
+      </section>
+    `;
+  }
+
   /**
    * Renderiza el contenido del modal de opciones / clave API
    * @param {boolean} isJustInTime Indica si se abrió de forma contextual desde una acción
@@ -425,6 +458,8 @@
         ${getThemeSectionHTML()}
         <hr class="settings-divider" />
         ${getApiKeySectionHTML(false)}
+        <hr class="settings-divider" />
+        ${getDataBackupSectionHTML()}
       `;
     }
 
@@ -481,6 +516,90 @@
 
     const btnFooterClose = document.getElementById('btn-close-settings-modal-footer');
     if (btnFooterClose) btnFooterClose.addEventListener('click', closeModal);
+
+    const backupStatus = document.getElementById('backup-operation-status');
+    const backupPreview = document.getElementById('backup-preview');
+    const backupPreviewSummary = document.getElementById('backup-preview-summary');
+    const replaceConfirm = document.getElementById('backup-replace-confirm');
+    const formatBackupCounts = counts => `${counts.courses} ramos, ${counts.projects} proyectos y ${counts.drafts || 0} borradores.`;
+
+    document.getElementById('btn-export-backup')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = 'Creando copia…';
+      try {
+        const result = await window.academicAPI?.exportBackup?.();
+        if (!result) throw new Error('La función de copias de seguridad no está disponible.');
+        if (result.canceled) return;
+        if (backupStatus) backupStatus.textContent = `Copia creada con ${formatBackupCounts(result.summary.counts)} Guardada en: ${result.filePath}`;
+      } catch (err) {
+        if (backupStatus) backupStatus.textContent = `No se pudo crear la copia: ${err.message}`;
+        window.uiMessage?.(`No se pudo crear la copia: ${err.message}`, 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Crear copia';
+      }
+    });
+
+    document.getElementById('btn-preview-backup')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = 'Revisando…';
+      if (backupStatus) backupStatus.textContent = '';
+      try {
+        const result = await window.academicAPI?.previewBackup?.();
+        if (!result) throw new Error('La función de restauración no está disponible.');
+        if (result.canceled) return;
+        pendingBackupId = result.backupId;
+        backupPreviewSummary.textContent = `${formatBackupCounts(result.counts)} Fecha de la copia: ${result.exportedAt ? new Date(result.exportedAt).toLocaleString('es-CL') : 'no indicada'}.`;
+        backupPreview.classList.remove('hidden');
+        replaceConfirm.classList.add('hidden');
+        document.getElementById('btn-merge-backup')?.focus();
+      } catch (err) {
+        if (backupStatus) backupStatus.textContent = `No se pudo leer la copia: ${err.message}`;
+        window.uiMessage?.(`No se pudo leer la copia: ${err.message}`, 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Restaurar copia';
+      }
+    });
+
+    async function restoreSelectedBackup(strategy, button) {
+      if (!pendingBackupId) return;
+      button.disabled = true;
+      const previousText = button.textContent;
+      button.textContent = 'Restaurando…';
+      try {
+        const result = await window.academicAPI.restoreBackup(pendingBackupId, strategy);
+        pendingBackupId = null;
+        backupPreview.classList.add('hidden');
+        if (backupStatus) backupStatus.textContent = `Restauración completada: ${formatBackupCounts(result.counts)} Se conservaron los archivos y la clave actual.`;
+        closeModal();
+        window.uiMessage?.('Copia restaurada. Se actualizará la biblioteca.', 'info');
+        await window.coursesManager?.navigateToHome?.();
+      } catch (err) {
+        if (backupStatus) backupStatus.textContent = `No se pudo restaurar la copia: ${err.message}`;
+        window.uiMessage?.(`No se pudo restaurar la copia: ${err.message}`, 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = previousText;
+      }
+    }
+
+    document.getElementById('btn-merge-backup')?.addEventListener('click', event => {
+      restoreSelectedBackup('merge', event.currentTarget);
+    });
+    document.getElementById('btn-prepare-replace-backup')?.addEventListener('click', () => {
+      replaceConfirm.classList.remove('hidden');
+      document.getElementById('btn-confirm-replace-backup')?.focus();
+    });
+    document.getElementById('btn-cancel-replace-backup')?.addEventListener('click', () => {
+      replaceConfirm.classList.add('hidden');
+      document.getElementById('btn-prepare-replace-backup')?.focus();
+    });
+    document.getElementById('btn-confirm-replace-backup')?.addEventListener('click', event => {
+      restoreSelectedBackup('replace', event.currentTarget);
+    });
 
     // Eventos de selección de tema (si está presente)
     const themeCards = modal.querySelectorAll('.theme-option-card');

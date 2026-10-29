@@ -19,6 +19,11 @@ contextBridge.exposeInMainWorld('academicAPI', {
   saveDraft: (draftData) => ipcRenderer.invoke('academic:saveDraft', draftData),
   deleteDraft: (draftId) => ipcRenderer.invoke('academic:deleteDraft', draftId),
 
+  // Copias de seguridad: los diálogos y el acceso a disco se mantienen en el proceso principal
+  exportBackup: () => ipcRenderer.invoke('academic:exportBackup'),
+  previewBackup: () => ipcRenderer.invoke('academic:previewBackup'),
+  restoreBackup: (backupId, strategy) => ipcRenderer.invoke('academic:restoreBackup', { backupId, strategy }),
+
   // Proyectos Exportados (Projects)
   getProjects: (courseId) => ipcRenderer.invoke('academic:getProjects', courseId),
   saveProject: (projectData) => ipcRenderer.invoke('academic:saveProject', projectData),

@@ -8,6 +8,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
+const BACKUP_FORMAT = 'h5p-generator-backup';
+const BACKUP_VERSION = 1;
+
 class AcademicStorage {
   /**
    * @param {string} [customPath] Ruta personalizada opcional (útil para tests o entornos sin Electron)
@@ -221,6 +224,144 @@ class AcademicStorage {
     if (data.drafts.length === initialCount) return false;
     this._writeData(data);
     return true;
+  }
+
+  createBackupPayload() {
+    const data = this._readData();
+    return {
+      format: BACKUP_FORMAT,
+      version: BACKUP_VERSION,
+      exportedAt: new Date().toISOString(),
+      data: {
+        courses: data.courses,
+        projects: data.projects.map(project => ({
+          ...project,
+          filePath: '',
+          sourceFiles: Array.isArray(project.sourceFiles)
+            ? project.sourceFiles.map(file => ({ name: typeof file === 'string' ? file : (file?.name || '') }))
+            : []
+        })),
+        drafts: data.drafts
+      }
+    };
+  }
+
+  inspectBackupPayload(payload) {
+    if (!payload || payload.format !== BACKUP_FORMAT) {
+      throw new Error('El archivo no corresponde a una copia del Generador H5P.');
+    }
+    if (payload.version !== BACKUP_VERSION) {
+      throw new Error(`La versión de la copia (${payload.version}) no es compatible.`);
+    }
+    if (!payload.data || !Array.isArray(payload.data.courses) || !Array.isArray(payload.data.projects)) {
+      throw new Error('La copia no contiene listas válidas de ramos y proyectos.');
+    }
+    const drafts = Array.isArray(payload.data.drafts) ? payload.data.drafts : [];
+    const hasInvalidCourse = payload.data.courses.some(course => !course || typeof course.id !== 'string' || !course.id.trim() || typeof course.name !== 'string' || !course.name.trim());
+    const hasInvalidProject = payload.data.projects.some(project => !project || typeof project.id !== 'string' || !project.id.trim() || typeof project.title !== 'string' || !project.title.trim());
+    const hasInvalidDraft = drafts.some(draft => !draft || typeof draft.id !== 'string' || !draft.id.trim() || typeof draft.courseId !== 'string' || !draft.courseId.trim());
+    const hasDuplicateIds = records => new Set(records.map(record => record.id)).size !== records.length;
+    const hasTooManyRecords = payload.data.courses.length > 5000 || payload.data.projects.length > 50000 || drafts.length > 5000;
+    if (hasInvalidCourse || hasInvalidProject || hasInvalidDraft || hasDuplicateIds(payload.data.courses) || hasDuplicateIds(payload.data.projects) || hasDuplicateIds(drafts) || hasTooManyRecords) {
+      throw new Error('La copia contiene datos no válidos o supera los límites compatibles.');
+    }
+    return {
+      format: payload.format,
+      version: payload.version,
+      exportedAt: payload.exportedAt || '',
+      counts: {
+        courses: payload.data.courses.length,
+        projects: payload.data.projects.length,
+        drafts: drafts.length
+      }
+    };
+  }
+
+  restoreBackupPayload(payload, strategy) {
+    const summary = this.inspectBackupPayload(payload);
+    if (!['merge', 'replace'].includes(strategy)) {
+      throw new Error('El modo de restauración no es válido.');
+    }
+
+    const existing = this._readData();
+    const incoming = {
+      courses: payload.data.courses.map(course => ({
+        id: course.id.slice(0, 120),
+        code: typeof course.code === 'string' ? course.code.slice(0, 80) : '',
+        name: course.name.trim().slice(0, 240),
+        term: typeof course.term === 'string' ? course.term.slice(0, 120) : '',
+        colorTag: typeof course.colorTag === 'string' ? course.colorTag.slice(0, 40) : 'primary',
+        description: typeof course.description === 'string' ? course.description.slice(0, 2000) : '',
+        createdAt: typeof course.createdAt === 'string' ? course.createdAt : new Date().toISOString(),
+        updatedAt: typeof course.updatedAt === 'string' ? course.updatedAt : new Date().toISOString()
+      })),
+      projects: payload.data.projects.map(project => ({
+        id: project.id.slice(0, 120),
+        courseId: typeof project.courseId === 'string' ? project.courseId.slice(0, 120) : 'unassigned',
+        title: project.title.trim().slice(0, 240),
+        h5pType: typeof project.h5pType === 'string' ? project.h5pType.slice(0, 120) : 'H5P General',
+        filePath: '',
+        sourceFiles: Array.isArray(project.sourceFiles)
+          ? project.sourceFiles.slice(0, 50).map(file => ({ name: typeof file === 'string' ? file.slice(0, 255) : (typeof file?.name === 'string' ? file.name.slice(0, 255) : '') })).filter(file => file.name)
+          : [],
+        promptSummary: typeof project.promptSummary === 'string' ? project.promptSummary.slice(0, 12000) : '',
+        fileSizeBytes: Number.isFinite(project.fileSizeBytes) && project.fileSizeBytes > 0 ? project.fileSizeBytes : 0,
+        exportedAt: typeof project.exportedAt === 'string' ? project.exportedAt : new Date().toISOString()
+      })),
+      drafts: (Array.isArray(payload.data.drafts) ? payload.data.drafts : []).map(draft => ({
+        id: draft.id.slice(0, 120),
+        courseId: draft.courseId.slice(0, 120),
+        courseName: typeof draft.courseName === 'string' ? draft.courseName.slice(0, 240) : '',
+        prompt: typeof draft.prompt === 'string' ? draft.prompt.slice(0, 12000) : '',
+        files: Array.isArray(draft.files)
+          ? draft.files.slice(0, 50).map(file => ({
+            name: typeof file?.name === 'string' ? file.name.slice(0, 255) : '',
+            size: Number.isFinite(file?.size) && file.size > 0 ? file.size : 0,
+            lastModified: Number.isFinite(file?.lastModified) ? file.lastModified : 0
+          })).filter(file => file.name)
+          : [],
+        updatedAt: typeof draft.updatedAt === 'string' ? draft.updatedAt : new Date().toISOString()
+      }))
+    };
+
+    if (strategy === 'replace') {
+      this._createPreRestoreSnapshot(existing);
+      existing.courses = incoming.courses;
+      existing.projects = incoming.projects;
+      existing.drafts = incoming.drafts;
+    } else {
+      const mergeById = (current, added) => {
+        const ids = new Set(current.map(item => item.id));
+        return [...current, ...added.filter(item => !ids.has(item.id))];
+      };
+      existing.courses = mergeById(existing.courses, incoming.courses);
+      existing.projects = mergeById(existing.projects, incoming.projects);
+      existing.drafts = mergeById(existing.drafts, incoming.drafts);
+    }
+
+    const courseIds = new Set(existing.courses.map(course => course.id));
+    existing.projects = existing.projects.map(project => (
+      project.courseId && project.courseId !== 'unassigned' && !courseIds.has(project.courseId)
+        ? { ...project, courseId: 'unassigned' }
+        : project
+    ));
+    existing.drafts = existing.drafts.map(draft => (
+      draft.courseId !== 'unassigned' && !courseIds.has(draft.courseId)
+        ? { ...draft, courseId: 'unassigned', courseName: draft.courseName || 'Proyecto sin ramo' }
+        : draft
+    ));
+
+    this._writeData(existing);
+    return { strategy, counts: summary.counts };
+  }
+
+  _createPreRestoreSnapshot(data) {
+    const directory = path.join(path.dirname(this.filePath), 'backups');
+    fs.mkdirSync(directory, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = path.join(directory, `academic_store-before-restore-${timestamp}.json`);
+    fs.writeFileSync(backupPath, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
+    return backupPath;
   }
 
   /**
