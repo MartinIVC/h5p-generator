@@ -742,13 +742,13 @@
                 ` : ''}
 
                 <div class="project-card-footer">
-                  <button type="button" class="btn-secondary btn-reveal-project" data-path="${escapeHTML(proj.filePath || '')}" title="Abrir carpeta donde se guardó el archivo .h5p">
+                  <button type="button" class="btn-secondary btn-reveal-project" data-path="${escapeHTML(proj.filePath || '')}" title="Abrir carpeta donde se guardó el archivo .h5p" aria-label="Ver en carpeta: ${escapeHTML(proj.title)}">
                     <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                     </svg>
                     <span>Ver en carpeta</span>
                   </button>
-                  <button type="button" class="btn-icon-subtle btn-delete-project" data-id="${proj.id}" title="Eliminar registro del proyecto" aria-label="Eliminar registro">
+                  <button type="button" class="btn-icon-subtle btn-delete-project" data-id="${proj.id}" title="Eliminar registro: ${escapeHTML(proj.title)}" aria-label="Eliminar registro de ${escapeHTML(proj.title)}">
                     <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="3 6 5 6 21 6"></polyline>
                       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -774,7 +774,7 @@
             <span>Volver a Mis Ramos</span>
           </button>
           <div class="course-detail-edit-actions">
-            <button type="button" class="btn-icon-subtle" id="btn-detail-edit-course" title="Editar información del ramo">
+            <button type="button" class="btn-icon-subtle" id="btn-detail-edit-course" title="Editar información del ramo" aria-label="Editar ${escapeHTML(course.name)}">
               <svg class="icon-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 20h9"></path>
                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
@@ -1199,8 +1199,8 @@
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
             </svg>
             <p>
-              <strong>Protección de material docente:</strong> Tus proyectos exportados e interactivos <strong>no se borrarán</strong>.
-              Se conservarán de manera segura en la categoría general <em>"Sin Asignar"</em> para que puedas seguir usándolos o reasignarlos.
+              <strong>Protección de material docente:</strong> Tus proyectos y archivos <strong>se conservarán</strong> asociados internamente a <em>"Sin Asignar"</em>.
+              Esta versión todavía no incluye una vista para abrirlos o reasignarlos desde esa categoría.
             </p>
           </div>
         </div>
@@ -1232,6 +1232,7 @@
           await api.deleteCourse(course.id);
         } catch (err) {
           console.error('[courses.js] Error eliminando ramo:', err);
+          window.uiMessage?.(`No se pudo eliminar el ramo: ${err.message}`, 'error');
           confirmButton.disabled = false;
           confirmButton.textContent = 'Eliminar Ramo';
           return;

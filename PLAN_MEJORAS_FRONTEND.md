@@ -1,6 +1,21 @@
 # Plan de mejora del diseño del frontend
 
-Fecha: 29 de octubre de 2026. Estado: propuesta para implementación.
+Fecha: 29 de octubre de 2026. Estado: implementación parcial registrada.
+
+### Estado de ejecución
+
+La rama `codex/frontend-design-polish` implementa la continuidad segura del recorrido actual y la base visual creativa en las pantallas existentes. La biblioteca, el detalle de ramo, la carga, la configuración, los diálogos y la vista previa comparten ahora estados de interacción más claros, manejo de foco y efectos suaves con opción de movimiento reducido. La carga está limitada a PDF/TXT, que son los formatos extraídos por el backend.
+
+Queda pendiente revisar visualmente la aplicación en ambos temas y tamaños de ventana, completar una vista accesible para los proyectos «Sin Asignar» y desarrollar/conectar el selector de actividad y la exportación H5P. La generación real depende de esa integración y no se presenta como disponible en esta entrega.
+
+| Fase | Estado | Resultado |
+| --- | --- | --- |
+| 0. Línea base | Pendiente de verificación visual | El diagnóstico de código está documentado; no se generaron capturas ni se evaluó con usuarios. |
+| 1. Continuidad y acceso | Implementada en los flujos existentes | Se corrigen estados vacíos, validación de formatos, foco/teclado de diálogos y navegación hacia el selector pendiente. |
+| 2. Base visual | Implementada en código | Se añaden identidad de taller docente, motivos de fichas, tarjetas, estados, tokens de movimiento y alternativa reducida. |
+| 3. Pantallas existentes | Implementada con verificación visual pendiente | Se actualizan biblioteca, detalle, carga, configuración, diálogos y vista previa. |
+| 4. Asistente completo | Pendiente de integración funcional | Selector, generación, revisión y exportación siguen sujetos a capacidades reales del generador. |
+| 5. Ajustes por uso | Pendiente | Requiere evidencia de uso con docentes. |
 
 ## 1. Objetivo y alcance
 

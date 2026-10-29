@@ -174,7 +174,7 @@
     if (!messageRegion) {
       messageRegion = document.createElement('div');
       messageRegion.className = 'ui-message-region';
-      messageRegion.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+      messageRegion.setAttribute('aria-live', 'polite');
       messageRegion.setAttribute('aria-atomic', 'false');
       document.body.appendChild(messageRegion);
     }
