@@ -114,9 +114,6 @@
       if (!courseData.name || !courseData.name.trim()) {
         throw new Error('El nombre de la asignatura es obligatorio');
       }
-      if (!courseData.code || !courseData.code.trim()) {
-        throw new Error('El código de la asignatura es obligatorio');
-      }
       const courses = await this.getCourses();
       const normSec = (s) => {
         if (!s || typeof s !== 'string') return '1';
@@ -143,7 +140,7 @@
         throw new Error(`Ya existe un ramo registrado para "${duplicate.name}"${termDetail}${secDetail}. Modifica la sección o el periodo para evitar duplicados.`);
       }
       const id = courseData.id || `c_${Date.now()}`;
-      const item = { ...courseData, id, projectsCount: courseData.projectsCount || 0 };
+      const item = { ...courseData, id, section: (courseData.section || '1').trim(), projectsCount: courseData.projectsCount || 0 };
       const idx = courses.findIndex(c => c.id === id);
       if (idx >= 0) courses[idx] = item;
       else courses.unshift(item);
@@ -1606,7 +1603,7 @@
 
           <div class="form-row-2">
             <div class="form-group">
-              <label for="input-course-code" class="form-label">Código Asignatura <span class="required-star">*</span></label>
+              <label for="input-course-code" class="form-label">Código Asignatura</label>
               <input
                 type="text"
                 id="input-course-code"
@@ -1614,9 +1611,8 @@
                 placeholder="ej: INF-220, MAT-101"
                 value="${escapeHTML(initialData.code)}"
                 maxlength="20"
-                required
               />
-              <span class="form-hint">Obligatorio</span>
+              <span class="form-hint">Opcional</span>
             </div>
 
             <div class="form-group">
@@ -1828,15 +1824,6 @@
           }
           document.getElementById('input-course-name')?.focus();
           document.getElementById('input-course-name')?.setAttribute('aria-invalid', 'true');
-          return;
-        }
-
-        if (!code) {
-          if (errBanner) {
-            errBanner.textContent = 'Por favor ingresa el código de la asignatura (ej: INF-220).';
-            errBanner.classList.remove('hidden');
-          }
-          document.getElementById('input-course-code')?.focus();
           return;
         }
 

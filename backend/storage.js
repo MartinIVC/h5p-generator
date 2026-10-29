@@ -17,6 +17,7 @@ function backupCourse(course) {
     code: course.code || '',
     name: course.name || '',
     term: course.term || '',
+    section: course.section || '1',
     colorTag: course.colorTag || 'primary',
     description: course.description || '',
     isFavorite: Boolean(course.isFavorite),
@@ -43,6 +44,7 @@ function cleanBackupCourse(course) {
     code: typeof course.code === 'string' ? course.code.slice(0, 80) : '',
     name: course.name.trim().slice(0, 240),
     term: typeof course.term === 'string' ? course.term.slice(0, 120) : '',
+    section: typeof course.section === 'string' && course.section.trim() ? course.section.slice(0, 80) : '1',
     colorTag: typeof course.colorTag === 'string' ? course.colorTag.slice(0, 40) : 'primary',
     description: typeof course.description === 'string' ? course.description.slice(0, 2000) : '',
     isFavorite: Boolean(course.isFavorite),
@@ -289,10 +291,6 @@ class AcademicStorage {
     if (!courseInput.name || !courseInput.name.trim()) {
       throw new Error('El nombre de la asignatura es obligatorio');
     }
-    if (!courseInput.code || !courseInput.code.trim()) {
-      throw new Error('El código de la asignatura es obligatorio');
-    }
-
     const data = this._readData();
     const now = new Date().toISOString();
 
@@ -316,7 +314,7 @@ class AcademicStorage {
         code: (courseInput.code || '').trim().toUpperCase(),
         name: courseInput.name.trim(),
         term: (courseInput.term || '').trim(),
-        section: (courseInput.section || '').trim(),
+        section: (courseInput.section || '1').trim(),
         colorTag: courseInput.colorTag || existing.colorTag || 'primary',
         description: (courseInput.description || '').trim(),
         updatedAt: now
@@ -332,7 +330,7 @@ class AcademicStorage {
       code: (courseInput.code || '').trim().toUpperCase(),
       name: courseInput.name.trim(),
       term: (courseInput.term || '').trim(),
-      section: (courseInput.section || '').trim(),
+      section: (courseInput.section || '1').trim(),
       colorTag: courseInput.colorTag || 'primary',
       description: (courseInput.description || '').trim(),
       createdAt: now,
