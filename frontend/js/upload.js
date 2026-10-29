@@ -25,6 +25,7 @@
   };
   let draftSaveTimer = null;
   let draftStatus = null;
+  let flushDraftHandler = async () => {};
 
   /**
    * Obtiene la extensión en minúsculas de un nombre de archivo.
@@ -324,6 +325,8 @@
         window.uiMessage?.('No se pudo guardar el borrador. Mantén esta ventana abierta y vuelve a intentarlo.', 'error');
       }
     }
+
+    flushDraftHandler = saveDraftNow;
 
     function scheduleDraftSave() {
       window.clearTimeout(draftSaveTimer);
@@ -626,7 +629,7 @@
     getAllFiles: () => [...state.files],
     hasErrors: () => state.files.some(f => !isFormatAllowed(f.name)),
     getPrompt: () => state.prompt,
-    flushDraft: saveDraftNow,
+    flushDraft: () => flushDraftHandler(),
     clearFiles: () => {
       state.files = [];
       const btnClearAll = document.getElementById('btn-clear-all');
