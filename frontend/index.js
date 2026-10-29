@@ -51,6 +51,14 @@ function registerIpcHandlers() {
     return academicStorage.saveCourse(courseData);
   });
 
+  ipcMain.handle('academic:setCourseOrganization', async (_event, courseId, changes) => {
+    return academicStorage.setCourseOrganization(courseId, changes);
+  });
+
+  ipcMain.handle('academic:markCourseOpened', async (_event, courseId) => {
+    return academicStorage.markCourseOpened(courseId);
+  });
+
   ipcMain.handle('academic:getDrafts', async () => {
     return academicStorage.getDrafts();
   });
@@ -117,6 +125,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('academic:saveProject', async (_event, projectData) => {
     return academicStorage.saveProject(projectData);
+  });
+
+  ipcMain.handle('academic:assignProject', async (_event, projectId, courseId) => {
+    return academicStorage.assignProject(projectId, courseId);
   });
 
   ipcMain.handle('academic:deleteProject', async (_event, projectId) => {

@@ -68,6 +68,7 @@
   const state = {
     courses: [],
     drafts: [],
+    unassignedProjects: [],
     activeCourseId: null,
     projects: [],
     searchCoursesQuery: '',
@@ -78,7 +79,9 @@
     isFilteringProjects: false,
     isEditingCourse: false,
     editingCourseId: null,
-    pendingDeleteCourse: null
+    pendingDeleteCourse: null,
+    showArchivedCourses: false,
+    courseSortOrder: localStorage.getItem('h5p_course_sort') || 'recent'
   };
 
   // Referencias a contenedores del DOM
@@ -143,6 +146,24 @@
       localStorage.setItem('h5p_courses', JSON.stringify(courses));
       return true;
     },
+    async setCourseOrganization(courseId, changes) {
+      if (window.academicAPI?.setCourseOrganization) return window.academicAPI.setCourseOrganization(courseId, changes);
+      const courses = await this.getCourses();
+      const course = courses.find(item => item.id === courseId);
+      if (!course) throw new Error('No se encontró el ramo.');
+      Object.assign(course, changes, { updatedAt: new Date().toISOString() });
+      localStorage.setItem('h5p_courses', JSON.stringify(courses));
+      return course;
+    },
+    async markCourseOpened(courseId) {
+      if (window.academicAPI?.markCourseOpened) return window.academicAPI.markCourseOpened(courseId);
+      const courses = await this.getCourses();
+      const course = courses.find(item => item.id === courseId);
+      if (!course) return false;
+      course.lastOpenedAt = new Date().toISOString();
+      localStorage.setItem('h5p_courses', JSON.stringify(courses));
+      return course.lastOpenedAt;
+    },
     async getProjects(courseId) {
       if (window.academicAPI && typeof window.academicAPI.getProjects === 'function') {
         return window.academicAPI.getProjects(courseId);
@@ -160,6 +181,17 @@
       all.unshift(newProj);
       localStorage.setItem('h5p_projects', JSON.stringify(all));
       return newProj;
+    },
+    async assignProject(projectId, courseId) {
+      if (window.academicAPI?.assignProject) return window.academicAPI.assignProject(projectId, courseId);
+      const all = JSON.parse(localStorage.getItem('h5p_projects') || '[]');
+      const project = all.find(item => item.id === projectId);
+      if (!project) throw new Error('No se encontró el proyecto.');
+      project.courseId = courseId;
+      delete project.previousCourseId;
+      delete project.reallocatedAt;
+      localStorage.setItem('h5p_projects', JSON.stringify(all));
+      return project;
     },
     async deleteProject(projectId) {
       if (window.academicAPI && typeof window.academicAPI.deleteProject === 'function') {
@@ -234,8 +266,7 @@
     if (topbarBackBtn) topbarBackBtn.classList.add('hidden');
     if (topbarTitle) topbarTitle.textContent = 'Generador H5P';
 
-    await loadCourses();
-    await loadDrafts();
+    await Promise.all([loadCourses(), loadDrafts(), loadUnassignedProjects()]);
     renderHomeView();
   }
 
@@ -247,10 +278,21 @@
     state.activeCourseId = courseId;
     state.searchProjectsQuery = '';
 
-    const course = state.courses.find(c => c.id === courseId);
+    const isUnassigned = courseId === 'unassigned';
+    const course = isUnassigned
+      ? { id: 'unassigned', name: 'Proyectos sin asignar', code: '', term: '', description: 'Proyectos conservados que todavía no están vinculados a un ramo.', colorTag: 'tertiary' }
+      : state.courses.find(c => c.id === courseId);
     if (!course) {
       navigateToHome();
       return;
+    }
+    if (!isUnassigned) {
+      try {
+        await api.markCourseOpened(courseId);
+        course.lastOpenedAt = new Date().toISOString();
+      } catch (err) {
+        console.error('[courses.js] No se pudo actualizar el último acceso:', err);
+      }
     }
 
     // Visibilidad de secciones
@@ -416,6 +458,15 @@
     }
   }
 
+  async function loadUnassignedProjects() {
+    try {
+      state.unassignedProjects = await api.getProjects('unassigned');
+    } catch (err) {
+      console.error('[courses.js] Error cargando proyectos sin asignar:', err);
+      state.unassignedProjects = [];
+    }
+  }
+
   async function loadProjectsForActiveCourse() {
     try {
       state.projects = await api.getProjects(state.activeCourseId);
@@ -430,10 +481,51 @@
   // RENDER: PANEL DE INICIO (HOME)
   // =========================================================================
 
+  function renderCourseCard(course) {
+    const palette = resolveCoursePalette(course.colorTag);
+    const isFavorite = Boolean(course.isFavorite);
+    const isArchived = Boolean(course.archivedAt);
+    return `
+      <article class="course-card ${isArchived ? 'is-archived' : ''}" data-course-id="${escapeHTML(course.id)}" role="listitem" style="--course-accent: ${palette.bg}; --course-accent-soft: ${palette.light};">
+        <div class="course-card-accent" style="background-color: ${palette.bg};"></div>
+        <div class="course-card-body">
+          <header class="course-card-header">
+            <div class="course-badge-wrap">
+              ${course.code ? `<span class="course-code-badge" style="background-color: ${palette.light}; color: ${palette.text};">${escapeHTML(course.code)}</span>` : ''}
+              ${course.term ? `<span class="course-term-badge">${escapeHTML(course.term)}</span>` : ''}
+              ${isArchived ? '<span class="course-term-badge">Archivado</span>' : ''}
+            </div>
+            <div class="course-card-actions">
+              <button type="button" class="btn-icon-subtle btn-toggle-favorite" data-id="${escapeHTML(course.id)}" aria-pressed="${isFavorite}" title="${isFavorite ? 'Quitar de favoritos' : 'Marcar como favorito'}" aria-label="${isFavorite ? 'Quitar ' + escapeHTML(course.name) + ' de favoritos' : 'Marcar ' + escapeHTML(course.name) + ' como favorito'}">
+                <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="${isFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3z" /></svg>
+              </button>
+              ${isArchived
+                ? `<button type="button" class="btn-icon-subtle btn-restore-course" data-id="${escapeHTML(course.id)}" title="Reactivar ${escapeHTML(course.name)}" aria-label="Reactivar ${escapeHTML(course.name)}"><svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg></button>`
+                : `<button type="button" class="btn-icon-subtle btn-archive-course" data-id="${escapeHTML(course.id)}" title="Archivar ${escapeHTML(course.name)}" aria-label="Archivar ${escapeHTML(course.name)}"><svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4"/></svg></button>`}
+              <button type="button" class="btn-icon-subtle btn-edit-course" data-id="${escapeHTML(course.id)}" title="Editar ${escapeHTML(course.name)}" aria-label="Editar ${escapeHTML(course.name)}">
+                <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+              </button>
+              <button type="button" class="btn-icon-subtle btn-delete-course" data-id="${escapeHTML(course.id)}" title="Eliminar ${escapeHTML(course.name)}" aria-label="Eliminar ${escapeHTML(course.name)}">
+                <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
+          </header>
+          <h3 class="course-card-title">${escapeHTML(course.name)}</h3>
+          ${course.description ? `<p class="course-card-desc">${escapeHTML(course.description)}</p>` : ''}
+          <footer class="course-card-footer">
+            <div class="course-projects-metric"><strong>${course.projectsCount || 0}</strong> ${course.projectsCount === 1 ? 'actividad' : 'actividades'} H5P</div>
+            <button type="button" class="course-card-cta btn-course-open" data-course-id="${escapeHTML(course.id)}" aria-label="Abrir ${escapeHTML(course.name)}"><span>Abrir ramo</span><svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+          </footer>
+          ${course.lastOpenedAt ? `<p class="course-last-opened">Último acceso: ${escapeHTML(formatDate(course.lastOpenedAt))}</p>` : ''}
+        </div>
+      </article>
+    `;
+  }
+
   function renderHomeView() {
     if (!panelHome) return;
 
-    const filteredCourses = state.courses.filter(c => {
+    const filteredCourses = state.courses.filter(c => Boolean(c.archivedAt) === state.showArchivedCourses).filter(c => {
       if (!state.searchCoursesQuery) return true;
       const q = state.searchCoursesQuery.toLowerCase();
       return (
@@ -441,6 +533,10 @@
         (c.name && c.name.toLowerCase().includes(q)) ||
         (c.term && c.term.toLowerCase().includes(q))
       );
+    }).sort((a, b) => {
+      if (state.courseSortOrder === 'name') return a.name.localeCompare(b.name, 'es');
+      if (state.courseSortOrder === 'term') return (b.term || '').localeCompare(a.term || '', 'es') || a.name.localeCompare(b.name, 'es');
+      return new Date(b.lastOpenedAt || 0) - new Date(a.lastOpenedAt || 0);
     });
 
     const totalProjects = state.courses.reduce((acc, c) => acc + (c.projectsCount || 0), 0);
@@ -472,6 +568,14 @@
       </section>
     ` : '';
 
+    const unassignedHTML = state.unassignedProjects.length ? `
+      <button type="button" class="unassigned-projects-banner" id="btn-open-unassigned">
+        <span class="unassigned-projects-icon" aria-hidden="true">↗</span>
+        <span><strong>Proyectos sin asignar</strong><small>${state.unassignedProjects.length} ${state.unassignedProjects.length === 1 ? 'proyecto está' : 'proyectos están'} conservados aquí. Puedes vincularlos a un ramo.</small></span>
+        <span class="unassigned-projects-count">${state.unassignedProjects.length}</span>
+      </button>
+    ` : '';
+
     let coursesCardsHTML = '';
     if (state.coursesLoadError) {
       coursesCardsHTML = `
@@ -482,15 +586,17 @@
         </div>
       `;
     } else if (filteredCourses.length === 0) {
-      if (state.searchCoursesQuery) {
+      if (state.searchCoursesQuery || state.showArchivedCourses || state.courses.length > 0) {
         coursesCardsHTML = `
           <div class="empty-results-box">
             <svg class="icon-svg empty-icon" viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            <p>No se encontraron asignaturas que coincidan con "<strong>${escapeHTML(state.searchCoursesQuery)}</strong>".</p>
-            <button type="button" class="btn-text-subtle" id="btn-clear-course-search">Limpiar búsqueda</button>
+            <p>${state.showArchivedCourses && !state.searchCoursesQuery
+              ? 'No tienes ramos archivados.'
+              : `No se encontraron ramos que coincidan con "<strong>${escapeHTML(state.searchCoursesQuery)}</strong>".`}</p>
+            ${state.searchCoursesQuery ? '<button type="button" class="btn-text-subtle" id="btn-clear-course-search">Limpiar búsqueda</button>' : ''}
           </div>
         `;
       } else {
@@ -519,58 +625,19 @@
         `;
       }
     } else {
-      coursesCardsHTML = `
-        <div class="courses-grid" role="list" aria-label="Lista de ramos">
-          ${filteredCourses.map(course => {
-            const palette = resolveCoursePalette(course.colorTag);
-            return `
-              <article class="course-card" data-course-id="${course.id}" role="listitem" style="--course-accent: ${palette.bg}; --course-accent-soft: ${palette.light};">
-                <div class="course-card-accent" style="background-color: ${palette.bg};"></div>
-                <div class="course-card-body">
-                  <header class="course-card-header">
-                    <div class="course-badge-wrap">
-                      ${course.code ? `<span class="course-code-badge" style="background-color: ${palette.light}; color: ${palette.text};">${escapeHTML(course.code)}</span>` : ''}
-                      ${course.term ? `<span class="course-term-badge">${escapeHTML(course.term)}</span>` : ''}
-                    </div>
-                    <div class="course-card-actions">
-                      <button type="button" class="btn-icon-subtle btn-edit-course" data-id="${course.id}" title="Editar ${escapeHTML(course.name)}" aria-label="Editar ${escapeHTML(course.name)}">
-                        <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M12 20h9"></path>
-                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-                        </svg>
-                      </button>
-                      <button type="button" class="btn-icon-subtle btn-delete-course" data-id="${course.id}" title="Eliminar ${escapeHTML(course.name)}" aria-label="Eliminar ${escapeHTML(course.name)}">
-                        <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                          <polyline points="3 6 5 6 21 6"></polyline>
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        </svg>
-                      </button>
-                    </div>
-                  </header>
-
-                  <h3 class="course-card-title">${escapeHTML(course.name)}</h3>
-                  ${course.description ? `<p class="course-card-desc">${escapeHTML(course.description)}</p>` : ''}
-
-                  <footer class="course-card-footer">
-                    <div class="course-projects-metric">
-                      <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                      </svg>
-                      <span><strong>${course.projectsCount || 0}</strong> ${course.projectsCount === 1 ? 'actividad' : 'actividades'} H5P</span>
-                    </div>
-                    <button type="button" class="course-card-cta btn-course-open" data-course-id="${course.id}" aria-label="Abrir ${escapeHTML(course.name)}">
-                      <span>Abrir ramo</span>
-                      <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="9 18 15 12 9 6"></polyline>
-                      </svg>
-                    </button>
-                  </footer>
-                </div>
-              </article>
-            `;
-          }).join('')}
-        </div>
-      `;
+      const favoriteCourses = state.showArchivedCourses ? [] : filteredCourses.filter(course => course.isFavorite);
+      const otherCourses = state.showArchivedCourses ? filteredCourses : filteredCourses.filter(course => !course.isFavorite);
+      const renderCourseSection = (courses, title) => courses.length ? `
+        <section class="course-library-section" aria-label="${title}">
+          <h3 class="course-library-section-title">${title}<span>${courses.length}</span></h3>
+          <div class="courses-grid" role="list" aria-label="${title}">
+            ${courses.map(renderCourseCard).join('')}
+          </div>
+        </section>
+      ` : '';
+      coursesCardsHTML = state.showArchivedCourses
+        ? renderCourseSection(otherCourses, 'Ramos archivados')
+        : `${renderCourseSection(favoriteCourses, 'Favoritos')}${renderCourseSection(otherCourses, favoriteCourses.length ? 'Todos los ramos' : 'Mis ramos')}`;
     }
 
     panelHome.innerHTML = `
@@ -618,6 +685,7 @@
         ` : ''}
 
         ${draftsHTML}
+        ${unassignedHTML}
 
         ${state.courses.length > 0 ? `
           <div class="home-search-bar">
@@ -634,6 +702,21 @@
                 placeholder="Buscar por código, nombre o semestre..."
                 value="${escapeHTML(state.searchCoursesQuery)}"
               />
+            </div>
+            <div class="course-library-controls">
+              <label>Vista
+                <select id="course-view-select" aria-label="Filtrar ramos">
+                  <option value="active" ${!state.showArchivedCourses ? 'selected' : ''}>Activos</option>
+                  <option value="archived" ${state.showArchivedCourses ? 'selected' : ''}>Archivados</option>
+                </select>
+              </label>
+              <label>Ordenar
+                <select id="course-sort-select" aria-label="Ordenar ramos">
+                  <option value="recent" ${state.courseSortOrder === 'recent' ? 'selected' : ''}>Último acceso</option>
+                  <option value="name" ${state.courseSortOrder === 'name' ? 'selected' : ''}>Nombre</option>
+                  <option value="term" ${state.courseSortOrder === 'term' ? 'selected' : ''}>Período</option>
+                </select>
+              </label>
             </div>
             <div class="home-stats-pill">
               <span>Total: <strong>${state.courses.length}</strong> ramos</span>
@@ -670,6 +753,22 @@
 
     const btnEmptyCreate = document.getElementById('btn-empty-create-course');
     if (btnEmptyCreate) btnEmptyCreate.addEventListener('click', () => openCourseModal());
+
+    const unassignedButton = document.getElementById('btn-open-unassigned');
+    if (unassignedButton) unassignedButton.addEventListener('click', () => navigateToCourseDetail('unassigned'));
+
+    const viewSelect = document.getElementById('course-view-select');
+    if (viewSelect) viewSelect.addEventListener('change', () => {
+      state.showArchivedCourses = viewSelect.value === 'archived';
+      renderHomeView();
+    });
+
+    const sortSelect = document.getElementById('course-sort-select');
+    if (sortSelect) sortSelect.addEventListener('change', () => {
+      state.courseSortOrder = sortSelect.value;
+      localStorage.setItem('h5p_course_sort', state.courseSortOrder);
+      renderHomeView();
+    });
 
     panelHome.querySelectorAll('.btn-resume-draft').forEach(button => {
       button.addEventListener('click', () => {
@@ -728,6 +827,33 @@
       button.addEventListener('click', () => navigateToCourseDetail(button.dataset.courseId));
     });
 
+    panelHome.querySelectorAll('.btn-toggle-favorite').forEach(button => {
+      button.addEventListener('click', async () => {
+        const course = state.courses.find(item => item.id === button.dataset.id);
+        if (!course) return;
+        try {
+          await api.setCourseOrganization(course.id, { isFavorite: !course.isFavorite });
+          await loadCourses();
+          renderHomeView();
+        } catch (err) {
+          window.uiMessage?.(`No se pudo actualizar el favorito: ${err.message}`, 'error');
+        }
+      });
+    });
+
+    panelHome.querySelectorAll('.btn-archive-course, .btn-restore-course').forEach(button => {
+      button.addEventListener('click', async () => {
+        try {
+          const isRestore = button.classList.contains('btn-restore-course');
+          await api.setCourseOrganization(button.dataset.id, { archivedAt: isRestore ? null : new Date().toISOString() });
+          await loadCourses();
+          renderHomeView();
+        } catch (err) {
+          window.uiMessage?.(`No se pudo actualizar el ramo: ${err.message}`, 'error');
+        }
+      });
+    });
+
     // Clic en editar ramo
     const editBtns = panelHome.querySelectorAll('.btn-edit-course');
     editBtns.forEach(btn => {
@@ -756,7 +882,10 @@
   function renderCourseDetailView() {
     if (!panelCourseDetail) return;
 
-    const course = state.courses.find(c => c.id === state.activeCourseId);
+    const isUnassigned = state.activeCourseId === 'unassigned';
+    const course = isUnassigned
+      ? { id: 'unassigned', name: 'Proyectos sin asignar', code: '', term: '', description: 'Proyectos conservados que todavía no están vinculados a un ramo.', colorTag: 'tertiary' }
+      : state.courses.find(c => c.id === state.activeCourseId);
     if (!course) {
       navigateToHome();
       return;
@@ -801,8 +930,8 @@
                 <line x1="9" y1="15" x2="15" y2="15"></line>
               </svg>
             </div>
-            <h4>Sin proyectos exportados aún</h4>
-            <p>Usa el botón <strong>"+ Crear Proyecto"</strong> de arriba para generar actividades interactivas H5P a partir de tus documentos docentes.</p>
+            <h4>${isUnassigned ? 'No hay proyectos pendientes de asignación' : 'Sin proyectos exportados aún'}</h4>
+            <p>${isUnassigned ? 'Los proyectos cuyo ramo fue eliminado se conservan aquí hasta que los asignes.' : 'Usa el botón <strong>"+ Crear Proyecto"</strong> de arriba para generar actividades interactivas H5P a partir de tus documentos docentes.'}</p>
           </div>
         `;
       }
@@ -839,6 +968,16 @@
                     </svg>
                     <span>Ver en carpeta</span>
                   </button>
+                  ${isUnassigned ? `
+                    <label class="project-assign-control">
+                      <span class="sr-only">Asignar ${escapeHTML(proj.title)} a un ramo</span>
+                      <select class="project-assign-select" aria-label="Ramo para ${escapeHTML(proj.title)}">
+                        <option value="">Selecciona un ramo</option>
+                        ${state.courses.filter(item => !item.archivedAt).map(item => `<option value="${escapeHTML(item.id)}">${escapeHTML(item.name)}</option>`).join('')}
+                      </select>
+                      <button type="button" class="btn-secondary btn-reassign-project" data-id="${escapeHTML(proj.id)}">Asignar</button>
+                    </label>
+                  ` : ''}
                   <button type="button" class="btn-icon-subtle btn-delete-project" data-id="${proj.id}" title="Eliminar registro: ${escapeHTML(proj.title)}" aria-label="Eliminar registro de ${escapeHTML(proj.title)}">
                     <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="3 6 5 6 21 6"></polyline>
@@ -864,14 +1003,14 @@
             </svg>
             <span>Volver a Mis Ramos</span>
           </button>
-          <div class="course-detail-edit-actions">
+          ${!isUnassigned ? `<div class="course-detail-edit-actions">
             <button type="button" class="btn-icon-subtle" id="btn-detail-edit-course" title="Editar información del ramo" aria-label="Editar ${escapeHTML(course.name)}">
               <svg class="icon-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 20h9"></path>
                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
               </svg>
             </button>
-          </div>
+          </div>` : ''}
         </div>
 
         <!-- Banner de Cabecera del Ramo -->
@@ -886,7 +1025,7 @@
           </div>
 
           <!-- Acciones principales requeridas: Crear y Abrir proyectos -->
-          <div class="course-detail-main-actions">
+          ${!isUnassigned ? `<div class="course-detail-main-actions">
             <button type="button" class="btn-primary btn-action-large" id="btn-course-create-project">
               <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -904,7 +1043,7 @@
               <span>Abrir Proyectos</span>
               <span class="badge-lumi-tag">Lumi</span>
             </button>
-          </div>
+          </div>` : '<p class="unassigned-detail-note">Asigna cada proyecto a un ramo activo para mantener tu biblioteca organizada.</p>'}
         </header>
 
         <!-- Sección de Proyectos Realizados -->
@@ -1014,6 +1153,27 @@
           await api.revealFile(path);
         } catch (err) {
           window.uiMessage?.(`No se pudo abrir la carpeta del proyecto: ${err.message}`, 'error');
+        }
+      });
+    });
+
+    panelCourseDetail.querySelectorAll('.btn-reassign-project').forEach(button => {
+      button.addEventListener('click', async () => {
+        const card = button.closest('.project-card');
+        const select = card?.querySelector('.project-assign-select');
+        if (!select?.value) {
+          window.uiMessage?.('Selecciona un ramo activo para continuar.', 'error');
+          select?.focus();
+          return;
+        }
+        try {
+          await api.assignProject(button.dataset.id, select.value);
+          await loadProjectsForActiveCourse();
+          await loadCourses();
+          await loadUnassignedProjects();
+          renderCourseDetailView();
+        } catch (err) {
+          window.uiMessage?.(`No se pudo asignar el proyecto: ${err.message}`, 'error');
         }
       });
     });

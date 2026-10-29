@@ -107,6 +107,9 @@ class AcademicStorage {
       const projectsCount = data.projects.filter(p => p.courseId === course.id).length;
       return {
         ...course,
+        isFavorite: Boolean(course.isFavorite),
+        archivedAt: course.archivedAt || null,
+        lastOpenedAt: course.lastOpenedAt || null,
         projectsCount
       };
     });
@@ -123,6 +126,26 @@ class AcademicStorage {
     if (!course) return null;
     const projectsCount = data.projects.filter(p => p.courseId === course.id).length;
     return { ...course, projectsCount };
+  }
+
+  setCourseOrganization(courseId, changes = {}) {
+    const data = this._readData();
+    const course = data.courses.find(item => item.id === courseId);
+    if (!course) throw new Error('No se encontró el ramo.');
+    if (typeof changes.isFavorite === 'boolean') course.isFavorite = changes.isFavorite;
+    if (changes.archivedAt === null || typeof changes.archivedAt === 'string') course.archivedAt = changes.archivedAt;
+    course.updatedAt = new Date().toISOString();
+    this._writeData(data);
+    return this.getCourseById(courseId);
+  }
+
+  markCourseOpened(courseId) {
+    const data = this._readData();
+    const course = data.courses.find(item => item.id === courseId);
+    if (!course) return false;
+    course.lastOpenedAt = new Date().toISOString();
+    this._writeData(data);
+    return course.lastOpenedAt;
   }
 
   /**
@@ -292,6 +315,9 @@ class AcademicStorage {
         term: typeof course.term === 'string' ? course.term.slice(0, 120) : '',
         colorTag: typeof course.colorTag === 'string' ? course.colorTag.slice(0, 40) : 'primary',
         description: typeof course.description === 'string' ? course.description.slice(0, 2000) : '',
+        isFavorite: Boolean(course.isFavorite),
+        archivedAt: typeof course.archivedAt === 'string' ? course.archivedAt : null,
+        lastOpenedAt: typeof course.lastOpenedAt === 'string' ? course.lastOpenedAt : null,
         createdAt: typeof course.createdAt === 'string' ? course.createdAt : new Date().toISOString(),
         updatedAt: typeof course.updatedAt === 'string' ? course.updatedAt : new Date().toISOString()
       })),
@@ -445,6 +471,20 @@ class AcademicStorage {
     data.projects.unshift(newProject);
     this._writeData(data);
     return newProject;
+  }
+
+  assignProject(projectId, courseId) {
+    const data = this._readData();
+    if (courseId !== 'unassigned' && !data.courses.some(course => course.id === courseId)) {
+      throw new Error('No se encontró el ramo seleccionado.');
+    }
+    const project = data.projects.find(item => item.id === projectId);
+    if (!project) throw new Error('No se encontró el proyecto.');
+    project.courseId = courseId;
+    delete project.previousCourseId;
+    delete project.reallocatedAt;
+    this._writeData(data);
+    return project;
   }
 
   /**

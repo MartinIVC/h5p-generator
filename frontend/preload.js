@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('academicAPI', {
   getCourseById: (courseId) => ipcRenderer.invoke('academic:getCourseById', courseId),
   saveCourse: (courseData) => ipcRenderer.invoke('academic:saveCourse', courseData),
   deleteCourse: (courseId) => ipcRenderer.invoke('academic:deleteCourse', courseId),
+  setCourseOrganization: (courseId, changes) => ipcRenderer.invoke('academic:setCourseOrganization', courseId, changes),
+  markCourseOpened: (courseId) => ipcRenderer.invoke('academic:markCourseOpened', courseId),
 
   // Borradores locales del asistente
   getDrafts: () => ipcRenderer.invoke('academic:getDrafts'),
@@ -28,6 +30,7 @@ contextBridge.exposeInMainWorld('academicAPI', {
   getProjects: (courseId) => ipcRenderer.invoke('academic:getProjects', courseId),
   saveProject: (projectData) => ipcRenderer.invoke('academic:saveProject', projectData),
   deleteProject: (projectId) => ipcRenderer.invoke('academic:deleteProject', projectId),
+  assignProject: (projectId, courseId) => ipcRenderer.invoke('academic:assignProject', projectId, courseId),
 
   // Sistema de Archivos Local
   revealFile: (filePath) => ipcRenderer.invoke('academic:revealFile', filePath),
