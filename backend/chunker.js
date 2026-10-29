@@ -116,7 +116,7 @@ async function extractTextFromFile(filePath, options = {}) {
 
         default:
             throw new Error(
-                `Formato no soportado (${ext}). Formatos admitidos: PDF, Word (DOCX/DOC), Presentaciones (PPTX/ODP), Planillas (XLSX/XLS) y Texto (TXT/MD/CSV).`
+                `Formato no soportado (${ext}). Formatos admitidos: PDF, Word (DOC/DOCX), Planillas (XLS/XLSX), Presentaciones (PPTX), OpenDocument (ODP/ODT/ODS) y Texto (TXT/MD/CSV/RTF).`
             );
     }
 

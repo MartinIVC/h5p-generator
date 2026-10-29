@@ -2,21 +2,20 @@
  * upload.js
  * Componente modular para el panel de subida de archivos y prompt (Paso 1).
  * Inserta la interfaz dinámicamente y gestiona la lista enumerada de archivos.
- * Valida formatos permitidos para material docente (PDF, DOCX, PPTX, etc.).
+ * Valida los formatos que el extractor del backend puede procesar.
  */
 
 (function () {
   'use strict';
 
-  // Extensiones de archivos permitidas habitualmente en material docente
+  // Mantener la selección alineada con los formatos soportados por backend/chunker.js.
   const ALLOWED_EXTENSIONS = [
-    // Documentos de texto y lectura
-    'pdf', 'docx', 'doc', 'odt', 'rtf', 'txt', 'md',
-    // Presentaciones y diapositivas
-    'pptx', 'ppt', 'odp',
-    // Tablas, hojas de cálculo y datos
-    'xlsx', 'xls', 'ods', 'csv'
+    'pdf', 'txt', 'md', 'csv',
+    'docx', 'doc',
+    'xlsx', 'xls',
+    'pptx', 'odp', 'odt', 'ods', 'rtf'
   ];
+  const SUPPORTED_FORMATS_LABEL = 'PDF, DOC/DOCX, XLS/XLSX, PPTX, ODT/ODS/ODP y TXT/MD/CSV/RTF';
 
   // String para el atributo accept del input file
   const ACCEPT_ATTR = ALLOWED_EXTENSIONS.map(ext => `.${ext}`).join(',');
@@ -24,8 +23,15 @@
   // Estado interno del módulo
   const state = {
     files: [],
-    prompt: ''
+    prompt: '',
+    courseId: null,
+    courseName: '',
+    draftId: null,
+    restoredFiles: []
   };
+  let draftSaveTimer = null;
+  let draftStatus = null;
+  let flushDraftHandler = async () => {};
 
   /**
    * Obtiene la extensión en minúsculas de un nombre de archivo.
@@ -70,15 +76,20 @@
     return `
       <div class="upload-card-wrapper">
         <header class="upload-panel-header">
-          <h2 class="upload-panel-title">Carga de Documentos y Prompt</h2>
+          <h2 class="upload-panel-title">Material e instrucciones</h2>
           <p class="upload-panel-subtitle">
-            Sube el material docente en formatos compatibles (PDF, Word, diapositivas, texto) y define tus instrucciones.
+            Añade apuntes y documentos en los formatos compatibles, y orienta la actividad con instrucciones breves.
           </p>
+          <div class="draft-resume-notice hidden" id="draft-resume-notice" role="status" aria-live="polite">
+            <strong>Estás retomando un borrador.</strong>
+            <span id="draft-resume-files"></span>
+          </div>
+          <p class="draft-save-status" id="draft-save-status" role="status" aria-live="polite">Los borradores se guardan en este equipo; los documentos no se copian.</p>
         </header>
 
         <div class="upload-main-grid">
           <!-- Columna izquierda: Zona de carga y Botón Upload -->
-          <div class="upload-dropzone" id="upload-dropzone" tabindex="0" role="button" aria-label="Zona para subir archivos">
+          <div class="upload-dropzone" id="upload-dropzone" aria-describedby="upload-dropzone-desc upload-formats-hint">
             <input type="file" id="upload-file-input" class="hidden" multiple accept="${ACCEPT_ATTR}" />
             
             <div class="upload-icon-circle">
@@ -90,7 +101,7 @@
             </div>
 
             <h3 class="upload-dropzone-title">Arrastra y suelta tus archivos aquí</h3>
-            <p class="upload-dropzone-desc">o haz clic en el botón para seleccionarlos</p>
+            <p class="upload-dropzone-desc" id="upload-dropzone-desc">Arrastra los documentos hasta aquí o selecciónalos desde tu equipo.</p>
 
             <button type="button" class="btn-primary" id="btn-trigger-upload">
               <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -101,7 +112,7 @@
               <span>Subir Archivos</span>
             </button>
 
-            <span class="upload-formats-hint">Formatos admitidos: PDF, DOCX, PPTX, XLSX, TXT y material docente</span>
+            <span class="upload-formats-hint" id="upload-formats-hint">Formatos disponibles: ${SUPPORTED_FORMATS_LABEL}.</span>
           </div>
 
           <!-- Columna derecha: Lista de archivos enumerada al lado del botón upload -->
@@ -127,18 +138,18 @@
         <!-- Sección de Prompt e instrucciones adicionales -->
         <div class="upload-prompt-section">
           <label for="upload-prompt-input" class="upload-prompt-label">
-            Instrucciones o Prompt (opcional):
+            Instrucciones para la actividad (opcional):
           </label>
           <textarea
             id="upload-prompt-input"
             class="upload-prompt-textarea"
             rows="3"
-            placeholder="Describe qué tipo de contenido o preguntas H5P deseas generar a partir de los documentos subidos..."></textarea>
+            placeholder="Ejemplo: Evalúa los conceptos principales con preguntas de dificultad media..."></textarea>
         </div>
 
         <!-- Acciones del pie del panel -->
         <footer class="upload-footer-actions">
-          <div class="upload-summary-info" id="upload-summary-info">
+          <div class="upload-summary-info" id="upload-summary-info" role="status" aria-live="polite" aria-atomic="true">
             No se han seleccionado archivos
           </div>
           <button type="button" class="btn-primary" id="btn-next-step" disabled>
@@ -282,6 +293,91 @@
     const promptInput = container.querySelector('#upload-prompt-input');
     const summaryInfo = container.querySelector('#upload-summary-info');
     const btnNextStep = container.querySelector('#btn-next-step');
+    const resumeNotice = container.querySelector('#draft-resume-notice');
+    const resumeFiles = container.querySelector('#draft-resume-files');
+    draftStatus = container.querySelector('#draft-save-status');
+
+    function getCourseName() {
+      return window.coursesManager?.getActiveCourse()?.name || 'Proyecto sin ramo';
+    }
+
+    async function saveDraftNow() {
+      window.clearTimeout(draftSaveTimer);
+      if (!state.courseId || (!state.draftId && state.files.length === 0 && !state.prompt.trim())) return;
+      if (!window.coursesManager?.saveDraft) return;
+
+      const courseId = state.courseId;
+      const draftId = state.draftId;
+      if (draftStatus) draftStatus.textContent = 'Guardando borrador…';
+      try {
+        const saved = await window.coursesManager.saveDraft({
+          id: draftId,
+          courseId,
+          courseName: state.courseName || getCourseName(),
+          prompt: state.prompt,
+          files: state.files.map(file => ({
+            name: file.name,
+            size: file.size,
+            lastModified: file.lastModified
+          }))
+        });
+        if (state.courseId === courseId) {
+          state.draftId = saved.id;
+          if (draftStatus) draftStatus.textContent = `Borrador guardado · ${new Date(saved.updatedAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}. Los documentos no se copiaron.`;
+        }
+      } catch (err) {
+        console.error('[upload.js] Error guardando borrador:', err);
+        if (draftStatus) draftStatus.textContent = 'No se pudo guardar el borrador.';
+        window.uiMessage?.('No se pudo guardar el borrador. Mantén esta ventana abierta y vuelve a intentarlo.', 'error');
+      }
+    }
+
+    flushDraftHandler = saveDraftNow;
+
+    function scheduleDraftSave() {
+      window.clearTimeout(draftSaveTimer);
+      draftSaveTimer = window.setTimeout(saveDraftNow, 350);
+    }
+
+    function applyDraftContext(detail = {}) {
+      const nextCourseId = detail.courseId || 'unassigned';
+      const draft = detail.draft;
+      const isDifferentDraft = Boolean(draft && draft.id !== state.draftId);
+      const isDifferentCourse = state.courseId !== nextCourseId;
+      const isSameLiveDraft = Boolean(draft && draft.id === state.draftId && !isDifferentCourse);
+
+      if (isDifferentCourse || isDifferentDraft) {
+        if (state.draftId && (state.files.length || state.prompt.trim())) saveDraftNow();
+        window.clearTimeout(draftSaveTimer);
+        state.files = [];
+        state.prompt = '';
+        state.draftId = null;
+      }
+      state.courseId = nextCourseId;
+      state.courseName = draft?.courseName || getCourseName();
+
+      if (draft) {
+        state.draftId = draft.id;
+        state.prompt = draft.prompt || '';
+        state.restoredFiles = isSameLiveDraft && state.files.length
+          ? []
+          : (Array.isArray(draft.files) ? draft.files : []);
+        resumeFiles.textContent = state.restoredFiles.length
+          ? `Selecciona de nuevo ${state.restoredFiles.length} ${state.restoredFiles.length === 1 ? 'documento' : 'documentos'} para continuar. Puedes elegir archivos de reemplazo.`
+          : isSameLiveDraft && state.files.length
+            ? 'Los archivos siguen disponibles en esta sesión.'
+            : 'Las instrucciones se conservaron.';
+        resumeNotice.classList.toggle('hidden', isSameLiveDraft && state.files.length > 0);
+        if (draftStatus) draftStatus.textContent = `Borrador de ${draft.courseName || getCourseName()} · guardado ${new Date(draft.updatedAt).toLocaleString('es-CL')}.`;
+      } else {
+        state.restoredFiles = [];
+        resumeNotice.classList.add('hidden');
+        if (draftStatus) draftStatus.textContent = 'Los borradores se guardan en este equipo; los documentos no se copian.';
+      }
+
+      promptInput.value = state.prompt;
+      updateUI();
+    }
 
     /**
      * Renderiza la lista de archivos y actualiza los indicadores y validaciones.
@@ -295,7 +391,9 @@
         btnClearAll.classList.add('hidden');
         btnNextStep.disabled = true;
         summaryInfo.className = 'upload-summary-info';
-        summaryInfo.innerHTML = 'No se han seleccionado archivos';
+        summaryInfo.innerHTML = state.restoredFiles.length
+          ? `Este borrador recuerda ${state.restoredFiles.length} documento${state.restoredFiles.length === 1 ? '' : 's'}. Selecciónalo${state.restoredFiles.length === 1 ? '' : 's'} otra vez para continuar.`
+          : 'No se han seleccionado archivos';
         return;
       }
 
@@ -312,7 +410,7 @@
       if (hasErrors) {
         summaryInfo.className = 'upload-summary-info has-error';
         const errPlural = errorFiles.length === 1 ? 'archivo con formato no permitido' : 'archivos con formatos no permitidos';
-        summaryInfo.innerHTML = `<strong>Error:</strong> ${errorFiles.length} ${errPlural}. Elimina los archivos marcados en rojo para continuar.`;
+        summaryInfo.innerHTML = `<strong>Formato no disponible:</strong> ${errorFiles.length} ${errPlural}. Formatos permitidos: ${SUPPORTED_FORMATS_LABEL}.`;
       } else {
         summaryInfo.className = 'upload-summary-info';
         const totalBytes = validFiles.reduce((acc, f) => acc + (f.size || 0), 0);
@@ -327,6 +425,7 @@
      */
     function addFiles(newFiles) {
       if (!newFiles || newFiles.length === 0) return;
+      const previousCount = state.files.length;
 
       Array.from(newFiles).forEach((newFile) => {
         // Evita duplicados basados en nombre, tamaño y fecha
@@ -341,6 +440,14 @@
       });
 
       updateUI();
+      fileListContent.querySelectorAll('.file-item').forEach((item, index) => {
+        item.classList.toggle('is-new', index >= previousCount);
+      });
+      if (state.restoredFiles.length) {
+        state.restoredFiles = [];
+        resumeNotice.classList.add('hidden');
+      }
+      scheduleDraftSave();
     }
 
     /**
@@ -354,6 +461,7 @@
           window.previewManager.close();
         }
         updateUI();
+        scheduleDraftSave();
       }
     }
 
@@ -367,6 +475,7 @@
         window.previewManager.close();
       }
       updateUI();
+      scheduleDraftSave();
     }
 
     // --- Listeners de Eventos ---
@@ -375,18 +484,6 @@
     btnTriggerUpload.addEventListener('click', (e) => {
       e.stopPropagation();
       fileInput.click();
-    });
-
-    // Clic en la dropzone (accesible por clic y teclado)
-    dropzone.addEventListener('click', () => {
-      fileInput.click();
-    });
-
-    dropzone.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        fileInput.click();
-      }
     });
 
     // Evento de cambio en el input de archivos
@@ -461,54 +558,68 @@
     // Input de prompt
     promptInput.addEventListener('input', (e) => {
       state.prompt = e.target.value;
+      scheduleDraftSave();
     });
 
-    // Transición al siguiente paso (Tipo H5P)
+    document.addEventListener('h5p:start-project-creation', event => applyDraftContext(event.detail));
+
+    function updateStepIndicators(activeStep) {
+      [1, 2, 3].forEach(step => {
+        const indicator = document.getElementById(`step-indicator-${step}`);
+        if (!indicator) return;
+        indicator.classList.toggle('active', step === activeStep);
+        indicator.classList.toggle('completed', step < activeStep);
+        if (step === activeStep) indicator.setAttribute('aria-current', 'step');
+        else indicator.removeAttribute('aria-current');
+      });
+    }
+
+    function returnToMaterial() {
+      const panelUpload = document.getElementById('panel-upload');
+      const panelSelector = document.getElementById('panel-selector');
+      if (!panelUpload || !panelSelector) return;
+      panelSelector.classList.add('hidden');
+      panelUpload.classList.remove('hidden');
+      updateStepIndicators(1);
+      document.getElementById('btn-next-step')?.focus();
+    }
+
+    // El selector H5P real se integra junto con la generación; nunca dejar el paso vacío.
     btnNextStep.addEventListener('click', () => {
       const panelUpload = document.getElementById('panel-upload');
       const panelSelector = document.getElementById('panel-selector');
-      const stepIndicator1 = document.getElementById('step-indicator-1');
-      const stepIndicator2 = document.getElementById('step-indicator-2');
+      if (!panelUpload || !panelSelector) return;
 
-      if (panelUpload && panelSelector) {
-        panelUpload.classList.add('hidden');
-        panelSelector.classList.remove('hidden');
+      const safeList = state.files
+        .filter(file => isFormatAllowed(file.name))
+        .map(file => `<li>${escapeHtml(file.name)}</li>`)
+        .join('');
 
-        if (stepIndicator1) {
-          stepIndicator1.classList.remove('active');
-          stepIndicator1.classList.add('completed');
-          stepIndicator1.removeAttribute('aria-current');
-        }
-        if (stepIndicator2) {
-          stepIndicator2.classList.add('active');
-          stepIndicator2.setAttribute('aria-current', 'step');
-        }
-      }
+      panelSelector.innerHTML = `
+        <section class="upcoming-step-card" aria-labelledby="selector-pending-title">
+          <div class="upcoming-step-art" aria-hidden="true">
+            <svg viewBox="0 0 96 96" fill="none">
+              <rect x="19" y="17" width="48" height="60" rx="9" transform="rotate(-9 19 17)" class="paper-shape paper-shape-back" />
+              <rect x="28" y="21" width="48" height="60" rx="9" class="paper-shape paper-shape-front" />
+              <path d="M39 39h25M39 48h25M39 57h16" class="paper-lines" />
+              <circle cx="75" cy="25" r="8" class="paper-spark" />
+            </svg>
+          </div>
+          <span class="home-kicker">Paso 2 · Tipo de actividad</span>
+          <h2 id="selector-pending-title" tabindex="-1">El selector H5P estará disponible aquí</h2>
+          <p>Ya reuniste el material. La generación y exportación H5P aún no están conectadas, así que puedes volver a revisar los documentos sin perderlos.</p>
+          <ul class="upcoming-file-summary">${safeList}</ul>
+          <div class="upcoming-step-actions">
+            <button type="button" class="btn-secondary" id="btn-back-to-material">Volver al material</button>
+          </div>
+        </section>
+      `;
+      panelUpload.classList.add('hidden');
+      panelSelector.classList.remove('hidden');
+      updateStepIndicators(2);
+      document.getElementById('btn-back-to-material')?.addEventListener('click', returnToMaterial);
+      document.getElementById('selector-pending-title')?.focus();
     });
-
-    // Navegación bidireccional desde el Stepper
-    const stepIndicator1 = document.getElementById('step-indicator-1');
-    if (stepIndicator1) {
-      stepIndicator1.addEventListener('click', () => {
-        const panelUpload = document.getElementById('panel-upload');
-        const panelSelector = document.getElementById('panel-selector');
-        const stepIndicator2 = document.getElementById('step-indicator-2');
-
-        if (panelUpload && panelSelector) {
-          panelUpload.classList.remove('hidden');
-          panelSelector.classList.add('hidden');
-
-          stepIndicator1.classList.add('active');
-          stepIndicator1.classList.remove('completed');
-          stepIndicator1.setAttribute('aria-current', 'step');
-
-          if (stepIndicator2) {
-            stepIndicator2.classList.remove('active');
-            stepIndicator2.removeAttribute('aria-current');
-          }
-        }
-      });
-    }
 
     // Prevenir comportamiento por defecto de arrastrar archivos a nivel de ventana
     window.addEventListener('dragover', (e) => e.preventDefault(), false);
@@ -524,6 +635,7 @@
     getAllFiles: () => [...state.files],
     hasErrors: () => state.files.some(f => !isFormatAllowed(f.name)),
     getPrompt: () => state.prompt,
+    flushDraft: () => flushDraftHandler(),
     clearFiles: () => {
       state.files = [];
       const btnClearAll = document.getElementById('btn-clear-all');

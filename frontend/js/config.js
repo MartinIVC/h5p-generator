@@ -25,9 +25,11 @@
     hasKey: false,
     maskedKey: '',
     isEditingKey: false,
+    isConfirmingRemoveKey: false,
     onSuccessCallback: null,
     listeners: []
   };
+  let pendingBackupId = null;
 
   // =========================================================================
   // GESTIÓN DE TEMAS (CLARO / OSCURO / SISTEMA)
@@ -92,7 +94,6 @@
       const value = card.getAttribute('data-theme');
       const isSelected = value === state.currentTheme;
       card.classList.toggle('active', isSelected);
-      card.setAttribute('aria-checked', isSelected ? 'true' : 'false');
 
       const radio = card.querySelector('input[type="radio"]');
       if (radio) radio.checked = isSelected;
@@ -205,14 +206,13 @@
           </p>
         </div>
 
-        <div class="theme-selector-grid" role="radiogroup" aria-label="Selección de tema visual">
+        <fieldset class="theme-selector-fieldset">
+          <legend class="sr-only">Selección de tema visual</legend>
+        <div class="theme-selector-grid">
           <!-- Opción Claro -->
           <label
             class="theme-option-card ${state.currentTheme === THEMES.LIGHT ? 'active' : ''}"
             data-theme="${THEMES.LIGHT}"
-            role="radio"
-            aria-checked="${state.currentTheme === THEMES.LIGHT ? 'true' : 'false'}"
-            tabindex="0"
           >
             <input
               type="radio"
@@ -244,9 +244,6 @@
           <label
             class="theme-option-card ${state.currentTheme === THEMES.DARK ? 'active' : ''}"
             data-theme="${THEMES.DARK}"
-            role="radio"
-            aria-checked="${state.currentTheme === THEMES.DARK ? 'true' : 'false'}"
-            tabindex="0"
           >
             <input
               type="radio"
@@ -270,9 +267,6 @@
           <label
             class="theme-option-card ${state.currentTheme === THEMES.SYSTEM ? 'active' : ''}"
             data-theme="${THEMES.SYSTEM}"
-            role="radio"
-            aria-checked="${state.currentTheme === THEMES.SYSTEM ? 'true' : 'false'}"
-            tabindex="0"
           >
             <input
               type="radio"
@@ -294,6 +288,15 @@
             </div>
           </label>
         </div>
+        </fieldset>
+        <fieldset class="motion-preference-fieldset">
+          <legend class="form-label">Movimiento de la interfaz</legend>
+          <p class="settings-section-desc">Las transiciones respetan la preferencia de movimiento del sistema.</p>
+          <div class="motion-preference-options">
+            <label><input type="radio" name="motion-preference" value="system" ${window.uiPreferences?.getMotionPreference() !== 'reduced' ? 'checked' : ''}> Seguir al sistema</label>
+            <label><input type="radio" name="motion-preference" value="reduced" ${window.uiPreferences?.getMotionPreference() === 'reduced' ? 'checked' : ''}> Reducir efectos</label>
+          </div>
+        </fieldset>
       </section>
     `;
   }
@@ -304,7 +307,17 @@
   function getApiKeySectionHTML(isJustInTime) {
     let keyContentHTML = '';
 
-    if (state.hasKey && !state.isEditingKey) {
+    if (state.isConfirmingRemoveKey) {
+      keyContentHTML = `
+        <div class="api-key-remove-confirmation" role="group" aria-label="Confirmar eliminación de la clave">
+          <p>¿Deseas eliminar la clave de Gemini? Tendrás que ingresarla nuevamente antes de generar actividades.</p>
+          <div class="api-key-card-actions">
+            <button type="button" class="btn-secondary" id="btn-cancel-remove-api-key">Cancelar</button>
+            <button type="button" class="btn-text-danger" id="btn-confirm-remove-api-key">Eliminar clave</button>
+          </div>
+        </div>
+      `;
+    } else if (state.hasKey && !state.isEditingKey) {
       keyContentHTML = `
         <div class="api-key-configured-card">
           <div class="api-key-status-row">
@@ -313,7 +326,7 @@
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                 <polyline points="22 4 12 14.01 9 11.01"></polyline>
               </svg>
-              <span>Clave configurada y activa</span>
+              <span>Clave guardada</span>
             </div>
             <code class="api-key-masked">${state.maskedKey}</code>
           </div>
@@ -393,6 +406,38 @@
     `;
   }
 
+  function getDataBackupSectionHTML() {
+    return `
+      <section class="settings-section backup-settings-section">
+        <div class="settings-section-header">
+          <h4 class="settings-section-title">Datos y copias de seguridad</h4>
+          <p class="settings-section-desc">La copia guarda ramos, proyectos, borradores y elementos de la Papelera. No incluye la clave de Gemini, documentos fuente ni archivos .h5p; las ubicaciones de archivo se omiten.</p>
+        </div>
+        <div class="backup-actions-row">
+          <button type="button" class="btn-secondary" id="btn-export-backup">Crear copia</button>
+          <button type="button" class="btn-secondary" id="btn-preview-backup">Restaurar copia</button>
+        </div>
+        <div class="backup-preview hidden" id="backup-preview" aria-live="polite">
+          <strong>Contenido de la copia</strong>
+          <p id="backup-preview-summary"></p>
+          <p class="backup-privacy-note">La clave actual de Gemini se conservará. Los proyectos restaurados no tendrán una ubicación de archivo; sus archivos .h5p originales no se copian.</p>
+          <div class="backup-restore-options" id="backup-restore-options">
+            <button type="button" class="btn-secondary" id="btn-merge-backup">Combinar con mis datos</button>
+            <button type="button" class="btn-text-danger" id="btn-prepare-replace-backup">Reemplazar mis datos</button>
+          </div>
+          <div class="backup-replace-confirm hidden" id="backup-replace-confirm" role="group" aria-label="Confirmar reemplazo de datos">
+            <p>Se reemplazarán tus ramos, proyectos, borradores y elementos de la Papelera. Se creará una copia local automática antes del cambio.</p>
+            <div class="backup-actions-row">
+              <button type="button" class="btn-secondary" id="btn-cancel-replace-backup">Cancelar</button>
+              <button type="button" class="btn-text-danger" id="btn-confirm-replace-backup">Confirmar reemplazo</button>
+            </div>
+          </div>
+        </div>
+        <p class="backup-operation-status" id="backup-operation-status" role="status" aria-live="polite"></p>
+      </section>
+    `;
+  }
+
   /**
    * Renderiza el contenido del modal de opciones / clave API
    * @param {boolean} isJustInTime Indica si se abrió de forma contextual desde una acción
@@ -413,11 +458,13 @@
         ${getThemeSectionHTML()}
         <hr class="settings-divider" />
         ${getApiKeySectionHTML(false)}
+        <hr class="settings-divider" />
+        ${getDataBackupSectionHTML()}
       `;
     }
 
     modal.innerHTML = `
-      <div class="modal-dialog-content settings-dialog-box" role="dialog" aria-modal="true" aria-labelledby="modal-settings-title">
+      <div class="modal-dialog-content settings-dialog-box">
         <header class="modal-dialog-header">
           <div class="modal-dialog-title-wrap">
             <svg class="icon-svg modal-header-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
@@ -446,11 +493,21 @@
       </div>
     `;
 
-    modal.classList.remove('hidden');
+    window.uiDialog?.open(modal, {
+      focus: state.isConfirmingRemoveKey ? '#btn-cancel-remove-api-key' : '#input-gemini-key',
+      onEscape: () => {
+        window.uiDialog?.close(modal);
+        state.isEditingKey = false;
+        state.isConfirmingRemoveKey = false;
+        state.onSuccessCallback = null;
+      }
+    });
 
     const closeModal = () => {
-      modal.classList.add('hidden');
+      if (window.uiDialog) window.uiDialog.close(modal);
+      else modal.classList.add('hidden');
       state.isEditingKey = false;
+      state.isConfirmingRemoveKey = false;
       state.onSuccessCallback = null;
     };
 
@@ -460,21 +517,99 @@
     const btnFooterClose = document.getElementById('btn-close-settings-modal-footer');
     if (btnFooterClose) btnFooterClose.addEventListener('click', closeModal);
 
+    const backupStatus = document.getElementById('backup-operation-status');
+    const backupPreview = document.getElementById('backup-preview');
+    const backupPreviewSummary = document.getElementById('backup-preview-summary');
+    const replaceConfirm = document.getElementById('backup-replace-confirm');
+    const formatBackupCounts = counts => `${counts.courses} ramos, ${counts.projects} proyectos, ${counts.drafts || 0} borradores y ${counts.trash || 0} elementos en la Papelera.`;
+
+    document.getElementById('btn-export-backup')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = 'Creando copia…';
+      try {
+        const result = await window.academicAPI?.exportBackup?.();
+        if (!result) throw new Error('La función de copias de seguridad no está disponible.');
+        if (result.canceled) return;
+        if (backupStatus) backupStatus.textContent = `Copia creada con ${formatBackupCounts(result.summary.counts)} Guardada en: ${result.filePath}`;
+      } catch (err) {
+        if (backupStatus) backupStatus.textContent = `No se pudo crear la copia: ${err.message}`;
+        window.uiMessage?.(`No se pudo crear la copia: ${err.message}`, 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Crear copia';
+      }
+    });
+
+    document.getElementById('btn-preview-backup')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = 'Revisando…';
+      if (backupStatus) backupStatus.textContent = '';
+      try {
+        const result = await window.academicAPI?.previewBackup?.();
+        if (!result) throw new Error('La función de restauración no está disponible.');
+        if (result.canceled) return;
+        pendingBackupId = result.backupId;
+        backupPreviewSummary.textContent = `${formatBackupCounts(result.counts)} Fecha de la copia: ${result.exportedAt ? new Date(result.exportedAt).toLocaleString('es-CL') : 'no indicada'}.`;
+        backupPreview.classList.remove('hidden');
+        replaceConfirm.classList.add('hidden');
+        document.getElementById('btn-merge-backup')?.focus();
+      } catch (err) {
+        if (backupStatus) backupStatus.textContent = `No se pudo leer la copia: ${err.message}`;
+        window.uiMessage?.(`No se pudo leer la copia: ${err.message}`, 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Restaurar copia';
+      }
+    });
+
+    async function restoreSelectedBackup(strategy, button) {
+      if (!pendingBackupId) return;
+      button.disabled = true;
+      const previousText = button.textContent;
+      button.textContent = 'Restaurando…';
+      try {
+        const result = await window.academicAPI.restoreBackup(pendingBackupId, strategy);
+        pendingBackupId = null;
+        backupPreview.classList.add('hidden');
+        if (backupStatus) backupStatus.textContent = `Restauración completada: ${formatBackupCounts(result.counts)} Se conservaron los archivos y la clave actual.`;
+        closeModal();
+        window.uiMessage?.('Copia restaurada. Se actualizará la biblioteca.', 'info');
+        await window.coursesManager?.navigateToHome?.();
+      } catch (err) {
+        if (backupStatus) backupStatus.textContent = `No se pudo restaurar la copia: ${err.message}`;
+        window.uiMessage?.(`No se pudo restaurar la copia: ${err.message}`, 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = previousText;
+      }
+    }
+
+    document.getElementById('btn-merge-backup')?.addEventListener('click', event => {
+      restoreSelectedBackup('merge', event.currentTarget);
+    });
+    document.getElementById('btn-prepare-replace-backup')?.addEventListener('click', () => {
+      replaceConfirm.classList.remove('hidden');
+      document.getElementById('btn-confirm-replace-backup')?.focus();
+    });
+    document.getElementById('btn-cancel-replace-backup')?.addEventListener('click', () => {
+      replaceConfirm.classList.add('hidden');
+      document.getElementById('btn-prepare-replace-backup')?.focus();
+    });
+    document.getElementById('btn-confirm-replace-backup')?.addEventListener('click', event => {
+      restoreSelectedBackup('replace', event.currentTarget);
+    });
+
     // Eventos de selección de tema (si está presente)
     const themeCards = modal.querySelectorAll('.theme-option-card');
     themeCards.forEach(card => {
-      const selectCard = () => {
-        const themeValue = card.getAttribute('data-theme');
-        setTheme(themeValue);
-      };
+      const radio = card.querySelector('input[name="theme-choice"]');
+      if (radio) radio.addEventListener('change', () => setTheme(radio.value));
+    });
 
-      card.addEventListener('click', selectCard);
-      card.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          selectCard();
-        }
-      });
+    modal.querySelectorAll('input[name="motion-preference"]').forEach(radio => {
+      radio.addEventListener('change', () => window.uiPreferences?.setMotionPreference(radio.value));
     });
 
     // Botón cambiar clave
@@ -498,12 +633,35 @@
     // Botón eliminar clave
     const btnRemove = document.getElementById('btn-remove-api-key');
     if (btnRemove) {
-      btnRemove.addEventListener('click', async () => {
-        if (confirm('¿Deseas desvincular tu API Key de Gemini? Tendrás que ingresarla nuevamente para generar actividades.')) {
+      btnRemove.addEventListener('click', () => {
+        state.isConfirmingRemoveKey = true;
+        renderSettingsModal(isJustInTime);
+      });
+    }
+
+    const btnCancelRemove = document.getElementById('btn-cancel-remove-api-key');
+    if (btnCancelRemove) {
+      btnCancelRemove.addEventListener('click', () => {
+        state.isConfirmingRemoveKey = false;
+        renderSettingsModal(isJustInTime);
+      });
+    }
+
+    const btnConfirmRemove = document.getElementById('btn-confirm-remove-api-key');
+    if (btnConfirmRemove) {
+      btnConfirmRemove.addEventListener('click', async () => {
+        btnConfirmRemove.disabled = true;
+        btnConfirmRemove.textContent = 'Eliminando…';
+        try {
           await api.removeApiKey();
           await refreshStatus();
+          state.isConfirmingRemoveKey = false;
           state.isEditingKey = true;
           renderSettingsModal(isJustInTime);
+        } catch (err) {
+          btnConfirmRemove.disabled = false;
+          btnConfirmRemove.textContent = 'Eliminar clave';
+          window.uiMessage?.(`No se pudo eliminar la clave: ${err.message}`, 'error');
         }
       });
     }
@@ -541,7 +699,7 @@
         e.preventDefault();
         const rawKey = inputKey.value.trim();
         if (!rawKey) {
-          alert('Por favor ingresa una clave API válida.');
+          window.uiMessage?.('Ingresa una clave API para continuar.', 'error');
           return;
         }
 
@@ -559,7 +717,7 @@
             cb();
           }
         } catch (err) {
-          alert(`Error al guardar la clave API: ${err.message}`);
+          window.uiMessage?.(`No se pudo guardar la clave API: ${err.message}`, 'error');
         }
       });
     }
@@ -601,17 +759,6 @@
       });
     }
 
-    // Soporte para cerrar modal con Escape
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        const modal = document.getElementById('modal-settings');
-        if (modal && !modal.classList.contains('hidden')) {
-          modal.classList.add('hidden');
-          state.isEditingKey = false;
-          state.onSuccessCallback = null;
-        }
-      }
-    });
   }
 
   window.configManager = {

@@ -1,6 +1,9 @@
-const { app, BrowserWindow, ipcMain, shell, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Notification, dialog } = require('electron');
 const path = require('node:path');
+const fs = require('node:fs');
+const crypto = require('node:crypto');
 app.setName('h5p-generator');
+app.commandLine.appendSwitch('lang', 'es');
 const { academicStorage } = require(path.join(__dirname, '..', 'backend', 'storage.js'));
 
 const createWindow = () => {
@@ -31,6 +34,7 @@ const createWindow = () => {
 // ========================================================
 
 let ipcRegistered = false;
+let pendingBackupImport = null;
 
 function registerIpcHandlers() {
   if (ipcRegistered) return;
@@ -48,9 +52,75 @@ function registerIpcHandlers() {
     return academicStorage.saveCourse(courseData);
   });
 
+  ipcMain.handle('academic:setCourseOrganization', async (_event, courseId, changes) => {
+    return academicStorage.setCourseOrganization(courseId, changes);
+  });
+
+  ipcMain.handle('academic:markCourseOpened', async (_event, courseId) => {
+    return academicStorage.markCourseOpened(courseId);
+  });
+
+  ipcMain.handle('academic:getDrafts', async () => {
+    return academicStorage.getDrafts();
+  });
+
+  ipcMain.handle('academic:saveDraft', async (_event, draftData) => {
+    return academicStorage.saveDraft(draftData);
+  });
+
+  ipcMain.handle('academic:deleteDraft', async (_event, draftId) => {
+    return academicStorage.deleteDraft(draftId);
+  });
+
+  ipcMain.handle('academic:exportBackup', async (event) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+      title: 'Crear copia de seguridad',
+      defaultPath: path.join(app.getPath('documents'), `generador-h5p-${new Date().toISOString().slice(0, 10)}.json`),
+      filters: [{ name: 'Copia del Generador H5P', extensions: ['json'] }]
+    });
+    if (canceled || !filePath) return { canceled: true };
+
+    const payload = academicStorage.createBackupPayload();
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), { encoding: 'utf-8', mode: 0o600 });
+    return {
+      canceled: false,
+      filePath,
+      summary: academicStorage.inspectBackupPayload(payload)
+    };
+  });
+
+  ipcMain.handle('academic:previewBackup', async (event) => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
+      title: 'Seleccionar copia de seguridad',
+      properties: ['openFile'],
+      filters: [{ name: 'Copia del Generador H5P', extensions: ['json'] }]
+    });
+    if (canceled || !filePaths[0]) return { canceled: true };
+
+    const filePath = filePaths[0];
+    const fileSize = fs.statSync(filePath).size;
+    if (fileSize > 25 * 1024 * 1024) throw new Error('La copia supera el límite de 25 MB.');
+    const payload = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const summary = academicStorage.inspectBackupPayload(payload);
+    pendingBackupImport = { id: crypto.randomUUID(), payload };
+    return { canceled: false, backupId: pendingBackupImport.id, ...summary };
+  });
+
+  ipcMain.handle('academic:restoreBackup', async (_event, { backupId, strategy } = {}) => {
+    if (!pendingBackupImport || backupId !== pendingBackupImport.id) {
+      throw new Error('La copia debe seleccionarse y revisarse antes de restaurarla.');
+    }
+    const result = academicStorage.restoreBackupPayload(pendingBackupImport.payload, strategy);
+    pendingBackupImport = null;
+    return result;
+  });
+
   ipcMain.handle('academic:deleteCourse', async (_event, courseId) => {
     return academicStorage.deleteCourse(courseId);
   });
+  ipcMain.handle('academic:getTrash', async () => academicStorage.getTrash());
+  ipcMain.handle('academic:restoreTrashItem', async (_event, trashId) => academicStorage.restoreTrashItem(trashId));
+  ipcMain.handle('academic:permanentlyDeleteTrashItem', async (_event, trashId) => academicStorage.permanentlyDeleteTrashItem(trashId));
 
   // Proyectos Exportados (Projects)
   ipcMain.handle('academic:getProjects', async (_event, courseId) => {
@@ -59,6 +129,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('academic:saveProject', async (_event, projectData) => {
     return academicStorage.saveProject(projectData);
+  });
+
+  ipcMain.handle('academic:assignProject', async (_event, projectId, courseId) => {
+    return academicStorage.assignProject(projectId, courseId);
   });
 
   ipcMain.handle('academic:deleteProject', async (_event, projectId) => {

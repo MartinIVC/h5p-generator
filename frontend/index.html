@@ -30,6 +30,11 @@
       </button>
       <h1 class="app-title" id="app-topbar-title">Generador H5P</h1>
     </div>
+    <button id="btn-global-search" class="btn-icon global-search-trigger" title="Buscar en la biblioteca (Ctrl/Cmd + K)" type="button" aria-label="Buscar ramos y proyectos">
+      <svg class="icon-svg" aria-hidden="true" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path>
+      </svg>
+    </button>
     <button id="btn-menu" class="btn-icon" title="Abrir menu" type="button" aria-label="Abrir menu"
       aria-controls="side-menu" aria-expanded="false">
       <svg class="icon-svg" aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none"
@@ -41,7 +46,7 @@
     </button>
   </header>
 
-  <nav id="side-menu" class="side-menu" aria-label="Navegación principal" aria-hidden="true">
+  <div id="side-menu" class="side-menu" role="dialog" aria-label="Navegación principal" aria-modal="true" aria-hidden="true" inert>
     <div class="side-menu-header">
       <h2>Menú</h2>
       <button id="btn-close-menu" class="btn-icon" type="button" title="Cerrar menú" aria-label="Cerrar menú">
@@ -63,6 +68,20 @@
         <span>Mis Ramos y Proyectos</span>
       </button>
 
+      <button class="menu-item" type="button" id="menu-opt-onboarding">
+        <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path>
+        </svg>
+        <span>Primeros pasos</span>
+      </button>
+
+      <button class="menu-item" type="button" id="menu-opt-trash">
+        <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6"></path>
+        </svg>
+        <span>Papelera</span>
+      </button>
+
       <button class="menu-item" type="button" id="menu-opt-settings">
         <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -71,12 +90,30 @@
             d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
           </path>
         </svg>
-        <span>Opciones</span>
+        <span>Configuración</span>
       </button>
     </div>
-  </nav>
+  </div>
 
   <div id="menu-overlay" class="menu-overlay" aria-hidden="true"></div>
+
+  <!-- Indicador de pasos del asistente -->
+  <footer class="app-footer hidden" id="app-footer">
+    <ol class="stepper" aria-label="Pasos del proceso">
+      <li class="step-item active" id="step-indicator-1" aria-current="step">
+        <span class="step-num">1</span>
+        <span class="step-text">Material</span>
+      </li>
+      <li class="step-item" id="step-indicator-2">
+        <span class="step-num">2</span>
+        <span class="step-text">Tipo de actividad</span>
+      </li>
+      <li class="step-item" id="step-indicator-3">
+        <span class="step-num">3</span>
+        <span class="step-text">Exportación</span>
+      </li>
+    </ol>
+  </footer>
 
   <main class="step-container">
     <!-- Panel de Inicio: Hub de Ramos -->
@@ -84,6 +121,7 @@
 
     <!-- Vista de Detalle de Ramo y Proyectos Realizados -->
     <section id="panel-course-detail" class="step-panel hidden"></section>
+    <section id="panel-trash" class="step-panel hidden"></section>
 
     <!-- Asistente de Creación de Contenido H5P (Paso 1, 2, 3) -->
     <section id="panel-upload" class="step-panel hidden"></section>
@@ -91,26 +129,8 @@
     <section id="panel-export" class="step-panel hidden"></section>
   </main>
 
-  <!-- Pie de ventana permanente con el stepper (visible solo durante el asistente) -->
-  <footer class="app-footer hidden" id="app-footer">
-    <ol class="stepper" aria-label="Pasos del proceso">
-      <li class="step-item active" id="step-indicator-1" aria-current="step">
-        <span class="step-num">1</span>
-        <span class="step-text">Subir y Prompt</span>
-      </li>
-      <li class="step-item" id="step-indicator-2">
-        <span class="step-num">2</span>
-        <span class="step-text">Tipo H5P</span>
-      </li>
-      <li class="step-item" id="step-indicator-3">
-        <span class="step-num">3</span>
-        <span class="step-text">Exportar</span>
-      </li>
-    </ol>
-  </footer>
-
   <!-- Modal de Previsualización de Archivos -->
-  <div id="preview-modal" class="preview-modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="preview-modal-title" aria-hidden="true">
+  <div id="preview-modal" class="preview-modal-overlay hidden" aria-hidden="true">
     <div class="preview-dialog">
       <header class="preview-header">
         <div class="preview-title-wrap">
@@ -120,7 +140,7 @@
           </svg>
           <div class="preview-meta-text">
             <h2 id="preview-modal-title" class="preview-title">Previsualización</h2>
-            <span id="preview-modal-subtitle" class="preview-subtitle"></span>
+            <span id="preview-modal-subtitle" class="preview-subtitle" aria-live="polite"></span>
           </div>
         </div>
         <button id="btn-close-preview" class="btn-icon" type="button" title="Cerrar vista previa (Escape)" aria-label="Cerrar vista previa">
@@ -157,19 +177,22 @@
   </div>
 
   <!-- Modal de Formulario Crear/Editar Ramo -->
-  <div id="modal-course-form" class="preview-modal-overlay hidden" role="dialog" aria-modal="true" aria-hidden="true"></div>
+  <div id="modal-course-form" class="preview-modal-overlay hidden" aria-hidden="true"></div>
 
   <!-- Modal de Diálogo de Confirmación e Información (Lumi) -->
-  <div id="modal-confirm-dialog" class="preview-modal-overlay hidden" role="dialog" aria-modal="true" aria-hidden="true"></div>
+  <div id="modal-confirm-dialog" class="preview-modal-overlay hidden" aria-hidden="true"></div>
 
   <!-- Modal de Opciones y Configuración (Tema y API Key Gemini) -->
-  <div id="modal-settings" class="preview-modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-settings-title" aria-hidden="true"></div>
+  <div id="modal-settings" class="preview-modal-overlay hidden" aria-hidden="true"></div>
+  <div id="modal-global-search" class="preview-modal-overlay hidden" aria-hidden="true"></div>
 
+  <script src="js/ui.js"></script>
   <script src="js/courses.js"></script>
   <script src="js/menu.js"></script>
   <script src="js/upload.js"></script>
   <script src="js/preview.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/search.js"></script>
 </body>
 
 </html>
