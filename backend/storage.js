@@ -47,7 +47,8 @@ class AcademicStorage {
       const initialData = {
         courses: [],
         projects: [],
-        settings: {}
+        settings: {},
+        drafts: []
       };
       this._writeData(initialData);
     }
@@ -68,7 +69,8 @@ class AcademicStorage {
       return {
         courses: Array.isArray(parsed.courses) ? parsed.courses : [],
         projects: Array.isArray(parsed.projects) ? parsed.projects : [],
-        settings: parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {}
+        settings: parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {},
+        drafts: Array.isArray(parsed.drafts) ? parsed.drafts : []
       };
     } catch (err) {
       console.error('[AcademicStorage] Error leyendo academic_store.json:', err);
@@ -169,6 +171,56 @@ class AcademicStorage {
     data.courses.unshift(newCourse);
     this._writeData(data);
     return { ...newCourse, projectsCount: 0 };
+  }
+
+  // ==========================================
+  // BORRADORES LOCALES DEL ASISTENTE
+  // ==========================================
+
+  getDrafts() {
+    const data = this._readData();
+    return data.drafts.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }
+
+  saveDraft(draftInput) {
+    if (!draftInput || typeof draftInput !== 'object') {
+      throw new Error('El borrador no es válido.');
+    }
+    if (!draftInput.courseId || typeof draftInput.courseId !== 'string') {
+      throw new Error('El borrador debe pertenecer a un ramo.');
+    }
+
+    const data = this._readData();
+    const now = new Date().toISOString();
+    const draft = {
+      id: typeof draftInput.id === 'string' && draftInput.id ? draftInput.id : crypto.randomUUID(),
+      courseId: draftInput.courseId,
+      courseName: typeof draftInput.courseName === 'string' ? draftInput.courseName.slice(0, 240) : '',
+      prompt: typeof draftInput.prompt === 'string' ? draftInput.prompt.slice(0, 12000) : '',
+      files: Array.isArray(draftInput.files)
+        ? draftInput.files.slice(0, 50).map(file => ({
+          name: typeof file?.name === 'string' ? file.name.slice(0, 255) : '',
+          size: Number.isFinite(file?.size) && file.size > 0 ? file.size : 0,
+          lastModified: Number.isFinite(file?.lastModified) ? file.lastModified : 0
+        })).filter(file => file.name)
+        : [],
+      updatedAt: now
+    };
+
+    const index = data.drafts.findIndex(existing => existing.id === draft.id);
+    if (index >= 0) data.drafts[index] = draft;
+    else data.drafts.unshift(draft);
+    this._writeData(data);
+    return draft;
+  }
+
+  deleteDraft(draftId) {
+    const data = this._readData();
+    const initialCount = data.drafts.length;
+    data.drafts = data.drafts.filter(draft => draft.id !== draftId);
+    if (data.drafts.length === initialCount) return false;
+    this._writeData(data);
+    return true;
   }
 
   /**

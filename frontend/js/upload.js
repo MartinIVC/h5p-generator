@@ -17,8 +17,14 @@
   // Estado interno del módulo
   const state = {
     files: [],
-    prompt: ''
+    prompt: '',
+    courseId: null,
+    courseName: '',
+    draftId: null,
+    restoredFiles: []
   };
+  let draftSaveTimer = null;
+  let draftStatus = null;
 
   /**
    * Obtiene la extensión en minúsculas de un nombre de archivo.
@@ -67,6 +73,11 @@
           <p class="upload-panel-subtitle">
             Añade apuntes en PDF o TXT y orienta la actividad con instrucciones breves.
           </p>
+          <div class="draft-resume-notice hidden" id="draft-resume-notice" role="status" aria-live="polite">
+            <strong>Estás retomando un borrador.</strong>
+            <span id="draft-resume-files"></span>
+          </div>
+          <p class="draft-save-status" id="draft-save-status" role="status" aria-live="polite">Los borradores se guardan en este equipo; los documentos no se copian.</p>
         </header>
 
         <div class="upload-main-grid">
@@ -275,6 +286,89 @@
     const promptInput = container.querySelector('#upload-prompt-input');
     const summaryInfo = container.querySelector('#upload-summary-info');
     const btnNextStep = container.querySelector('#btn-next-step');
+    const resumeNotice = container.querySelector('#draft-resume-notice');
+    const resumeFiles = container.querySelector('#draft-resume-files');
+    draftStatus = container.querySelector('#draft-save-status');
+
+    function getCourseName() {
+      return window.coursesManager?.getActiveCourse()?.name || 'Proyecto sin ramo';
+    }
+
+    async function saveDraftNow() {
+      window.clearTimeout(draftSaveTimer);
+      if (!state.courseId || (!state.draftId && state.files.length === 0 && !state.prompt.trim())) return;
+      if (!window.coursesManager?.saveDraft) return;
+
+      const courseId = state.courseId;
+      const draftId = state.draftId;
+      if (draftStatus) draftStatus.textContent = 'Guardando borrador…';
+      try {
+        const saved = await window.coursesManager.saveDraft({
+          id: draftId,
+          courseId,
+          courseName: state.courseName || getCourseName(),
+          prompt: state.prompt,
+          files: state.files.map(file => ({
+            name: file.name,
+            size: file.size,
+            lastModified: file.lastModified
+          }))
+        });
+        if (state.courseId === courseId) {
+          state.draftId = saved.id;
+          if (draftStatus) draftStatus.textContent = `Borrador guardado · ${new Date(saved.updatedAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}. Los documentos no se copiaron.`;
+        }
+      } catch (err) {
+        console.error('[upload.js] Error guardando borrador:', err);
+        if (draftStatus) draftStatus.textContent = 'No se pudo guardar el borrador.';
+        window.uiMessage?.('No se pudo guardar el borrador. Mantén esta ventana abierta y vuelve a intentarlo.', 'error');
+      }
+    }
+
+    function scheduleDraftSave() {
+      window.clearTimeout(draftSaveTimer);
+      draftSaveTimer = window.setTimeout(saveDraftNow, 350);
+    }
+
+    function applyDraftContext(detail = {}) {
+      const nextCourseId = detail.courseId || 'unassigned';
+      const draft = detail.draft;
+      const isDifferentDraft = Boolean(draft && draft.id !== state.draftId);
+      const isDifferentCourse = state.courseId !== nextCourseId;
+      const isSameLiveDraft = Boolean(draft && draft.id === state.draftId && !isDifferentCourse);
+
+      if (isDifferentCourse || isDifferentDraft) {
+        if (state.draftId && (state.files.length || state.prompt.trim())) saveDraftNow();
+        window.clearTimeout(draftSaveTimer);
+        state.files = [];
+        state.prompt = '';
+        state.draftId = null;
+      }
+      state.courseId = nextCourseId;
+      state.courseName = draft?.courseName || getCourseName();
+
+      if (draft) {
+        state.draftId = draft.id;
+        state.prompt = draft.prompt || '';
+        state.restoredFiles = isSameLiveDraft && state.files.length
+          ? []
+          : (Array.isArray(draft.files) ? draft.files : []);
+        resumeFiles.textContent = state.restoredFiles.length
+          ? `Selecciona de nuevo ${state.restoredFiles.length} ${state.restoredFiles.length === 1 ? 'documento' : 'documentos'} para continuar. Puedes elegir archivos de reemplazo.`
+          : isSameLiveDraft && state.files.length
+            ? 'Los archivos siguen disponibles en esta sesión.'
+            : 'Las instrucciones se conservaron.';
+        resumeNotice.classList.toggle('hidden', isSameLiveDraft && state.files.length > 0);
+        if (draftStatus) draftStatus.textContent = `Borrador de ${draft.courseName || getCourseName()} · guardado ${new Date(draft.updatedAt).toLocaleString('es-CL')}.`;
+      } else {
+        state.restoredFiles = [];
+        resumeNotice.classList.add('hidden');
+        if (draftStatus) draftStatus.textContent = 'Los borradores se guardan en este equipo; los documentos no se copian.';
+      }
+
+      promptInput.value = state.prompt;
+      updateUI();
+    }
 
     /**
      * Renderiza la lista de archivos y actualiza los indicadores y validaciones.
@@ -288,7 +382,9 @@
         btnClearAll.classList.add('hidden');
         btnNextStep.disabled = true;
         summaryInfo.className = 'upload-summary-info';
-        summaryInfo.innerHTML = 'No se han seleccionado archivos';
+        summaryInfo.innerHTML = state.restoredFiles.length
+          ? `Este borrador recuerda ${state.restoredFiles.length} documento${state.restoredFiles.length === 1 ? '' : 's'}. Selecciónalo${state.restoredFiles.length === 1 ? '' : 's'} otra vez para continuar.`
+          : 'No se han seleccionado archivos';
         return;
       }
 
@@ -338,6 +434,11 @@
       fileListContent.querySelectorAll('.file-item').forEach((item, index) => {
         item.classList.toggle('is-new', index >= previousCount);
       });
+      if (state.restoredFiles.length) {
+        state.restoredFiles = [];
+        resumeNotice.classList.add('hidden');
+      }
+      scheduleDraftSave();
     }
 
     /**
@@ -351,6 +452,7 @@
           window.previewManager.close();
         }
         updateUI();
+        scheduleDraftSave();
       }
     }
 
@@ -364,6 +466,7 @@
         window.previewManager.close();
       }
       updateUI();
+      scheduleDraftSave();
     }
 
     // --- Listeners de Eventos ---
@@ -446,7 +549,10 @@
     // Input de prompt
     promptInput.addEventListener('input', (e) => {
       state.prompt = e.target.value;
+      scheduleDraftSave();
     });
+
+    document.addEventListener('h5p:start-project-creation', event => applyDraftContext(event.detail));
 
     function updateStepIndicators(activeStep) {
       [1, 2, 3].forEach(step => {
@@ -520,6 +626,7 @@
     getAllFiles: () => [...state.files],
     hasErrors: () => state.files.some(f => !isFormatAllowed(f.name)),
     getPrompt: () => state.prompt,
+    flushDraft: saveDraftNow,
     clearFiles: () => {
       state.files = [];
       const btnClearAll = document.getElementById('btn-clear-all');

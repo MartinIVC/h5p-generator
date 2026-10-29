@@ -14,6 +14,11 @@ contextBridge.exposeInMainWorld('academicAPI', {
   saveCourse: (courseData) => ipcRenderer.invoke('academic:saveCourse', courseData),
   deleteCourse: (courseId) => ipcRenderer.invoke('academic:deleteCourse', courseId),
 
+  // Borradores locales del asistente
+  getDrafts: () => ipcRenderer.invoke('academic:getDrafts'),
+  saveDraft: (draftData) => ipcRenderer.invoke('academic:saveDraft', draftData),
+  deleteDraft: (draftId) => ipcRenderer.invoke('academic:deleteDraft', draftId),
+
   // Proyectos Exportados (Projects)
   getProjects: (courseId) => ipcRenderer.invoke('academic:getProjects', courseId),
   saveProject: (projectData) => ipcRenderer.invoke('academic:saveProject', projectData),
@@ -34,4 +39,3 @@ contextBridge.exposeInMainWorld('academicAPI', {
   // Enlaces Externos
   openExternalUrl: (url) => ipcRenderer.invoke('app:openExternalUrl', url)
 });
-

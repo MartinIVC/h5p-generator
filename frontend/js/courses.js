@@ -67,6 +67,7 @@
   // Estado interno del módulo
   const state = {
     courses: [],
+    drafts: [],
     activeCourseId: null,
     projects: [],
     searchCoursesQuery: '',
@@ -112,6 +113,26 @@
       else courses.unshift(item);
       localStorage.setItem('h5p_courses', JSON.stringify(courses));
       return item;
+    },
+    async getDrafts() {
+      if (window.academicAPI?.getDrafts) return window.academicAPI.getDrafts();
+      return JSON.parse(localStorage.getItem('h5p_drafts') || '[]');
+    },
+    async saveDraft(draftData) {
+      if (window.academicAPI?.saveDraft) return window.academicAPI.saveDraft(draftData);
+      const drafts = await this.getDrafts();
+      const draft = { ...draftData, id: draftData.id || `d_${Date.now()}`, updatedAt: new Date().toISOString() };
+      const index = drafts.findIndex(item => item.id === draft.id);
+      if (index >= 0) drafts[index] = draft;
+      else drafts.unshift(draft);
+      localStorage.setItem('h5p_drafts', JSON.stringify(drafts));
+      return draft;
+    },
+    async deleteDraft(draftId) {
+      if (window.academicAPI?.deleteDraft) return window.academicAPI.deleteDraft(draftId);
+      const drafts = (await this.getDrafts()).filter(draft => draft.id !== draftId);
+      localStorage.setItem('h5p_drafts', JSON.stringify(drafts));
+      return true;
     },
     async deleteCourse(courseId) {
       if (window.academicAPI && typeof window.academicAPI.deleteCourse === 'function') {
@@ -198,6 +219,7 @@
    * Navega a la pantalla de inicio (Catálogo de Ramos)
    */
   async function navigateToHome() {
+    await window.uploadManager?.flushDraft?.();
     state.activeCourseId = null;
     
     // Visibilidad de secciones
@@ -213,6 +235,7 @@
     if (topbarTitle) topbarTitle.textContent = 'Generador H5P';
 
     await loadCourses();
+    await loadDrafts();
     renderHomeView();
   }
 
@@ -220,6 +243,7 @@
    * Navega a la vista de detalle de un ramo específico
    */
   async function navigateToCourseDetail(courseId) {
+    await window.uploadManager?.flushDraft?.();
     state.activeCourseId = courseId;
     state.searchProjectsQuery = '';
 
@@ -254,7 +278,7 @@
   /**
    * Inicia el proceso de creación de proyecto H5P para el ramo activo
    */
-  function startProjectCreation(courseId) {
+  function startProjectCreation(courseId, draft = null) {
     if (courseId) {
       state.activeCourseId = courseId;
     }
@@ -299,6 +323,9 @@
 
     // Actualizar banner contextual de ramo en el panel de subida
     updateCourseContextBanner(course);
+    document.dispatchEvent(new CustomEvent('h5p:start-project-creation', {
+      detail: { courseId: state.activeCourseId, draft }
+    }));
   }
 
   /**
@@ -380,6 +407,15 @@
     }
   }
 
+  async function loadDrafts() {
+    try {
+      state.drafts = await api.getDrafts();
+    } catch (err) {
+      console.error('[courses.js] Error cargando borradores:', err);
+      state.drafts = [];
+    }
+  }
+
   async function loadProjectsForActiveCourse() {
     try {
       state.projects = await api.getProjects(state.activeCourseId);
@@ -409,6 +445,32 @@
 
     const totalProjects = state.courses.reduce((acc, c) => acc + (c.projectsCount || 0), 0);
     const hasApiKey = window.configManager ? window.configManager.hasApiKey() : true;
+    const draftsHTML = state.drafts.length ? `
+      <section class="saved-drafts-section" aria-labelledby="saved-drafts-title">
+        <div class="saved-drafts-heading">
+          <div>
+            <span class="home-kicker">Tu trabajo reciente</span>
+            <h3 id="saved-drafts-title">Borradores guardados</h3>
+          </div>
+          <span class="projects-count-pill">${state.drafts.length}</span>
+        </div>
+        <div class="saved-drafts-grid">
+          ${state.drafts.map(draft => `
+            <article class="saved-draft-card">
+              <div class="saved-draft-copy">
+                <strong>${escapeHTML(draft.courseName || 'Proyecto sin ramo')}</strong>
+                <span>${(draft.files || []).length} ${(draft.files || []).length === 1 ? 'documento' : 'documentos'} · Guardado ${escapeHTML(formatDate(draft.updatedAt))}</span>
+                <p>Las instrucciones se conservaron. Por privacidad, vuelve a seleccionar los documentos.</p>
+              </div>
+              <div class="saved-draft-actions">
+                <button type="button" class="btn-primary btn-resume-draft" data-draft-id="${escapeHTML(draft.id)}">Continuar</button>
+                <button type="button" class="btn-text-danger btn-delete-draft" data-draft-id="${escapeHTML(draft.id)}">Descartar</button>
+              </div>
+            </article>
+          `).join('')}
+        </div>
+      </section>
+    ` : '';
 
     let coursesCardsHTML = '';
     if (state.coursesLoadError) {
@@ -555,6 +617,8 @@
           </div>
         ` : ''}
 
+        ${draftsHTML}
+
         ${state.courses.length > 0 ? `
           <div class="home-search-bar">
             <div class="search-input-wrap">
@@ -606,6 +670,33 @@
 
     const btnEmptyCreate = document.getElementById('btn-empty-create-course');
     if (btnEmptyCreate) btnEmptyCreate.addEventListener('click', () => openCourseModal());
+
+    panelHome.querySelectorAll('.btn-resume-draft').forEach(button => {
+      button.addEventListener('click', () => {
+        const draft = state.drafts.find(item => item.id === button.dataset.draftId);
+        if (draft) startProjectCreation(draft.courseId, draft);
+      });
+    });
+
+    panelHome.querySelectorAll('.btn-delete-draft').forEach(button => {
+      button.addEventListener('click', async () => {
+        const draft = state.drafts.find(item => item.id === button.dataset.draftId);
+        if (!draft) return;
+        const confirmed = await window.uiDialog.confirm({
+          title: '¿Descartar este borrador?',
+          message: 'Se eliminarán las instrucciones y los datos de los documentos seleccionados. Los archivos originales no se modificarán.',
+          confirmLabel: 'Descartar borrador'
+        });
+        if (!confirmed) return;
+        try {
+          await api.deleteDraft(draft.id);
+          await loadDrafts();
+          renderHomeView();
+        } catch (err) {
+          window.uiMessage?.(`No se pudo descartar el borrador: ${err.message}`, 'error');
+        }
+      });
+    });
 
     const searchInput = document.getElementById('search-courses-input');
     if (searchInput) {
@@ -1351,6 +1442,19 @@
       const saved = await api.saveProject(payload);
       await loadCourses();
       return saved;
+    },
+    saveDraft: async (draftData) => {
+      const saved = await api.saveDraft(draftData);
+      const index = state.drafts.findIndex(item => item.id === saved.id);
+      if (index >= 0) state.drafts[index] = saved;
+      else state.drafts.unshift(saved);
+      return saved;
+    },
+    refreshDrafts: loadDrafts,
+    deleteDraft: async (draftId) => {
+      await api.deleteDraft(draftId);
+      await loadDrafts();
+      if (panelHome && !panelHome.classList.contains('hidden')) renderHomeView();
     }
   };
 
