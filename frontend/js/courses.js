@@ -998,12 +998,7 @@
         else openCourseModal();
       } else if (action === 'material') {
         const activeCourse = state.courses.find(course => !course.archivedAt);
-        if (activeCourse) startProjectCreation(activeCourse.id);
-        else if (state.courses.length) {
-          state.showArchivedCourses = true;
-          renderHomeView();
-          document.getElementById('course-view-select')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } else openCourseModal();
+        startProjectCreation(activeCourse?.id || 'unassigned');
       } else if (action === 'settings') {
         window.configManager?.openSettingsModal();
       }
