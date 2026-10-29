@@ -68,6 +68,7 @@
   const state = {
     courses: [],
     drafts: [],
+    trash: [],
     unassignedProjects: [],
     activeCourseId: null,
     projects: [],
@@ -81,12 +82,14 @@
     editingCourseId: null,
     pendingDeleteCourse: null,
     showArchivedCourses: false,
-    courseSortOrder: localStorage.getItem('h5p_course_sort') || 'recent'
+    courseSortOrder: localStorage.getItem('h5p_course_sort') || 'recent',
+    isOnboardingDismissed: localStorage.getItem('h5p_onboarding_dismissed') === 'true'
   };
 
   // Referencias a contenedores del DOM
   let panelHome = null;
   let panelCourseDetail = null;
+  let panelTrash = null;
   let panelUpload = null;
   let panelSelector = null;
   let panelExport = null;
@@ -141,9 +144,94 @@
       if (window.academicAPI && typeof window.academicAPI.deleteCourse === 'function') {
         return window.academicAPI.deleteCourse(courseId);
       }
-      let courses = await this.getCourses();
-      courses = courses.filter(c => c.id !== courseId);
-      localStorage.setItem('h5p_courses', JSON.stringify(courses));
+      const courses = await this.getCourses();
+      const course = courses.find(item => item.id === courseId);
+      if (!course) return false;
+      const trash = JSON.parse(localStorage.getItem('h5p_trash') || '[]');
+      trash.unshift({ id: `t_${Date.now()}`, type: 'course', deletedAt: new Date().toISOString(), record: course });
+      localStorage.setItem('h5p_trash', JSON.stringify(trash));
+      const remaining = courses.filter(item => item.id !== courseId);
+      let projects = JSON.parse(localStorage.getItem('h5p_projects') || '[]');
+      projects = projects.map(project => project.courseId === courseId
+        ? { ...project, courseId: 'unassigned', previousCourseId: courseId, reallocatedAt: new Date().toISOString() }
+        : project);
+      localStorage.setItem('h5p_projects', JSON.stringify(projects));
+      let drafts = JSON.parse(localStorage.getItem('h5p_drafts') || '[]');
+      drafts = drafts.map(draft => draft.courseId === courseId ? { ...draft, courseId: 'unassigned', previousCourseId: courseId } : draft);
+      localStorage.setItem('h5p_drafts', JSON.stringify(drafts));
+      localStorage.setItem('h5p_courses', JSON.stringify(remaining));
+      return true;
+    },
+    async getTrash() {
+      if (window.academicAPI?.getTrash) return window.academicAPI.getTrash();
+      return JSON.parse(localStorage.getItem('h5p_trash') || '[]');
+    },
+    async restoreTrashItem(trashId) {
+      if (window.academicAPI?.restoreTrashItem) return window.academicAPI.restoreTrashItem(trashId);
+      const trash = await this.getTrash();
+      const index = trash.findIndex(item => item.id === trashId);
+      if (index < 0) return false;
+      const [item] = trash.splice(index, 1);
+      if (item.type === 'course') {
+        const courses = await this.getCourses();
+        courses.push(item.record);
+        localStorage.setItem('h5p_courses', JSON.stringify(courses));
+        const projects = JSON.parse(localStorage.getItem('h5p_projects') || '[]').map(project => {
+          if (project.courseId !== 'unassigned' || project.previousCourseId !== item.record.id) return project;
+          const restored = { ...project, courseId: item.record.id };
+          delete restored.previousCourseId;
+          delete restored.reallocatedAt;
+          return restored;
+        });
+        localStorage.setItem('h5p_projects', JSON.stringify(projects));
+        const drafts = JSON.parse(localStorage.getItem('h5p_drafts') || '[]').map(draft => {
+          if (draft.courseId !== 'unassigned' || draft.previousCourseId !== item.record.id) return draft;
+          const restored = { ...draft, courseId: item.record.id };
+          delete restored.previousCourseId;
+          return restored;
+        });
+        localStorage.setItem('h5p_drafts', JSON.stringify(drafts));
+      } else {
+        const projects = JSON.parse(localStorage.getItem('h5p_projects') || '[]');
+        const project = { ...item.record };
+        const courses = await this.getCourses();
+        if (project.courseId === 'unassigned' && project.previousCourseId && courses.some(course => course.id === project.previousCourseId)) {
+          project.courseId = project.previousCourseId;
+          delete project.previousCourseId;
+          delete project.reallocatedAt;
+        } else if (project.courseId !== 'unassigned' && !courses.some(course => course.id === project.courseId)) {
+          project.previousCourseId = project.courseId;
+          project.courseId = 'unassigned';
+        }
+        projects.unshift(project);
+        localStorage.setItem('h5p_projects', JSON.stringify(projects));
+      }
+      localStorage.setItem('h5p_trash', JSON.stringify(trash));
+      return true;
+    },
+    async permanentlyDeleteTrashItem(trashId) {
+      if (window.academicAPI?.permanentlyDeleteTrashItem) return window.academicAPI.permanentlyDeleteTrashItem(trashId);
+      const trash = await this.getTrash();
+      const item = trash.find(entry => entry.id === trashId);
+      const remaining = trash.filter(entry => entry.id !== trashId);
+      if (item?.type === 'course') {
+        const projects = JSON.parse(localStorage.getItem('h5p_projects') || '[]').map(project => {
+          if (project.previousCourseId !== item.record.id) return project;
+          const cleaned = { ...project };
+          delete cleaned.previousCourseId;
+          delete cleaned.reallocatedAt;
+          return cleaned;
+        });
+        localStorage.setItem('h5p_projects', JSON.stringify(projects));
+        const drafts = JSON.parse(localStorage.getItem('h5p_drafts') || '[]').map(draft => {
+          if (draft.previousCourseId !== item.record.id) return draft;
+          const cleaned = { ...draft };
+          delete cleaned.previousCourseId;
+          return cleaned;
+        });
+        localStorage.setItem('h5p_drafts', JSON.stringify(drafts));
+      }
+      localStorage.setItem('h5p_trash', JSON.stringify(remaining));
       return true;
     },
     async setCourseOrganization(courseId, changes) {
@@ -198,6 +286,11 @@
         return window.academicAPI.deleteProject(projectId);
       }
       let all = JSON.parse(localStorage.getItem('h5p_projects') || '[]');
+      const project = all.find(item => item.id === projectId);
+      if (!project) return false;
+      const trash = JSON.parse(localStorage.getItem('h5p_trash') || '[]');
+      trash.unshift({ id: `t_${Date.now()}`, type: 'project', deletedAt: new Date().toISOString(), record: project });
+      localStorage.setItem('h5p_trash', JSON.stringify(trash));
       all = all.filter(p => p.id !== projectId);
       localStorage.setItem('h5p_projects', JSON.stringify(all));
       return true;
@@ -257,6 +350,7 @@
     // Visibilidad de secciones
     if (panelHome) panelHome.classList.remove('hidden');
     if (panelCourseDetail) panelCourseDetail.classList.add('hidden');
+    if (panelTrash) panelTrash.classList.add('hidden');
     if (panelUpload) panelUpload.classList.add('hidden');
     if (panelSelector) panelSelector.classList.add('hidden');
     if (panelExport) panelExport.classList.add('hidden');
@@ -270,13 +364,33 @@
     renderHomeView();
   }
 
+  async function navigateToTrash() {
+    await window.uploadManager?.flushDraft?.();
+    state.activeCourseId = null;
+    if (panelHome) panelHome.classList.add('hidden');
+    if (panelCourseDetail) panelCourseDetail.classList.add('hidden');
+    if (panelTrash) panelTrash.classList.remove('hidden');
+    if (panelUpload) panelUpload.classList.add('hidden');
+    if (panelSelector) panelSelector.classList.add('hidden');
+    if (panelExport) panelExport.classList.add('hidden');
+    if (appFooter) appFooter.classList.add('hidden');
+    if (topbarBackBtn) {
+      topbarBackBtn.classList.remove('hidden');
+      topbarBackBtn.setAttribute('title', 'Volver a Mis Ramos');
+      topbarBackBtn.onclick = navigateToHome;
+    }
+    if (topbarTitle) topbarTitle.textContent = 'Papelera';
+    await loadTrash();
+    renderTrashView();
+  }
+
   /**
    * Navega a la vista de detalle de un ramo específico
    */
-  async function navigateToCourseDetail(courseId) {
+  async function navigateToCourseDetail(courseId, projectSearchQuery = '') {
     await window.uploadManager?.flushDraft?.();
     state.activeCourseId = courseId;
-    state.searchProjectsQuery = '';
+    state.searchProjectsQuery = projectSearchQuery;
 
     const isUnassigned = courseId === 'unassigned';
     const course = isUnassigned
@@ -298,6 +412,7 @@
     // Visibilidad de secciones
     if (panelHome) panelHome.classList.add('hidden');
     if (panelCourseDetail) panelCourseDetail.classList.remove('hidden');
+    if (panelTrash) panelTrash.classList.add('hidden');
     if (panelUpload) panelUpload.classList.add('hidden');
     if (panelSelector) panelSelector.classList.add('hidden');
     if (panelExport) panelExport.classList.add('hidden');
@@ -330,6 +445,7 @@
     // Visibilidad de secciones
     if (panelHome) panelHome.classList.add('hidden');
     if (panelCourseDetail) panelCourseDetail.classList.add('hidden');
+    if (panelTrash) panelTrash.classList.add('hidden');
     if (panelUpload) panelUpload.classList.remove('hidden');
     if (panelSelector) panelSelector.classList.add('hidden');
     if (panelExport) panelExport.classList.add('hidden');
@@ -458,6 +574,15 @@
     }
   }
 
+  async function loadTrash() {
+    try {
+      state.trash = await api.getTrash();
+    } catch (err) {
+      console.error('[courses.js] Error cargando papelera:', err);
+      state.trash = [];
+    }
+  }
+
   async function loadUnassignedProjects() {
     try {
       state.unassignedProjects = await api.getProjects('unassigned');
@@ -540,7 +665,36 @@
     });
 
     const totalProjects = state.courses.reduce((acc, c) => acc + (c.projectsCount || 0), 0);
+    const activeCoursesCount = state.courses.filter(course => !course.archivedAt).length;
+    const archivedCoursesCount = state.courses.length - activeCoursesCount;
+    const favoriteCoursesCount = state.courses.filter(course => course.isFavorite && !course.archivedAt).length;
     const hasApiKey = window.configManager ? window.configManager.hasApiKey() : true;
+    const onboardingComplete = [state.courses.length > 0, state.drafts.length > 0 || totalProjects > 0, hasApiKey].filter(Boolean).length;
+    const onboardingHTML = state.isOnboardingDismissed ? '' : `
+      <section class="onboarding-checklist" aria-labelledby="onboarding-title">
+        <header class="onboarding-checklist-header">
+          <div><span class="home-kicker">Una guía breve y opcional</span><h3 id="onboarding-title">Primeros pasos <span>${onboardingComplete}/3</span></h3></div>
+          <button type="button" class="btn-text-subtle" id="btn-dismiss-onboarding">Cerrar guía</button>
+        </header>
+        <ol class="onboarding-steps">
+          <li class="onboarding-step ${state.courses.length ? 'is-complete' : ''}">
+            <span class="onboarding-step-state" aria-hidden="true">${state.courses.length ? '✓' : '1'}</span>
+            <span class="onboarding-step-copy"><strong>Crea o elige un ramo</strong><small>${state.courses.length ? `${state.courses.length} ${state.courses.length === 1 ? 'ramo disponible' : 'ramos disponibles'}` : 'Organiza tus proyectos por asignatura.'}</small></span>
+            <button type="button" class="btn-secondary onboarding-step-button" data-step-action="course">${state.courses.length ? 'Ver ramos' : 'Crear ramo'}</button>
+          </li>
+          <li class="onboarding-step ${state.drafts.length || totalProjects ? 'is-complete' : ''}">
+            <span class="onboarding-step-state" aria-hidden="true">${state.drafts.length || totalProjects ? '✓' : '2'}</span>
+            <span class="onboarding-step-copy"><strong>Prepara material e instrucciones</strong><small>${state.drafts.length || totalProjects ? 'Ya hay trabajo guardado en esta biblioteca.' : 'Selecciona un PDF o TXT y escribe las instrucciones de la actividad.'}</small></span>
+            <button type="button" class="btn-secondary onboarding-step-button" data-step-action="material">Empezar</button>
+          </li>
+          <li class="onboarding-step ${hasApiKey ? 'is-complete' : ''}">
+            <span class="onboarding-step-state" aria-hidden="true">${hasApiKey ? '✓' : '3'}</span>
+            <span class="onboarding-step-copy"><strong>Revisa la configuración de Gemini</strong><small>${hasApiKey ? 'Hay una clave registrada en este equipo.' : 'La clave se guarda localmente y queda fuera de las copias de seguridad.'}</small></span>
+            <button type="button" class="btn-secondary onboarding-step-button" data-step-action="settings">${hasApiKey ? 'Revisar' : 'Configurar'}</button>
+          </li>
+        </ol>
+      </section>
+    `;
     const draftsHTML = state.drafts.length ? `
       <section class="saved-drafts-section" aria-labelledby="saved-drafts-title">
         <div class="saved-drafts-heading">
@@ -686,6 +840,7 @@
 
         ${draftsHTML}
         ${unassignedHTML}
+        ${onboardingHTML}
 
         ${state.courses.length > 0 ? `
           <div class="home-search-bar">
@@ -719,9 +874,13 @@
               </label>
             </div>
             <div class="home-stats-pill">
-              <span>Total: <strong>${state.courses.length}</strong> ramos</span>
+              <span><strong>${activeCoursesCount}</strong> activos</span>
               <span class="dot-divider">•</span>
-              <span><strong>${totalProjects}</strong> proyectos exportados</span>
+              <span><strong>${favoriteCoursesCount}</strong> favoritos</span>
+              <span class="dot-divider">•</span>
+              <span><strong>${archivedCoursesCount}</strong> archivados</span>
+              <span class="dot-divider">•</span>
+              <span><strong>${totalProjects}</strong> proyectos</span>
             </div>
           </div>
         ` : ''}
@@ -734,6 +893,79 @@
 
     // Event listeners del Home
     attachHomeEventListeners();
+  }
+
+  function renderTrashView() {
+    if (!panelTrash) return;
+    const itemsHTML = state.trash.length ? `
+      <div class="trash-items-list" role="list">
+        ${state.trash.map(item => {
+          const isCourse = item.type === 'course';
+          const record = item.record || {};
+          const title = isCourse ? record.name : record.title;
+          const context = isCourse
+            ? `${record.code ? `${record.code} · ` : ''}${record.term || 'Ramo'}`
+            : `${record.h5pType || 'Proyecto H5P'} · ${state.courses.find(course => course.id === record.courseId)?.name || (record.courseId === 'unassigned' ? 'Sin asignar' : 'Ramo eliminado')}`;
+          return `
+            <article class="trash-item-card" role="listitem">
+              <div class="trash-item-icon" aria-hidden="true">${isCourse ? 'R' : 'H5P'}</div>
+              <div class="trash-item-copy"><strong>${escapeHTML(title || 'Registro sin título')}</strong><span>${escapeHTML(context)}</span><small>En papelera desde ${escapeHTML(formatDate(item.deletedAt))}</small></div>
+              <div class="trash-item-actions">
+                <button type="button" class="btn-secondary btn-restore-trash" data-id="${escapeHTML(item.id)}">Restaurar</button>
+                <button type="button" class="btn-text-danger btn-purge-trash" data-id="${escapeHTML(item.id)}">Eliminar definitivamente</button>
+              </div>
+            </article>
+          `;
+        }).join('')}
+      </div>
+    ` : `
+      <div class="empty-results-box trash-empty-state">
+        <div class="hero-icon-bubble" aria-hidden="true">✓</div>
+        <h3>La papelera está vacía</h3>
+        <p>Los ramos y proyectos que muevas aquí se pueden restaurar. Los archivos .h5p de tu equipo se conservan.</p>
+      </div>
+    `;
+
+    panelTrash.innerHTML = `
+      <div class="trash-view-container">
+        <header class="trash-view-header">
+          <div><span class="home-kicker">Recuperación de registros</span><h2>Papelera</h2><p>Restaurar un ramo recupera sus proyectos asociados cuando todavía no se reasignaron.</p></div>
+          <button type="button" class="btn-secondary" id="btn-trash-back">Volver a Mis Ramos</button>
+        </header>
+        <div class="trash-retention-note">No hay borrado automático. Eliminar definitivamente quita solo los registros de esta aplicación; los archivos .h5p permanecen en tu equipo.</div>
+        ${itemsHTML}
+      </div>
+    `;
+    document.getElementById('btn-trash-back')?.addEventListener('click', navigateToHome);
+    panelTrash.querySelectorAll('.btn-restore-trash').forEach(button => button.addEventListener('click', async () => {
+      try {
+        await api.restoreTrashItem(button.dataset.id);
+        await Promise.all([loadTrash(), loadCourses(), loadUnassignedProjects()]);
+        renderTrashView();
+        window.uiMessage?.('Registro restaurado.');
+      } catch (err) {
+        window.uiMessage?.(`No se pudo restaurar el registro: ${err.message}`, 'error');
+      }
+    }));
+    panelTrash.querySelectorAll('.btn-purge-trash').forEach(button => button.addEventListener('click', async () => {
+      const item = state.trash.find(entry => entry.id === button.dataset.id);
+      const isCourse = item?.type === 'course';
+      const confirmed = await window.uiDialog.confirm({
+        title: '¿Eliminar definitivamente este registro?',
+        message: isCourse
+          ? 'Se quitarán de forma permanente los datos del ramo. Sus proyectos seguirán disponibles en “Sin asignar”; ningún archivo .h5p se borrará.'
+          : 'Se quitará de forma permanente el registro del proyecto. El archivo .h5p guardado en tu equipo se conservará.',
+        confirmLabel: 'Eliminar registro'
+      });
+      if (!confirmed) return;
+      try {
+        await api.permanentlyDeleteTrashItem(button.dataset.id);
+        await Promise.all([loadTrash(), loadCourses(), loadUnassignedProjects()]);
+        renderTrashView();
+      } catch (err) {
+        window.uiMessage?.(`No se pudo eliminar el registro: ${err.message}`, 'error');
+      }
+    }));
   }
 
   function attachHomeEventListeners() {
@@ -753,6 +985,29 @@
 
     const btnEmptyCreate = document.getElementById('btn-empty-create-course');
     if (btnEmptyCreate) btnEmptyCreate.addEventListener('click', () => openCourseModal());
+
+    document.getElementById('btn-dismiss-onboarding')?.addEventListener('click', () => {
+      state.isOnboardingDismissed = true;
+      localStorage.setItem('h5p_onboarding_dismissed', 'true');
+      renderHomeView();
+    });
+    panelHome.querySelectorAll('.onboarding-step-button').forEach(button => button.addEventListener('click', () => {
+      const action = button.dataset.stepAction;
+      if (action === 'course') {
+        if (state.courses.length) document.querySelector('.home-search-bar, .home-courses-content')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        else openCourseModal();
+      } else if (action === 'material') {
+        const activeCourse = state.courses.find(course => !course.archivedAt);
+        if (activeCourse) startProjectCreation(activeCourse.id);
+        else if (state.courses.length) {
+          state.showArchivedCourses = true;
+          renderHomeView();
+          document.getElementById('course-view-select')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else openCourseModal();
+      } else if (action === 'settings') {
+        window.configManager?.openSettingsModal();
+      }
+    }));
 
     const unassignedButton = document.getElementById('btn-open-unassigned');
     if (unassignedButton) unassignedButton.addEventListener('click', () => navigateToCourseDetail('unassigned'));
@@ -940,7 +1195,7 @@
         <div class="projects-grid" role="list" aria-label="Lista de proyectos del ramo">
           ${filteredProjects.map(proj => {
             return `
-              <div class="project-card" data-project-id="${proj.id}" role="listitem">
+              <div class="project-card" data-project-id="${escapeHTML(proj.id)}" role="listitem">
                 <div class="project-card-header">
                   <div class="project-type-badge">${escapeHTML(proj.h5pType || 'H5P')}</div>
                   <span class="project-date-badge">${formatDate(proj.exportedAt)}</span>
@@ -949,7 +1204,7 @@
                 <h4 class="project-title">${escapeHTML(proj.title)}</h4>
                 
                 ${proj.sourceFiles && proj.sourceFiles.length > 0 ? `
-                  <div class="project-sources-info" title="${proj.sourceFiles.map(f => f.name || f).join(', ')}">
+                  <div class="project-sources-info" title="${escapeHTML(proj.sourceFiles.map(f => f.name || f).join(', '))}">
                     <svg class="icon-svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                     </svg>
@@ -968,7 +1223,7 @@
                     </svg>
                     <span>Ver en carpeta</span>
                   </button>
-                  ${isUnassigned ? `
+                  ${isUnassigned && state.courses.some(item => !item.archivedAt) ? `
                     <label class="project-assign-control">
                       <span class="sr-only">Asignar ${escapeHTML(proj.title)} a un ramo</span>
                       <select class="project-assign-select" aria-label="Ramo para ${escapeHTML(proj.title)}">
@@ -977,8 +1232,8 @@
                       </select>
                       <button type="button" class="btn-secondary btn-reassign-project" data-id="${escapeHTML(proj.id)}">Asignar</button>
                     </label>
-                  ` : ''}
-                  <button type="button" class="btn-icon-subtle btn-delete-project" data-id="${proj.id}" title="Eliminar registro: ${escapeHTML(proj.title)}" aria-label="Eliminar registro de ${escapeHTML(proj.title)}">
+                  ` : (isUnassigned ? '<span class="project-assign-empty">No tienes ramos activos. Reactiva uno en Mis Ramos para asignar este proyecto.</span>' : '')}
+                  <button type="button" class="btn-icon-subtle btn-delete-project" data-id="${escapeHTML(proj.id)}" title="Mover a papelera: ${escapeHTML(proj.title)}" aria-label="Mover a papelera el registro de ${escapeHTML(proj.title)}">
                     <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="3 6 5 6 21 6"></polyline>
                       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -1184,15 +1439,16 @@
       btn.addEventListener('click', async () => {
         const id = btn.getAttribute('data-id');
         const confirmed = await window.uiDialog.confirm({
-          title: '¿Eliminar el registro del proyecto?',
-          message: 'Se quitará del historial del ramo. El archivo .h5p guardado en tu equipo se conservará.',
-          confirmLabel: 'Eliminar registro'
+          title: '¿Mover el proyecto a la papelera?',
+          message: 'El registro se podrá restaurar desde la Papelera. El archivo .h5p guardado en tu equipo se conservará.',
+          confirmLabel: 'Mover a Papelera'
         });
         if (confirmed) {
           try {
             await api.deleteProject(id);
             await loadProjectsForActiveCourse();
             await loadCourses();
+            await loadUnassignedProjects();
             renderCourseDetailView();
           } catch (err) {
             window.uiMessage?.(`No se pudo eliminar el registro: ${err.message}`, 'error');
@@ -1430,7 +1686,7 @@
               <line x1="12" y1="9" x2="12" y2="13"></line>
               <line x1="12" y1="17" x2="12.01" y2="17"></line>
             </svg>
-            <h3 class="modal-dialog-title">¿Eliminar Ramo?</h3>
+            <h3 class="modal-dialog-title">¿Mover el ramo a la papelera?</h3>
           </div>
           <button type="button" class="btn-icon btn-close-dialog" id="btn-close-confirm-modal" aria-label="Cerrar">
             <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
@@ -1442,7 +1698,7 @@
 
         <div class="confirm-dialog-body">
           <p>
-            Estás a punto de eliminar la asignatura <strong>${escapeHTML(course.name)}</strong>
+            Estás a punto de mover la asignatura <strong>${escapeHTML(course.name)}</strong>
             ${course.code ? `(<em>${escapeHTML(course.code)}</em>)` : ''}.
           </p>
           <div class="confirm-reassurance-box">
@@ -1450,15 +1706,14 @@
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
             </svg>
             <p>
-              <strong>Protección de material docente:</strong> Tus proyectos y archivos <strong>se conservarán</strong> asociados internamente a <em>"Sin Asignar"</em>.
-              Esta versión todavía no incluye una vista para abrirlos o reasignarlos desde esa categoría.
+              Sus proyectos seguirán disponibles en <strong>“Sin asignar”</strong>. Puedes restaurar el ramo desde la Papelera; los archivos .h5p de tu equipo no se modificarán.
             </p>
           </div>
         </div>
 
         <footer class="modal-dialog-footer">
           <button type="button" class="btn-secondary" id="btn-cancel-delete">Cancelar</button>
-          <button type="button" class="btn-text-danger" id="btn-confirm-delete">Eliminar Ramo</button>
+          <button type="button" class="btn-primary" id="btn-confirm-delete">Mover a Papelera</button>
         </footer>
       </div>
     `;
@@ -1478,21 +1733,21 @@
       btnConfirm.addEventListener('click', async () => {
         const confirmButton = document.getElementById('btn-confirm-delete');
         confirmButton.disabled = true;
-        confirmButton.textContent = 'Eliminando…';
+        confirmButton.textContent = 'Moviendo…';
         try {
           await api.deleteCourse(course.id);
         } catch (err) {
           console.error('[courses.js] Error eliminando ramo:', err);
           window.uiMessage?.(`No se pudo eliminar el ramo: ${err.message}`, 'error');
           confirmButton.disabled = false;
-          confirmButton.textContent = 'Eliminar Ramo';
+          confirmButton.textContent = 'Mover a Papelera';
           return;
         }
         closeModal();
         if (state.activeCourseId === course.id) {
           navigateToHome();
         } else {
-          await loadCourses();
+          await Promise.all([loadCourses(), loadUnassignedProjects()]);
           renderHomeView();
         }
       });
@@ -1555,6 +1810,7 @@
   async function init() {
     panelHome = document.getElementById('panel-home');
     panelCourseDetail = document.getElementById('panel-course-detail');
+    panelTrash = document.getElementById('panel-trash');
     panelUpload = document.getElementById('panel-upload');
     panelSelector = document.getElementById('panel-selector');
     panelExport = document.getElementById('panel-export');
@@ -1571,6 +1827,18 @@
         navigateToHome();
       });
     }
+
+    document.getElementById('menu-opt-onboarding')?.addEventListener('click', () => {
+      document.getElementById('btn-close-menu')?.click();
+      state.isOnboardingDismissed = false;
+      localStorage.setItem('h5p_onboarding_dismissed', 'false');
+      navigateToHome().then(() => document.getElementById('onboarding-title')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    });
+
+    document.getElementById('menu-opt-trash')?.addEventListener('click', () => {
+      document.getElementById('btn-close-menu')?.click();
+      navigateToTrash();
+    });
 
     // Inicialmente cargar ramos y mostrar panel de inicio
     await loadCourses();
@@ -1590,8 +1858,17 @@
   window.coursesManager = {
     init,
     navigateToHome,
+    navigateToTrash,
     navigateToCourseDetail,
     startProjectCreation,
+    openCourseModal,
+    openOnboarding: () => {
+      state.isOnboardingDismissed = false;
+      localStorage.setItem('h5p_onboarding_dismissed', 'false');
+      return navigateToHome();
+    },
+    getDrafts: () => api.getDrafts(),
+    openProjectSearch: (courseId, title) => navigateToCourseDetail(courseId || 'unassigned', title || ''),
     getActiveCourse: () => state.courses.find(c => c.id === state.activeCourseId) || null,
     registerProjectExport: async (projectData) => {
       const activeCourse = state.courses.find(c => c.id === state.activeCourseId);

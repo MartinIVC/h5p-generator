@@ -11,6 +11,75 @@ const crypto = require('node:crypto');
 const BACKUP_FORMAT = 'h5p-generator-backup';
 const BACKUP_VERSION = 1;
 
+function backupCourse(course) {
+  return {
+    id: course.id,
+    code: course.code || '',
+    name: course.name || '',
+    term: course.term || '',
+    colorTag: course.colorTag || 'primary',
+    description: course.description || '',
+    isFavorite: Boolean(course.isFavorite),
+    archivedAt: course.archivedAt || null,
+    lastOpenedAt: course.lastOpenedAt || null,
+    createdAt: course.createdAt || '',
+    updatedAt: course.updatedAt || ''
+  };
+}
+
+function backupProject(project) {
+  return {
+    ...project,
+    filePath: '',
+    sourceFiles: Array.isArray(project.sourceFiles)
+      ? project.sourceFiles.map(file => ({ name: typeof file === 'string' ? file : (file?.name || '') }))
+      : []
+  };
+}
+
+function cleanBackupCourse(course) {
+  return {
+    id: course.id.slice(0, 120),
+    code: typeof course.code === 'string' ? course.code.slice(0, 80) : '',
+    name: course.name.trim().slice(0, 240),
+    term: typeof course.term === 'string' ? course.term.slice(0, 120) : '',
+    colorTag: typeof course.colorTag === 'string' ? course.colorTag.slice(0, 40) : 'primary',
+    description: typeof course.description === 'string' ? course.description.slice(0, 2000) : '',
+    isFavorite: Boolean(course.isFavorite),
+    archivedAt: typeof course.archivedAt === 'string' ? course.archivedAt : null,
+    lastOpenedAt: typeof course.lastOpenedAt === 'string' ? course.lastOpenedAt : null,
+    createdAt: typeof course.createdAt === 'string' ? course.createdAt : new Date().toISOString(),
+    updatedAt: typeof course.updatedAt === 'string' ? course.updatedAt : new Date().toISOString()
+  };
+}
+
+function cleanBackupProject(project) {
+  return {
+    id: project.id.slice(0, 120),
+    courseId: typeof project.courseId === 'string' ? project.courseId.slice(0, 120) : 'unassigned',
+    previousCourseId: typeof project.previousCourseId === 'string' ? project.previousCourseId.slice(0, 120) : undefined,
+    reallocatedAt: typeof project.reallocatedAt === 'string' ? project.reallocatedAt : undefined,
+    title: project.title.trim().slice(0, 240),
+    h5pType: typeof project.h5pType === 'string' ? project.h5pType.slice(0, 120) : 'H5P General',
+    filePath: '',
+    sourceFiles: Array.isArray(project.sourceFiles)
+      ? project.sourceFiles.slice(0, 50).map(file => ({ name: typeof file === 'string' ? file.slice(0, 255) : (typeof file?.name === 'string' ? file.name.slice(0, 255) : '') })).filter(file => file.name)
+      : [],
+    promptSummary: typeof project.promptSummary === 'string' ? project.promptSummary.slice(0, 12000) : '',
+    fileSizeBytes: Number.isFinite(project.fileSizeBytes) && project.fileSizeBytes > 0 ? project.fileSizeBytes : 0,
+    exportedAt: typeof project.exportedAt === 'string' ? project.exportedAt : new Date().toISOString()
+  };
+}
+
+function cleanBackupTrashItem(item) {
+  return {
+    id: item.id.slice(0, 120),
+    type: item.type,
+    deletedAt: typeof item.deletedAt === 'string' ? item.deletedAt : new Date().toISOString(),
+    record: item.type === 'course' ? cleanBackupCourse(item.record) : cleanBackupProject(item.record)
+  };
+}
+
 class AcademicStorage {
   /**
    * @param {string} [customPath] Ruta personalizada opcional (útil para tests o entornos sin Electron)
@@ -51,7 +120,8 @@ class AcademicStorage {
         courses: [],
         projects: [],
         settings: {},
-        drafts: []
+        drafts: [],
+        trash: []
       };
       this._writeData(initialData);
     }
@@ -73,11 +143,12 @@ class AcademicStorage {
         courses: Array.isArray(parsed.courses) ? parsed.courses : [],
         projects: Array.isArray(parsed.projects) ? parsed.projects : [],
         settings: parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {},
-        drafts: Array.isArray(parsed.drafts) ? parsed.drafts : []
+        drafts: Array.isArray(parsed.drafts) ? parsed.drafts : [],
+        trash: Array.isArray(parsed.trash) ? parsed.trash : []
       };
     } catch (err) {
       console.error('[AcademicStorage] Error leyendo academic_store.json:', err);
-      return { courses: [], projects: [], settings: {} };
+      return { courses: [], projects: [], settings: {}, drafts: [], trash: [] };
     }
   }
 
@@ -256,15 +327,15 @@ class AcademicStorage {
       version: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
       data: {
-        courses: data.courses,
-        projects: data.projects.map(project => ({
-          ...project,
-          filePath: '',
-          sourceFiles: Array.isArray(project.sourceFiles)
-            ? project.sourceFiles.map(file => ({ name: typeof file === 'string' ? file : (file?.name || '') }))
-            : []
-        })),
-        drafts: data.drafts
+        courses: data.courses.map(backupCourse),
+        projects: data.projects.map(backupProject),
+        drafts: data.drafts,
+        trash: data.trash.map(item => ({
+          id: item.id,
+          type: item.type,
+          deletedAt: item.deletedAt,
+          record: item.type === 'course' ? backupCourse(item.record) : backupProject(item.record)
+        }))
       }
     };
   }
@@ -280,12 +351,14 @@ class AcademicStorage {
       throw new Error('La copia no contiene listas válidas de ramos y proyectos.');
     }
     const drafts = Array.isArray(payload.data.drafts) ? payload.data.drafts : [];
+    const trash = Array.isArray(payload.data.trash) ? payload.data.trash : [];
     const hasInvalidCourse = payload.data.courses.some(course => !course || typeof course.id !== 'string' || !course.id.trim() || typeof course.name !== 'string' || !course.name.trim());
     const hasInvalidProject = payload.data.projects.some(project => !project || typeof project.id !== 'string' || !project.id.trim() || typeof project.title !== 'string' || !project.title.trim());
     const hasInvalidDraft = drafts.some(draft => !draft || typeof draft.id !== 'string' || !draft.id.trim() || typeof draft.courseId !== 'string' || !draft.courseId.trim());
+    const hasInvalidTrashItem = trash.some(item => !item || typeof item.id !== 'string' || !item.id.trim() || !['course', 'project'].includes(item.type) || !item.record || typeof item.record.id !== 'string' || !item.record.id.trim() || (item.type === 'course' ? typeof item.record.name !== 'string' || !item.record.name.trim() : typeof item.record.title !== 'string' || !item.record.title.trim()));
     const hasDuplicateIds = records => new Set(records.map(record => record.id)).size !== records.length;
-    const hasTooManyRecords = payload.data.courses.length > 5000 || payload.data.projects.length > 50000 || drafts.length > 5000;
-    if (hasInvalidCourse || hasInvalidProject || hasInvalidDraft || hasDuplicateIds(payload.data.courses) || hasDuplicateIds(payload.data.projects) || hasDuplicateIds(drafts) || hasTooManyRecords) {
+    const hasTooManyRecords = payload.data.courses.length > 5000 || payload.data.projects.length > 50000 || drafts.length > 5000 || trash.length > 55000;
+    if (hasInvalidCourse || hasInvalidProject || hasInvalidDraft || hasInvalidTrashItem || hasDuplicateIds(payload.data.courses) || hasDuplicateIds(payload.data.projects) || hasDuplicateIds(drafts) || hasDuplicateIds(trash) || hasTooManyRecords) {
       throw new Error('La copia contiene datos no válidos o supera los límites compatibles.');
     }
     return {
@@ -295,7 +368,8 @@ class AcademicStorage {
       counts: {
         courses: payload.data.courses.length,
         projects: payload.data.projects.length,
-        drafts: drafts.length
+        drafts: drafts.length,
+        trash: trash.length
       }
     };
   }
@@ -308,35 +382,12 @@ class AcademicStorage {
 
     const existing = this._readData();
     const incoming = {
-      courses: payload.data.courses.map(course => ({
-        id: course.id.slice(0, 120),
-        code: typeof course.code === 'string' ? course.code.slice(0, 80) : '',
-        name: course.name.trim().slice(0, 240),
-        term: typeof course.term === 'string' ? course.term.slice(0, 120) : '',
-        colorTag: typeof course.colorTag === 'string' ? course.colorTag.slice(0, 40) : 'primary',
-        description: typeof course.description === 'string' ? course.description.slice(0, 2000) : '',
-        isFavorite: Boolean(course.isFavorite),
-        archivedAt: typeof course.archivedAt === 'string' ? course.archivedAt : null,
-        lastOpenedAt: typeof course.lastOpenedAt === 'string' ? course.lastOpenedAt : null,
-        createdAt: typeof course.createdAt === 'string' ? course.createdAt : new Date().toISOString(),
-        updatedAt: typeof course.updatedAt === 'string' ? course.updatedAt : new Date().toISOString()
-      })),
-      projects: payload.data.projects.map(project => ({
-        id: project.id.slice(0, 120),
-        courseId: typeof project.courseId === 'string' ? project.courseId.slice(0, 120) : 'unassigned',
-        title: project.title.trim().slice(0, 240),
-        h5pType: typeof project.h5pType === 'string' ? project.h5pType.slice(0, 120) : 'H5P General',
-        filePath: '',
-        sourceFiles: Array.isArray(project.sourceFiles)
-          ? project.sourceFiles.slice(0, 50).map(file => ({ name: typeof file === 'string' ? file.slice(0, 255) : (typeof file?.name === 'string' ? file.name.slice(0, 255) : '') })).filter(file => file.name)
-          : [],
-        promptSummary: typeof project.promptSummary === 'string' ? project.promptSummary.slice(0, 12000) : '',
-        fileSizeBytes: Number.isFinite(project.fileSizeBytes) && project.fileSizeBytes > 0 ? project.fileSizeBytes : 0,
-        exportedAt: typeof project.exportedAt === 'string' ? project.exportedAt : new Date().toISOString()
-      })),
+      courses: payload.data.courses.map(cleanBackupCourse),
+      projects: payload.data.projects.map(cleanBackupProject),
       drafts: (Array.isArray(payload.data.drafts) ? payload.data.drafts : []).map(draft => ({
         id: draft.id.slice(0, 120),
         courseId: draft.courseId.slice(0, 120),
+        previousCourseId: typeof draft.previousCourseId === 'string' ? draft.previousCourseId.slice(0, 120) : undefined,
         courseName: typeof draft.courseName === 'string' ? draft.courseName.slice(0, 240) : '',
         prompt: typeof draft.prompt === 'string' ? draft.prompt.slice(0, 12000) : '',
         files: Array.isArray(draft.files)
@@ -347,7 +398,8 @@ class AcademicStorage {
           })).filter(file => file.name)
           : [],
         updatedAt: typeof draft.updatedAt === 'string' ? draft.updatedAt : new Date().toISOString()
-      }))
+      })),
+      trash: (Array.isArray(payload.data.trash) ? payload.data.trash : []).map(cleanBackupTrashItem)
     };
 
     if (strategy === 'replace') {
@@ -355,6 +407,7 @@ class AcademicStorage {
       existing.courses = incoming.courses;
       existing.projects = incoming.projects;
       existing.drafts = incoming.drafts;
+      existing.trash = incoming.trash;
     } else {
       const mergeById = (current, added) => {
         const ids = new Set(current.map(item => item.id));
@@ -363,6 +416,7 @@ class AcademicStorage {
       existing.courses = mergeById(existing.courses, incoming.courses);
       existing.projects = mergeById(existing.projects, incoming.projects);
       existing.drafts = mergeById(existing.drafts, incoming.drafts);
+      existing.trash = mergeById(existing.trash, incoming.trash);
     }
 
     const courseIds = new Set(existing.courses.map(course => course.id));
@@ -398,18 +452,15 @@ class AcademicStorage {
    */
   deleteCourse(courseId) {
     const data = this._readData();
-    const initialCourseCount = data.courses.length;
-    data.courses = data.courses.filter(c => c.id !== courseId);
-
-    if (data.courses.length === initialCourseCount) {
-      return false; // No se encontró el curso
-    }
+    const courseIndex = data.courses.findIndex(course => course.id === courseId);
+    if (courseIndex < 0) return false;
+    const [course] = data.courses.splice(courseIndex, 1);
+    const deletedAt = new Date().toISOString();
+    data.trash.unshift({ id: crypto.randomUUID(), type: 'course', deletedAt, record: course });
 
     // Reasignación automática de proyectos huérfanos a categoría 'unassigned'
-    let reallocatedCount = 0;
     data.projects = data.projects.map(proj => {
       if (proj.courseId === courseId) {
-        reallocatedCount++;
         return {
           ...proj,
           courseId: 'unassigned',
@@ -419,7 +470,74 @@ class AcademicStorage {
       }
       return proj;
     });
+    data.drafts = data.drafts.map(draft => draft.courseId === courseId
+      ? { ...draft, courseId: 'unassigned', previousCourseId: courseId, courseName: draft.courseName || course.name }
+      : draft);
 
+    this._writeData(data);
+    return true;
+  }
+
+  getTrash() {
+    return this._readData().trash.sort((a, b) => new Date(b.deletedAt || 0) - new Date(a.deletedAt || 0));
+  }
+
+  restoreTrashItem(trashId) {
+    const data = this._readData();
+    const index = data.trash.findIndex(item => item.id === trashId);
+    if (index < 0) return false;
+    const [item] = data.trash.splice(index, 1);
+    if (item.type === 'course') {
+      if (data.courses.some(course => course.id === item.record.id)) throw new Error('Ese ramo ya existe y no se puede duplicar.');
+      data.courses.push(item.record);
+      data.projects = data.projects.map(project => {
+        if (project.courseId !== 'unassigned' || project.previousCourseId !== item.record.id) return project;
+        const restored = { ...project, courseId: item.record.id };
+        delete restored.previousCourseId;
+        delete restored.reallocatedAt;
+        return restored;
+      });
+      data.drafts = data.drafts.map(draft => {
+        if (draft.courseId !== 'unassigned' || draft.previousCourseId !== item.record.id) return draft;
+        const restored = { ...draft, courseId: item.record.id };
+        delete restored.previousCourseId;
+        return restored;
+      });
+    } else if (item.type === 'project') {
+      if (data.projects.some(project => project.id === item.record.id)) throw new Error('Ese proyecto ya existe y no se puede duplicar.');
+      const project = { ...item.record };
+      if (project.courseId === 'unassigned' && project.previousCourseId && data.courses.some(course => course.id === project.previousCourseId)) {
+        project.courseId = project.previousCourseId;
+        delete project.previousCourseId;
+        delete project.reallocatedAt;
+      } else if (project.courseId !== 'unassigned' && !data.courses.some(course => course.id === project.courseId)) {
+        project.previousCourseId = project.courseId;
+        project.courseId = 'unassigned';
+      }
+      data.projects.unshift(project);
+    } else {
+      throw new Error('El tipo de elemento de la papelera no es válido.');
+    }
+    this._writeData(data);
+    return true;
+  }
+
+  permanentlyDeleteTrashItem(trashId) {
+    const data = this._readData();
+    const index = data.trash.findIndex(item => item.id === trashId);
+    if (index < 0) return false;
+    const [item] = data.trash.splice(index, 1);
+    if (item.type === 'course') {
+      data.projects.forEach(project => {
+        if (project.previousCourseId === item.record.id) {
+          delete project.previousCourseId;
+          delete project.reallocatedAt;
+        }
+      });
+      data.drafts.forEach(draft => {
+        if (draft.previousCourseId === item.record.id) delete draft.previousCourseId;
+      });
+    }
     this._writeData(data);
     return true;
   }
@@ -494,12 +612,10 @@ class AcademicStorage {
    */
   deleteProject(projectId) {
     const data = this._readData();
-    const initialCount = data.projects.length;
-    data.projects = data.projects.filter(p => p.id !== projectId);
-
-    if (data.projects.length === initialCount) {
-      return false;
-    }
+    const index = data.projects.findIndex(project => project.id === projectId);
+    if (index < 0) return false;
+    const [project] = data.projects.splice(index, 1);
+    data.trash.unshift({ id: crypto.randomUUID(), type: 'project', deletedAt: new Date().toISOString(), record: project });
 
     this._writeData(data);
     return true;

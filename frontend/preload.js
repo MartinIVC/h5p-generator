@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('academicAPI', {
   getCourseById: (courseId) => ipcRenderer.invoke('academic:getCourseById', courseId),
   saveCourse: (courseData) => ipcRenderer.invoke('academic:saveCourse', courseData),
   deleteCourse: (courseId) => ipcRenderer.invoke('academic:deleteCourse', courseId),
+  getTrash: () => ipcRenderer.invoke('academic:getTrash'),
+  restoreTrashItem: (trashId) => ipcRenderer.invoke('academic:restoreTrashItem', trashId),
+  permanentlyDeleteTrashItem: (trashId) => ipcRenderer.invoke('academic:permanentlyDeleteTrashItem', trashId),
   setCourseOrganization: (courseId, changes) => ipcRenderer.invoke('academic:setCourseOrganization', courseId, changes),
   markCourseOpened: (courseId) => ipcRenderer.invoke('academic:markCourseOpened', courseId),
 

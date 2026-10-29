@@ -117,6 +117,9 @@ function registerIpcHandlers() {
   ipcMain.handle('academic:deleteCourse', async (_event, courseId) => {
     return academicStorage.deleteCourse(courseId);
   });
+  ipcMain.handle('academic:getTrash', async () => academicStorage.getTrash());
+  ipcMain.handle('academic:restoreTrashItem', async (_event, trashId) => academicStorage.restoreTrashItem(trashId));
+  ipcMain.handle('academic:permanentlyDeleteTrashItem', async (_event, trashId) => academicStorage.permanentlyDeleteTrashItem(trashId));
 
   // Proyectos Exportados (Projects)
   ipcMain.handle('academic:getProjects', async (_event, courseId) => {

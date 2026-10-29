@@ -4,9 +4,9 @@ Fecha: 29 de octubre de 2026. Estado: implementación parcial registrada.
 
 ### Estado de ejecución
 
-La rama `codex/frontend-design-polish` implementa la continuidad segura del recorrido actual y la base visual creativa en las pantallas existentes. La biblioteca, el detalle de ramo, la carga, la configuración, los diálogos y la vista previa comparten ahora estados de interacción más claros, manejo de foco y efectos suaves con opción de movimiento reducido. La carga está limitada a PDF/TXT, que son los formatos extraídos por el backend.
+La rama `codex/frontend-design-polish` implementa la continuidad segura del recorrido actual y la base visual creativa en las pantallas existentes. La rama `codex/frontend-additional-improvements` añade borradores, copias de seguridad, búsqueda global, organización de ramos, guía opcional, papelera y acceso/reasignación de proyectos «Sin Asignar». La carga está limitada a PDF/TXT, que son los formatos extraídos por el backend.
 
-Queda pendiente revisar visualmente la aplicación en ambos temas y tamaños de ventana, completar una vista accesible para los proyectos «Sin Asignar» y desarrollar/conectar el selector de actividad y la exportación H5P. La generación real depende de esa integración y no se presenta como disponible en esta entrega.
+Queda pendiente revisar visualmente la aplicación en ambos temas y tamaños de ventana, y desarrollar/conectar el selector de actividad y la exportación H5P. La generación real depende de esa integración y no se presenta como disponible en esta entrega.
 
 | Fase | Estado | Resultado |
 | --- | --- | --- |
@@ -152,7 +152,7 @@ Los efectos deben reforzar la acción realizada y resultar agradables también d
 - Unificar las tarjetas de proyectos: título, tipo H5P, fecha, documentos de origen y acción «Ver en carpeta».
 - Mostrar un estado claro cuando no haya ruta registrada o el archivo no exista. Reutilizar `academicAPI.verifyFileExists` donde corresponda antes de ofrecer una acción que pueda fallar.
 - Diferenciar «Eliminar registro» de eliminar un archivo. Mantener explícito el efecto de borrar un ramo sobre sus registros y archivos.
-- Verificar que los proyectos que queden «Sin asignar» después de eliminar un ramo tengan un acceso visible antes de prometer esa recuperación en la confirmación.
+- La rama complementaria implementa el acceso visible a «Sin Asignar», la reasignación por proyecto y la restauración de ramos con protección para proyectos reasignados manualmente.
 - Dejar filtros por tipo, semestre u orden configurable como P2. La búsqueda existente debe funcionar bien antes de añadir más controles.
 
 ### 4.3 Asistente: material e instrucciones

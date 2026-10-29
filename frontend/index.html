@@ -30,6 +30,11 @@
       </button>
       <h1 class="app-title" id="app-topbar-title">Generador H5P</h1>
     </div>
+    <button id="btn-global-search" class="btn-icon global-search-trigger" title="Buscar en la biblioteca (Ctrl/Cmd + K)" type="button" aria-label="Buscar ramos y proyectos">
+      <svg class="icon-svg" aria-hidden="true" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path>
+      </svg>
+    </button>
     <button id="btn-menu" class="btn-icon" title="Abrir menu" type="button" aria-label="Abrir menu"
       aria-controls="side-menu" aria-expanded="false">
       <svg class="icon-svg" aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none"
@@ -61,6 +66,20 @@
           <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
         </svg>
         <span>Mis Ramos y Proyectos</span>
+      </button>
+
+      <button class="menu-item" type="button" id="menu-opt-onboarding">
+        <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path>
+        </svg>
+        <span>Primeros pasos</span>
+      </button>
+
+      <button class="menu-item" type="button" id="menu-opt-trash">
+        <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6"></path>
+        </svg>
+        <span>Papelera</span>
       </button>
 
       <button class="menu-item" type="button" id="menu-opt-settings">
@@ -102,6 +121,7 @@
 
     <!-- Vista de Detalle de Ramo y Proyectos Realizados -->
     <section id="panel-course-detail" class="step-panel hidden"></section>
+    <section id="panel-trash" class="step-panel hidden"></section>
 
     <!-- Asistente de Creación de Contenido H5P (Paso 1, 2, 3) -->
     <section id="panel-upload" class="step-panel hidden"></section>
@@ -164,6 +184,7 @@
 
   <!-- Modal de Opciones y Configuración (Tema y API Key Gemini) -->
   <div id="modal-settings" class="preview-modal-overlay hidden" aria-hidden="true"></div>
+  <div id="modal-global-search" class="preview-modal-overlay hidden" aria-hidden="true"></div>
 
   <script src="js/ui.js"></script>
   <script src="js/courses.js"></script>
@@ -171,6 +192,7 @@
   <script src="js/upload.js"></script>
   <script src="js/preview.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/search.js"></script>
 </body>
 
 </html>

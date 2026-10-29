@@ -1,8 +1,21 @@
 # Plan complementario de mejoras para la interfaz
 
-Fecha: 29 de octubre de 2026. Estado: propuesta.
+Fecha: 29 de octubre de 2026. Estado: implementado en la rama `codex/frontend-additional-improvements`.
 
 Este documento complementa [el plan de rediseño principal](PLAN_MEJORAS_FRONTEND.md). Se enfoca en continuidad del trabajo, resguardo de datos y productividad cotidiana; no repite los cambios visuales y de accesibilidad ya implementados ni vuelve a diseñar el selector y la exportación H5P pendientes.
+
+## Estado de implementación
+
+| Entrega | Estado y comportamiento incorporado |
+| --- | --- |
+| Borradores recuperables | Guardado local automático de instrucciones y metadatos; al reanudar, se vuelven a seleccionar los documentos por privacidad. |
+| Copias de seguridad | Exportar, validar, previsualizar, combinar o reemplazar datos con snapshot previo. La copia versionada incluye ramos, proyectos, borradores y papelera; excluye credenciales, archivos fuente, `.h5p` y rutas. |
+| Búsqueda global | Acceso desde la barra superior o `Ctrl/Cmd + K`; busca ramos y proyectos, navega con flechas/Enter y ofrece accesos rápidos. |
+| Organización | Favoritos, archivo/reactivación, filtros y orden por nombre/período/último acceso. Los proyectos “Sin asignar” se pueden abrir y reasignar. |
+| Inicio guiado | Lista opcional reabrible desde “Primeros pasos”; refleja ramos, trabajo guardado y si existe una clave registrada, sin afirmar que la generación esté probada. |
+| Papelera | Eliminación reversible de ramos/proyectos, restauración y eliminación definitiva del registro. Los proyectos reasignados por el borrado de un ramo vuelven solo si siguen sin asignar. No hay purga automática y los archivos `.h5p` no se borran. |
+
+La estructura de almacenamiento existente se migra al vuelo: los campos nuevos toman valores vacíos o predeterminados cuando aún no existen. La restauración desde una copia anterior a la papelera acepta que el campo de papelera falte.
 
 ## 1. Hallazgos que motivan las propuestas
 
@@ -23,13 +36,13 @@ Este documento complementa [el plan de rediseño principal](PLAN_MEJORAS_FRONTEN
 - Permitir llegar a las acciones frecuentes con ratón, teclado y tecnologías de asistencia.
 - Mostrar estados verificables. No confundir una clave guardada con una conexión comprobada ni un registro con un archivo disponible.
 
-## 3. Propuestas
+## 3. Cambios implementados
 
 ### 3.1 Borradores recuperables del asistente
 
 **Problema:** las instrucciones y la selección viven en el estado JavaScript de la pantalla. Si la aplicación se cierra o se reinicia, el usuario debe reconstruir el trabajo.
 
-**Experiencia propuesta:**
+**Experiencia implementada:**
 
 - Guardar automáticamente el ramo, las instrucciones y los nombres/tamaños de los documentos elegidos como borrador local, con una hora de última actualización visible.
 - Indicar junto a la acción de borrador qué campos y metadatos quedan guardados en este equipo; el contenido de los documentos no se copia ni se envía al guardar el borrador.
@@ -46,7 +59,7 @@ Este documento complementa [el plan de rediseño principal](PLAN_MEJORAS_FRONTEN
 
 **Problema:** los datos locales no cuentan con una función de exportación/importación visible y el archivo de almacenamiento combina datos académicos con configuración sensible.
 
-**Experiencia propuesta:** agregar en Configuración una sección «Datos y copias de seguridad» con:
+**Experiencia implementada:** agregar en Configuración una sección «Datos y copias de seguridad» con:
 
 - «Crear copia de seguridad» que permita elegir una ubicación y confirme fecha, cantidad de ramos y proyectos incluidos.
 - «Restaurar copia» con previsualización de contenido y validación antes de aplicar cambios; mostrar si reemplazará o combinará registros y cómo se resolverán duplicados.
@@ -61,7 +74,7 @@ Este documento complementa [el plan de rediseño principal](PLAN_MEJORAS_FRONTEN
 
 **Problema:** para buscar proyectos hay que abrir cada ramo y usar su buscador local.
 
-**Experiencia propuesta:**
+**Experiencia implementada:**
 
 - Incorporar una búsqueda global accesible desde la barra superior y con `Ctrl/Cmd + K`.
 - Agrupar resultados en «Ramos» y «Proyectos», mostrando para cada proyecto su ramo, tipo y fecha.
@@ -77,7 +90,7 @@ Este documento complementa [el plan de rediseño principal](PLAN_MEJORAS_FRONTEN
 
 **Problema:** la biblioteca actual muestra el catálogo completo y no diferencia ramos activos de históricos ni permite guardar accesos frecuentes.
 
-**Experiencia propuesta:**
+**Experiencia implementada:**
 
 - Permitir marcar y desmarcar ramos favoritos, con una sección «Favoritos» que no duplique tarjetas en la lista principal.
 - Permitir archivar un ramo al cerrar un período. Los archivados quedan ocultos de la vista principal, pero se pueden consultar y reactivar.
@@ -92,7 +105,7 @@ Este documento complementa [el plan de rediseño principal](PLAN_MEJORAS_FRONTEN
 
 **Problema:** una pantalla vacía orienta la primera creación de un ramo, pero no explica el recorrido completo ni cómo preparar los requisitos antes de empezar.
 
-**Experiencia propuesta:** mostrar una lista de inicio de tres acciones que se pueda cerrar y volver a abrir desde Ayuda:
+**Experiencia implementada:** mostrar una lista de inicio de tres acciones que se pueda cerrar y volver a abrir desde Ayuda:
 
 1. Crear o elegir un ramo.
 2. Añadir un documento PDF o TXT e instrucciones.
@@ -106,7 +119,7 @@ Indicar el progreso solo con estados concretos («Listo», «Pendiente»), sin p
 
 **Problema:** las confirmaciones informan del borrado, pero una vez que el registro sale de la lista no existe recuperación desde la interfaz.
 
-**Experiencia propuesta:**
+**Experiencia implementada:**
 
 - Convertir el borrado de ramos y proyectos en archivado temporal del registro, con una sección «Papelera» y fecha de eliminación.
 - Ofrecer «Restaurar» y «Eliminar definitivamente» con una confirmación distinta para la acción irreversible.
@@ -117,21 +130,21 @@ Indicar el progreso solo con estados concretos («Listo», «Pendiente»), sin p
 
 **Criterios de aceptación:** se puede restaurar cada tipo de registro; el borrado definitivo explica el efecto sobre el archivo físico; los proyectos reasignados no cambian de ramo al restaurar el ramo anterior.
 
-## 4. Priorización propuesta
+## 4. Entregas por fase
 
-| Fase | Prioridad | Entrega | Esfuerzo | Dependencia principal |
-| --- | --- | --- | --- | --- |
-| A. Recuperar trabajo | P0 | Borradores locales y reanudación segura | M | Definir persistencia de metadatos y revalidación de archivos. |
-| B. Resguardar datos | P0 | Exportación y restauración con validación | M–L | IPC para diálogos de archivo y formato versionado del almacén. |
-| C. Encontrar y organizar | P1 | Búsqueda global, acceso rápido, favoritos y archivo | M | Índices de búsqueda sobre ramos/proyectos y nuevos campos de organización. |
-| D. Acompañar el primer uso | P1 | Lista inicial opcional y ayuda reabrible | S–M | Definir qué requisitos están realmente disponibles en cada versión. |
-| E. Recuperación ante errores | P2 | Papelera y restauración de eliminaciones | L | Migración del almacén y reglas coherentes con proyectos sin asignar. |
+| Fase | Entrega | Estado |
+| --- | --- | --- |
+| A. Recuperar trabajo | Borradores locales y reanudación segura | Completada |
+| B. Resguardar datos | Exportación y restauración con validación | Completada |
+| C. Encontrar y organizar | Búsqueda global, accesos rápidos, favoritos, archivo y “Sin asignar” | Completada |
+| D. Acompañar el primer uso | Lista inicial opcional y reabrible | Completada |
+| E. Recuperación ante errores | Papelera y restauración de eliminaciones | Completada; sin purga automática |
 
-Se recomienda empezar por borradores y copias de seguridad. Reducen el costo de perder trabajo y habilitan sesiones largas antes de añadir más filtros o atajos. La búsqueda global y la organización de ramos pueden entregarse después en cambios separados. La papelera debe esperar hasta acordar el modelo de reasignación y restauración de proyectos.
+Las fases se implementaron en commits separados para que la continuidad, las copias de seguridad y la biblioteca queden fáciles de revisar por tema.
 
 ## 5. Verificación de experiencia
 
-Revisar cada entrega con datos de ejemplo y con un almacén existente, no solo con una instalación vacía:
+La verificación técnica realizada en esta rama comprueba la sintaxis de los módulos JavaScript modificados con `node --check` y espacios/conflictos con `git diff --check`. No se ejecutó la aplicación en una sesión de escritorio ni se corrió una suite de pruebas; estos escenarios quedan pendientes de revisión manual con datos de ejemplo y un almacén existente:
 
 - Reanudar un borrador con todos los archivos disponibles y con uno que fue movido o eliminado.
 - Crear una copia, restaurarla en una instalación limpia y probar un archivo corrupto, una versión desconocida y un caso con registros duplicados.
@@ -141,8 +154,8 @@ Revisar cada entrega con datos de ejemplo y con un almacén existente, no solo c
 - Eliminar y restaurar un ramo con proyectos, uno sin proyectos y uno cuyos proyectos fueron reasignados.
 - Comprobar que las acciones críticas explican si modifican un registro local, un archivo físico o ambos.
 
-## 6. Fuera del alcance de este complemento
+## 6. Límites y alcance
 
-- Implementar el generador, selector de tipos, revisión y empaquetado H5P; siguen condicionados a la integración funcional del plan principal.
-- Rehacer colores, tipografía, ilustraciones, animaciones, responsive y diálogos ya tratados allí.
+- Completar el generador, selector de tipos, revisión y empaquetado H5P; siguen condicionados a la integración funcional del plan principal.
+- Rehacer colores, tipografía, ilustraciones, animaciones, responsive y diálogos ya tratados en el plan principal.
 - Sincronizar datos entre equipos o crear cuentas. La primera copia se mantiene local y el usuario decide si mueve el archivo.
