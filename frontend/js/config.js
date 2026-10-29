@@ -25,6 +25,7 @@
     hasKey: false,
     maskedKey: '',
     isEditingKey: false,
+    isConfirmingRemoveKey: false,
     onSuccessCallback: null,
     listeners: []
   };
@@ -92,7 +93,6 @@
       const value = card.getAttribute('data-theme');
       const isSelected = value === state.currentTheme;
       card.classList.toggle('active', isSelected);
-      card.setAttribute('aria-checked', isSelected ? 'true' : 'false');
 
       const radio = card.querySelector('input[type="radio"]');
       if (radio) radio.checked = isSelected;
@@ -205,14 +205,13 @@
           </p>
         </div>
 
-        <div class="theme-selector-grid" role="radiogroup" aria-label="Selección de tema visual">
+        <fieldset class="theme-selector-fieldset">
+          <legend class="sr-only">Selección de tema visual</legend>
+        <div class="theme-selector-grid">
           <!-- Opción Claro -->
           <label
             class="theme-option-card ${state.currentTheme === THEMES.LIGHT ? 'active' : ''}"
             data-theme="${THEMES.LIGHT}"
-            role="radio"
-            aria-checked="${state.currentTheme === THEMES.LIGHT ? 'true' : 'false'}"
-            tabindex="0"
           >
             <input
               type="radio"
@@ -244,9 +243,6 @@
           <label
             class="theme-option-card ${state.currentTheme === THEMES.DARK ? 'active' : ''}"
             data-theme="${THEMES.DARK}"
-            role="radio"
-            aria-checked="${state.currentTheme === THEMES.DARK ? 'true' : 'false'}"
-            tabindex="0"
           >
             <input
               type="radio"
@@ -270,9 +266,6 @@
           <label
             class="theme-option-card ${state.currentTheme === THEMES.SYSTEM ? 'active' : ''}"
             data-theme="${THEMES.SYSTEM}"
-            role="radio"
-            aria-checked="${state.currentTheme === THEMES.SYSTEM ? 'true' : 'false'}"
-            tabindex="0"
           >
             <input
               type="radio"
@@ -294,6 +287,15 @@
             </div>
           </label>
         </div>
+        </fieldset>
+        <fieldset class="motion-preference-fieldset">
+          <legend class="form-label">Movimiento de la interfaz</legend>
+          <p class="settings-section-desc">Las transiciones respetan la preferencia de movimiento del sistema.</p>
+          <div class="motion-preference-options">
+            <label><input type="radio" name="motion-preference" value="system" ${window.uiPreferences?.getMotionPreference() !== 'reduced' ? 'checked' : ''}> Seguir al sistema</label>
+            <label><input type="radio" name="motion-preference" value="reduced" ${window.uiPreferences?.getMotionPreference() === 'reduced' ? 'checked' : ''}> Reducir efectos</label>
+          </div>
+        </fieldset>
       </section>
     `;
   }
@@ -304,7 +306,17 @@
   function getApiKeySectionHTML(isJustInTime) {
     let keyContentHTML = '';
 
-    if (state.hasKey && !state.isEditingKey) {
+    if (state.isConfirmingRemoveKey) {
+      keyContentHTML = `
+        <div class="api-key-remove-confirmation" role="group" aria-label="Confirmar eliminación de la clave">
+          <p>¿Deseas eliminar la clave de Gemini? Tendrás que ingresarla nuevamente antes de generar actividades.</p>
+          <div class="api-key-card-actions">
+            <button type="button" class="btn-secondary" id="btn-cancel-remove-api-key">Cancelar</button>
+            <button type="button" class="btn-text-danger" id="btn-confirm-remove-api-key">Eliminar clave</button>
+          </div>
+        </div>
+      `;
+    } else if (state.hasKey && !state.isEditingKey) {
       keyContentHTML = `
         <div class="api-key-configured-card">
           <div class="api-key-status-row">
@@ -313,7 +325,7 @@
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                 <polyline points="22 4 12 14.01 9 11.01"></polyline>
               </svg>
-              <span>Clave configurada y activa</span>
+              <span>Clave guardada</span>
             </div>
             <code class="api-key-masked">${state.maskedKey}</code>
           </div>
@@ -417,7 +429,7 @@
     }
 
     modal.innerHTML = `
-      <div class="modal-dialog-content settings-dialog-box" role="dialog" aria-modal="true" aria-labelledby="modal-settings-title">
+      <div class="modal-dialog-content settings-dialog-box">
         <header class="modal-dialog-header">
           <div class="modal-dialog-title-wrap">
             <svg class="icon-svg modal-header-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
@@ -446,11 +458,21 @@
       </div>
     `;
 
-    modal.classList.remove('hidden');
+    window.uiDialog?.open(modal, {
+      focus: state.isConfirmingRemoveKey ? '#btn-cancel-remove-api-key' : '#input-gemini-key',
+      onEscape: () => {
+        window.uiDialog?.close(modal);
+        state.isEditingKey = false;
+        state.isConfirmingRemoveKey = false;
+        state.onSuccessCallback = null;
+      }
+    });
 
     const closeModal = () => {
-      modal.classList.add('hidden');
+      if (window.uiDialog) window.uiDialog.close(modal);
+      else modal.classList.add('hidden');
       state.isEditingKey = false;
+      state.isConfirmingRemoveKey = false;
       state.onSuccessCallback = null;
     };
 
@@ -463,18 +485,12 @@
     // Eventos de selección de tema (si está presente)
     const themeCards = modal.querySelectorAll('.theme-option-card');
     themeCards.forEach(card => {
-      const selectCard = () => {
-        const themeValue = card.getAttribute('data-theme');
-        setTheme(themeValue);
-      };
+      const radio = card.querySelector('input[name="theme-choice"]');
+      if (radio) radio.addEventListener('change', () => setTheme(radio.value));
+    });
 
-      card.addEventListener('click', selectCard);
-      card.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          selectCard();
-        }
-      });
+    modal.querySelectorAll('input[name="motion-preference"]').forEach(radio => {
+      radio.addEventListener('change', () => window.uiPreferences?.setMotionPreference(radio.value));
     });
 
     // Botón cambiar clave
@@ -498,12 +514,35 @@
     // Botón eliminar clave
     const btnRemove = document.getElementById('btn-remove-api-key');
     if (btnRemove) {
-      btnRemove.addEventListener('click', async () => {
-        if (confirm('¿Deseas desvincular tu API Key de Gemini? Tendrás que ingresarla nuevamente para generar actividades.')) {
+      btnRemove.addEventListener('click', () => {
+        state.isConfirmingRemoveKey = true;
+        renderSettingsModal(isJustInTime);
+      });
+    }
+
+    const btnCancelRemove = document.getElementById('btn-cancel-remove-api-key');
+    if (btnCancelRemove) {
+      btnCancelRemove.addEventListener('click', () => {
+        state.isConfirmingRemoveKey = false;
+        renderSettingsModal(isJustInTime);
+      });
+    }
+
+    const btnConfirmRemove = document.getElementById('btn-confirm-remove-api-key');
+    if (btnConfirmRemove) {
+      btnConfirmRemove.addEventListener('click', async () => {
+        btnConfirmRemove.disabled = true;
+        btnConfirmRemove.textContent = 'Eliminando…';
+        try {
           await api.removeApiKey();
           await refreshStatus();
+          state.isConfirmingRemoveKey = false;
           state.isEditingKey = true;
           renderSettingsModal(isJustInTime);
+        } catch (err) {
+          btnConfirmRemove.disabled = false;
+          btnConfirmRemove.textContent = 'Eliminar clave';
+          window.uiMessage?.(`No se pudo eliminar la clave: ${err.message}`, 'error');
         }
       });
     }
@@ -541,7 +580,7 @@
         e.preventDefault();
         const rawKey = inputKey.value.trim();
         if (!rawKey) {
-          alert('Por favor ingresa una clave API válida.');
+          window.uiMessage?.('Ingresa una clave API para continuar.', 'error');
           return;
         }
 
@@ -559,7 +598,7 @@
             cb();
           }
         } catch (err) {
-          alert(`Error al guardar la clave API: ${err.message}`);
+          window.uiMessage?.(`No se pudo guardar la clave API: ${err.message}`, 'error');
         }
       });
     }
@@ -601,17 +640,6 @@
       });
     }
 
-    // Soporte para cerrar modal con Escape
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        const modal = document.getElementById('modal-settings');
-        if (modal && !modal.classList.contains('hidden')) {
-          modal.classList.add('hidden');
-          state.isEditingKey = false;
-          state.onSuccessCallback = null;
-        }
-      }
-    });
   }
 
   window.configManager = {

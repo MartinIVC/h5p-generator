@@ -65,7 +65,7 @@
   function formatDate(timestamp) {
     if (!timestamp) return 'Desconocida';
     const date = new Date(timestamp);
-    return date.toLocaleDateString('es-ES', {
+    return date.toLocaleDateString('es-CL', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -270,10 +270,7 @@
   function handleKeyDown(e) {
     if (!state.isOpen) return;
 
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      closeModal();
-    } else if (e.key === 'ArrowRight') {
+    if (e.key === 'ArrowRight') {
       e.preventDefault();
       nextFile();
     } else if (e.key === 'ArrowLeft') {
@@ -294,11 +291,7 @@
     state.currentIndex = Math.max(0, Math.min(initialIndex, state.files.length - 1));
     state.isOpen = true;
 
-    if (modalEl) {
-      modalEl.classList.remove('hidden');
-      modalEl.setAttribute('aria-hidden', 'false');
-      closeBtnEl.focus();
-    }
+    if (modalEl) window.uiDialog?.open(modalEl, { focus: closeBtnEl });
 
     renderCurrentFile();
     document.addEventListener('keydown', handleKeyDown);
@@ -312,8 +305,11 @@
     revokeActiveObjectUrl();
 
     if (modalEl) {
-      modalEl.classList.add('hidden');
-      modalEl.setAttribute('aria-hidden', 'true');
+      if (window.uiDialog) window.uiDialog.close(modalEl);
+      else {
+        modalEl.classList.add('hidden');
+        modalEl.setAttribute('aria-hidden', 'true');
+      }
     }
 
     if (bodyEl) {

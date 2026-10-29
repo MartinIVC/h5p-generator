@@ -71,6 +71,10 @@
     projects: [],
     searchCoursesQuery: '',
     searchProjectsQuery: '',
+    coursesLoadError: null,
+    projectsLoadError: null,
+    isFilteringCourses: false,
+    isFilteringProjects: false,
     isEditingCourse: false,
     editingCourseId: null,
     pendingDeleteCourse: null
@@ -149,7 +153,7 @@
       if (window.academicAPI && typeof window.academicAPI.revealFile === 'function') {
         return window.academicAPI.revealFile(filePath);
       }
-      alert(`Archivo en: ${filePath}`);
+      window.uiMessage?.(`Archivo en: ${filePath}`);
       return true;
     }
   };
@@ -369,18 +373,20 @@
   async function loadCourses() {
     try {
       state.courses = await api.getCourses();
+      state.coursesLoadError = null;
     } catch (err) {
       console.error('[courses.js] Error cargando ramos:', err);
-      state.courses = [];
+      state.coursesLoadError = err;
     }
   }
 
   async function loadProjectsForActiveCourse() {
     try {
       state.projects = await api.getProjects(state.activeCourseId);
+      state.projectsLoadError = null;
     } catch (err) {
       console.error('[courses.js] Error cargando proyectos:', err);
-      state.projects = [];
+      state.projectsLoadError = err;
     }
   }
 
@@ -405,7 +411,15 @@
     const hasApiKey = window.configManager ? window.configManager.hasApiKey() : true;
 
     let coursesCardsHTML = '';
-    if (filteredCourses.length === 0) {
+    if (state.coursesLoadError) {
+      coursesCardsHTML = `
+        <div class="empty-results-box" role="alert">
+          <h3>No se pudieron cargar los ramos</h3>
+          <p>Comprueba el almacenamiento y vuelve a intentarlo.</p>
+          <button type="button" class="btn-secondary" id="btn-retry-courses">Reintentar</button>
+        </div>
+      `;
+    } else if (filteredCourses.length === 0) {
       if (state.searchCoursesQuery) {
         coursesCardsHTML = `
           <div class="empty-results-box">
@@ -448,7 +462,7 @@
           ${filteredCourses.map(course => {
             const palette = resolveCoursePalette(course.colorTag);
             return `
-              <article class="course-card" data-course-id="${course.id}" role="listitem" tabindex="0">
+              <article class="course-card" data-course-id="${course.id}" role="listitem" style="--course-accent: ${palette.bg}; --course-accent-soft: ${palette.light};">
                 <div class="course-card-accent" style="background-color: ${palette.bg};"></div>
                 <div class="course-card-body">
                   <header class="course-card-header">
@@ -456,14 +470,14 @@
                       ${course.code ? `<span class="course-code-badge" style="background-color: ${palette.light}; color: ${palette.text};">${escapeHTML(course.code)}</span>` : ''}
                       ${course.term ? `<span class="course-term-badge">${escapeHTML(course.term)}</span>` : ''}
                     </div>
-                    <div class="course-card-actions" onclick="event.stopPropagation();">
-                      <button type="button" class="btn-icon-subtle btn-edit-course" data-id="${course.id}" title="Editar asignatura" aria-label="Editar asignatura">
+                    <div class="course-card-actions">
+                      <button type="button" class="btn-icon-subtle btn-edit-course" data-id="${course.id}" title="Editar ${escapeHTML(course.name)}" aria-label="Editar ${escapeHTML(course.name)}">
                         <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M12 20h9"></path>
                           <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                         </svg>
                       </button>
-                      <button type="button" class="btn-icon-subtle btn-delete-course" data-id="${course.id}" title="Eliminar asignatura" aria-label="Eliminar asignatura">
+                      <button type="button" class="btn-icon-subtle btn-delete-course" data-id="${course.id}" title="Eliminar ${escapeHTML(course.name)}" aria-label="Eliminar ${escapeHTML(course.name)}">
                         <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                           <polyline points="3 6 5 6 21 6"></polyline>
                           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -482,12 +496,12 @@
                       </svg>
                       <span><strong>${course.projectsCount || 0}</strong> ${course.projectsCount === 1 ? 'actividad' : 'actividades'} H5P</span>
                     </div>
-                    <span class="course-card-cta">
-                      Abrir
+                    <button type="button" class="course-card-cta btn-course-open" data-course-id="${course.id}" aria-label="Abrir ${escapeHTML(course.name)}">
+                      <span>Abrir ramo</span>
                       <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="9 18 15 12 9 6"></polyline>
                       </svg>
-                    </span>
+                    </button>
                   </footer>
                 </div>
               </article>
@@ -498,14 +512,23 @@
     }
 
     panelHome.innerHTML = `
-      <div class="home-container">
+      <div class="home-container ${state.isFilteringCourses ? 'is-filtering' : ''}">
         <header class="home-hero-header">
           <div class="home-title-wrap">
+            <span class="home-kicker">Tu espacio de trabajo docente</span>
             <h2 class="home-title">Mis Ramos</h2>
             <p class="home-subtitle">
               Gestiona tus asignaturas y accede a los proyectos exportados correspondientes.
             </p>
           </div>
+          <svg class="home-paper-art" viewBox="0 0 120 100" fill="none" aria-hidden="true">
+            <rect x="31" y="19" width="58" height="70" rx="10" transform="rotate(-11 31 19)" class="home-paper-back" />
+            <rect x="36" y="15" width="58" height="70" rx="10" transform="rotate(5 36 15)" class="home-paper-mid" />
+            <rect x="27" y="17" width="58" height="70" rx="10" class="home-paper-front" />
+            <path d="M42 39h28M42 49h28M42 59h18" class="home-paper-lines" />
+            <path d="m65 24 12 0 0 13" class="home-paper-fold" />
+            <circle cx="88" cy="19" r="5" class="home-paper-dot" />
+          </svg>
           <div class="home-header-actions">
             <button type="button" class="btn-primary" id="btn-top-create-course">
               <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
@@ -543,6 +566,7 @@
                 type="search"
                 id="search-courses-input"
                 class="search-input"
+                aria-label="Buscar ramos por código, nombre o semestre"
                 placeholder="Buscar por código, nombre o semestre..."
                 value="${escapeHTML(state.searchCoursesQuery)}"
               />
@@ -574,6 +598,12 @@
     const btnTopCreate = document.getElementById('btn-top-create-course');
     if (btnTopCreate) btnTopCreate.addEventListener('click', () => openCourseModal());
 
+    const btnRetryCourses = document.getElementById('btn-retry-courses');
+    if (btnRetryCourses) btnRetryCourses.addEventListener('click', async () => {
+      await loadCourses();
+      renderHomeView();
+    });
+
     const btnEmptyCreate = document.getElementById('btn-empty-create-course');
     if (btnEmptyCreate) btnEmptyCreate.addEventListener('click', () => openCourseModal());
 
@@ -581,12 +611,15 @@
     if (searchInput) {
       searchInput.addEventListener('input', (e) => {
         state.searchCoursesQuery = e.target.value;
+        const selectionStart = e.target.selectionStart;
+        const selectionEnd = e.target.selectionEnd;
+        state.isFilteringCourses = true;
         renderHomeView();
-        // Mantener el foco y cursor
+        state.isFilteringCourses = false;
         const inputAfter = document.getElementById('search-courses-input');
         if (inputAfter) {
           inputAfter.focus();
-          inputAfter.setSelectionRange(inputAfter.value.length, inputAfter.value.length);
+          inputAfter.setSelectionRange(selectionStart, selectionEnd);
         }
       });
     }
@@ -596,20 +629,12 @@
       btnClearSearch.addEventListener('click', () => {
         state.searchCoursesQuery = '';
         renderHomeView();
+        document.getElementById('search-courses-input')?.focus();
       });
     }
 
-    // Clic en tarjetas de ramos
-    const courseCards = panelHome.querySelectorAll('.course-card');
-    courseCards.forEach(card => {
-      const courseId = card.getAttribute('data-course-id');
-      card.addEventListener('click', () => navigateToCourseDetail(courseId));
-      card.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          navigateToCourseDetail(courseId);
-        }
-      });
+    panelHome.querySelectorAll('.btn-course-open').forEach(button => {
+      button.addEventListener('click', () => navigateToCourseDetail(button.dataset.courseId));
     });
 
     // Clic en editar ramo
@@ -658,11 +683,20 @@
     });
 
     let projectsHTML = '';
-    if (filteredProjects.length === 0) {
+    if (state.projectsLoadError) {
+      projectsHTML = `
+        <div class="empty-results-box" role="alert">
+          <h4>No se pudieron cargar las actividades</h4>
+          <p>Comprueba el almacenamiento y vuelve a intentarlo.</p>
+          <button type="button" class="btn-secondary" id="btn-retry-projects">Reintentar</button>
+        </div>
+      `;
+    } else if (filteredProjects.length === 0) {
       if (state.searchProjectsQuery) {
         projectsHTML = `
           <div class="empty-results-box">
             <p>No se encontraron proyectos en este ramo que coincidan con "<strong>${escapeHTML(state.searchProjectsQuery)}</strong>".</p>
+            <button type="button" class="btn-text-subtle" id="btn-clear-project-search">Limpiar búsqueda</button>
           </div>
         `;
       } else {
@@ -729,7 +763,7 @@
     }
 
     panelCourseDetail.innerHTML = `
-      <div class="course-detail-container">
+      <div class="course-detail-container ${state.isFilteringProjects ? 'is-filtering' : ''}">
         <!-- Barra de retorno y acciones de asignatura -->
         <div class="course-detail-nav">
           <button type="button" class="btn-text-nav" id="btn-nav-back-home">
@@ -800,6 +834,7 @@
                   id="search-projects-input"
                   class="search-input"
                   placeholder="Buscar proyecto..."
+                  aria-label="Buscar proyectos por título o tipo H5P"
                   value="${escapeHTML(state.searchProjectsQuery)}"
                 />
               </div>
@@ -814,6 +849,18 @@
     `;
 
     attachCourseDetailEventListeners();
+
+    const retryProjects = document.getElementById('btn-retry-projects');
+    if (retryProjects) retryProjects.addEventListener('click', async () => {
+      await loadProjectsForActiveCourse();
+      renderCourseDetailView();
+    });
+    const clearProjectSearch = document.getElementById('btn-clear-project-search');
+    if (clearProjectSearch) clearProjectSearch.addEventListener('click', () => {
+      state.searchProjectsQuery = '';
+      renderCourseDetailView();
+      document.getElementById('search-projects-input')?.focus();
+    });
   }
 
   function attachCourseDetailEventListeners() {
@@ -846,11 +893,15 @@
     if (searchProjInput) {
       searchProjInput.addEventListener('input', (e) => {
         state.searchProjectsQuery = e.target.value;
+        const selectionStart = e.target.selectionStart;
+        const selectionEnd = e.target.selectionEnd;
+        state.isFilteringProjects = true;
         renderCourseDetailView();
+        state.isFilteringProjects = false;
         const inputAfter = document.getElementById('search-projects-input');
         if (inputAfter) {
           inputAfter.focus();
-          inputAfter.setSelectionRange(inputAfter.value.length, inputAfter.value.length);
+          inputAfter.setSelectionRange(selectionStart, selectionEnd);
         }
       });
     }
@@ -861,10 +912,18 @@
       btn.addEventListener('click', async () => {
         const path = btn.getAttribute('data-path');
         if (!path) {
-          alert('No hay una ruta local registrada para este proyecto.');
+          window.uiMessage?.('Este proyecto no tiene una carpeta registrada.', 'error');
           return;
         }
-        await api.revealFile(path);
+        try {
+          if (window.academicAPI?.verifyFileExists && !(await window.academicAPI.verifyFileExists(path))) {
+            window.uiMessage?.('No se encontró el archivo en esa ubicación.', 'error');
+            return;
+          }
+          await api.revealFile(path);
+        } catch (err) {
+          window.uiMessage?.(`No se pudo abrir la carpeta del proyecto: ${err.message}`, 'error');
+        }
       });
     });
 
@@ -873,11 +932,20 @@
     deleteProjBtns.forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = btn.getAttribute('data-id');
-        if (confirm('¿Deseas eliminar este registro de proyecto? (El archivo .h5p en disco no se borrará).')) {
-          await api.deleteProject(id);
-          await loadProjectsForActiveCourse();
-          await loadCourses();
-          renderCourseDetailView();
+        const confirmed = await window.uiDialog.confirm({
+          title: '¿Eliminar el registro del proyecto?',
+          message: 'Se quitará del historial del ramo. El archivo .h5p guardado en tu equipo se conservará.',
+          confirmLabel: 'Eliminar registro'
+        });
+        if (confirmed) {
+          try {
+            await api.deleteProject(id);
+            await loadProjectsForActiveCourse();
+            await loadCourses();
+            renderCourseDetailView();
+          } catch (err) {
+            window.uiMessage?.(`No se pudo eliminar el registro: ${err.message}`, 'error');
+          }
         }
       });
     });
@@ -973,7 +1041,9 @@
               placeholder="ej: Estructuras de Datos y Algoritmos"
               value="${escapeHTML(initialData.name)}"
               required
+              aria-describedby="course-save-error"
             />
+            <p class="form-error hidden" id="course-save-error" role="alert"></p>
           </div>
 
           <div class="form-group">
@@ -985,6 +1055,7 @@
                     type="radio"
                     name="course-color"
                     value="${p.id}"
+                    aria-label="${p.label}"
                     ${resolveCoursePalette(initialData.colorTag).id === p.id ? 'checked' : ''}
                   />
                   <span class="color-swatch" style="background-color: ${p.bg};"></span>
@@ -1013,12 +1084,9 @@
       </div>
     `;
 
-    modal.classList.remove('hidden');
+    window.uiDialog?.open(modal, { focus: '#input-course-name' });
 
-    const inputName = document.getElementById('input-course-name');
-    if (inputName) setTimeout(() => inputName.focus(), 100);
-
-    const closeModal = () => modal.classList.add('hidden');
+    const closeModal = () => window.uiDialog?.close(modal) || modal.classList.add('hidden');
 
     const btnClose = document.getElementById('btn-close-course-modal');
     if (btnClose) btnClose.addEventListener('click', closeModal);
@@ -1036,9 +1104,21 @@
         const term = document.getElementById('input-course-term').value.trim();
         const desc = document.getElementById('input-course-desc').value.trim();
         const selectedColor = form.querySelector('input[name="course-color"]:checked')?.value || 'primary';
+        const errorMessage = document.getElementById('course-save-error');
+        const submitButton = document.getElementById('btn-save-course');
+        errorMessage?.classList.add('hidden');
+        document.getElementById('input-course-name')?.removeAttribute('aria-invalid');
+        if (submitButton) {
+          submitButton.disabled = true;
+          submitButton.querySelector('span').textContent = 'Guardando…';
+        }
 
         if (!name) {
-          alert('Por favor ingresa el nombre de la asignatura.');
+          document.getElementById('input-course-name')?.focus();
+          if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.querySelector('span').textContent = state.isEditingCourse ? 'Guardar Cambios' : 'Crear Ramo';
+          }
           return;
         }
 
@@ -1062,7 +1142,17 @@
             renderHomeView();
           }
         } catch (err) {
-          alert(`Error al guardar ramo: ${err.message}`);
+          console.error('[courses.js] Error guardando ramo:', err);
+          if (errorMessage) {
+            errorMessage.textContent = `No se pudo guardar el ramo: ${err.message}`;
+            errorMessage.classList.remove('hidden');
+          }
+          document.getElementById('input-course-name')?.setAttribute('aria-invalid', 'true');
+        } finally {
+          if (submitButton?.isConnected) {
+            submitButton.disabled = false;
+            submitButton.querySelector('span').textContent = state.isEditingCourse ? 'Guardar Cambios' : 'Crear Ramo';
+          }
         }
       });
     }
@@ -1122,9 +1212,9 @@
       </div>
     `;
 
-    modal.classList.remove('hidden');
+    window.uiDialog?.open(modal, { focus: '#btn-cancel-delete' });
 
-    const closeModal = () => modal.classList.add('hidden');
+    const closeModal = () => window.uiDialog?.close(modal) || modal.classList.add('hidden');
 
     const btnClose = document.getElementById('btn-close-confirm-modal');
     if (btnClose) btnClose.addEventListener('click', closeModal);
@@ -1135,7 +1225,17 @@
     const btnConfirm = document.getElementById('btn-confirm-delete');
     if (btnConfirm) {
       btnConfirm.addEventListener('click', async () => {
-        await api.deleteCourse(course.id);
+        const confirmButton = document.getElementById('btn-confirm-delete');
+        confirmButton.disabled = true;
+        confirmButton.textContent = 'Eliminando…';
+        try {
+          await api.deleteCourse(course.id);
+        } catch (err) {
+          console.error('[courses.js] Error eliminando ramo:', err);
+          confirmButton.disabled = false;
+          confirmButton.textContent = 'Eliminar Ramo';
+          return;
+        }
         closeModal();
         if (state.activeCourseId === course.id) {
           navigateToHome();
@@ -1187,9 +1287,9 @@
       </div>
     `;
 
-    modal.classList.remove('hidden');
+    window.uiDialog?.open(modal, { focus: '#btn-close-lumi-btn' });
 
-    const closeModal = () => modal.classList.add('hidden');
+    const closeModal = () => window.uiDialog?.close(modal) || modal.classList.add('hidden');
     const btnClose = document.getElementById('btn-close-lumi-modal');
     if (btnClose) btnClose.addEventListener('click', closeModal);
     const btnOk = document.getElementById('btn-close-lumi-btn');
