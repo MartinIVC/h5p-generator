@@ -2,14 +2,20 @@
  * upload.js
  * Componente modular para el panel de subida de archivos y prompt (Paso 1).
  * Inserta la interfaz dinámicamente y gestiona la lista enumerada de archivos.
- * Valida formatos que el extractor actual procesa (PDF y TXT).
+ * Valida los formatos que el extractor del backend puede procesar.
  */
 
 (function () {
   'use strict';
 
-  // Mantener la selección alineada con backend/chunker.js.
-  const ALLOWED_EXTENSIONS = ['pdf', 'txt'];
+  // Mantener la selección alineada con los formatos soportados por backend/chunker.js.
+  const ALLOWED_EXTENSIONS = [
+    'pdf', 'txt', 'md', 'csv',
+    'docx', 'doc',
+    'xlsx', 'xls',
+    'pptx', 'odp', 'odt', 'ods', 'rtf'
+  ];
+  const SUPPORTED_FORMATS_LABEL = 'PDF, DOC/DOCX, XLS/XLSX, PPTX, ODT/ODS/ODP y TXT/MD/CSV/RTF';
 
   // String para el atributo accept del input file
   const ACCEPT_ATTR = ALLOWED_EXTENSIONS.map(ext => `.${ext}`).join(',');
@@ -72,7 +78,7 @@
         <header class="upload-panel-header">
           <h2 class="upload-panel-title">Material e instrucciones</h2>
           <p class="upload-panel-subtitle">
-            Añade apuntes en PDF o TXT y orienta la actividad con instrucciones breves.
+            Añade apuntes y documentos en los formatos compatibles, y orienta la actividad con instrucciones breves.
           </p>
           <div class="draft-resume-notice hidden" id="draft-resume-notice" role="status" aria-live="polite">
             <strong>Estás retomando un borrador.</strong>
@@ -106,7 +112,7 @@
               <span>Subir Archivos</span>
             </button>
 
-            <span class="upload-formats-hint" id="upload-formats-hint">Formatos disponibles para generar: PDF y TXT.</span>
+            <span class="upload-formats-hint" id="upload-formats-hint">Formatos disponibles: ${SUPPORTED_FORMATS_LABEL}.</span>
           </div>
 
           <!-- Columna derecha: Lista de archivos enumerada al lado del botón upload -->
@@ -404,7 +410,7 @@
       if (hasErrors) {
         summaryInfo.className = 'upload-summary-info has-error';
         const errPlural = errorFiles.length === 1 ? 'archivo con formato no permitido' : 'archivos con formatos no permitidos';
-        summaryInfo.innerHTML = `<strong>Formato no disponible:</strong> ${errorFiles.length} ${errPlural}. Quita los archivos que no sean PDF o TXT para continuar.`;
+        summaryInfo.innerHTML = `<strong>Formato no disponible:</strong> ${errorFiles.length} ${errPlural}. Formatos permitidos: ${SUPPORTED_FORMATS_LABEL}.`;
       } else {
         summaryInfo.className = 'upload-summary-info';
         const totalBytes = validFiles.reduce((acc, f) => acc + (f.size || 0), 0);
