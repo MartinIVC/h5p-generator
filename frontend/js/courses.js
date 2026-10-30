@@ -776,10 +776,12 @@
       if (state.searchCoursesQuery || state.showArchivedCourses || state.courses.length > 0) {
         coursesCardsHTML = `
           <div class="empty-results-box">
-            <svg class="icon-svg empty-icon" viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
+            ${state.searchCoursesQuery ? `
+              <svg class="icon-svg empty-icon" viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            ` : ''}
             <p>${state.showArchivedCourses && !state.searchCoursesQuery
               ? 'No tienes ramos archivados.'
               : !state.searchCoursesQuery && state.courses.length > 0
