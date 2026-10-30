@@ -142,14 +142,14 @@ button { -webkit-tap-highlight-color: transparent; }
 .cover-caption { position: absolute; top: 15px; left: 18px; font-size: 6px; letter-spacing: 1.4px; color: var(--md-sys-color-on-surface-variant); }
 .cover-index { position: absolute; bottom: 17px; left: 18px; font-size: 20px; font-family: var(--studio-serif); color: var(--course-accent); }
 .course-cover-art { position: absolute; inset: auto 0 0; width: 100%; height: 100px; fill: none; stroke: var(--course-accent); stroke-width: 1; }
-.cover-orbit { opacity: .3; }
-.cover-arch { fill: color-mix(in srgb, var(--course-accent) 13%, transparent); }
-.cover-arch-small { opacity: .5; }
-.cover-star { opacity: .4; transform: translateX(73px) scale(.7); }
-[data-art="1"] .cover-arch { transform: rotate(90deg); transform-origin: 235px 65px; }
-[data-art="1"] .cover-orbit { stroke-dasharray: 2 4; }
-[data-art="2"] .cover-arch { transform: rotate(180deg); transform-origin: 235px 65px; }
-[data-art="2"] .cover-orbit { fill: color-mix(in srgb, var(--course-accent) 20%, transparent); }
+.cover-books { opacity: .94; }
+.cover-book-cover { fill: color-mix(in srgb, var(--course-accent) 18%, var(--md-sys-color-surface)); }
+.cover-book-pages { fill: color-mix(in srgb, var(--md-sys-color-surface-container-lowest) 90%, var(--course-accent) 10%); opacity: .88; }
+.cover-book-spine { fill: none; stroke-width: 1.5; opacity: .85; }
+.cover-book-lines { stroke-width: .8; stroke-linecap: round; opacity: .48; }
+.cover-book-ribbon { fill: var(--course-accent); stroke: none; opacity: .65; }
+.course-cover[data-art="1"] .cover-book-top { opacity: .72; }
+.course-cover[data-art="2"] .cover-book-middle { opacity: .76; }
 .course-card-body { padding: 14px 17px 12px; }
 .course-card-header { flex-wrap: wrap; gap: 7px; margin-bottom: 9px; }
 .course-badge-wrap { gap: 5px; }

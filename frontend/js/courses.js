@@ -642,7 +642,29 @@
       <article class="course-card ${isArchived ? 'is-archived' : ''}" data-course-id="${escapeHTML(course.id)}" role="listitem" style="--course-accent: ${palette.bg}; --course-accent-soft: ${palette.light};">
         <div class="course-cover" data-art="${Array.from(String(course.id)).reduce((sum, char) => sum + char.charCodeAt(0), 0) % 3}">
           <span class="cover-caption" aria-hidden="true">CUADERNO DE ASIGNATURA</span>
-          <svg viewBox="0 0 320 100" class="course-cover-art" aria-hidden="true"><circle cx="224" cy="64" r="52" class="cover-orbit"/><path d="M195 95V47a30 30 0 0 1 60 0v48" class="cover-arch"/><path d="M265 100V62a21 21 0 0 1 42 0v38" class="cover-arch cover-arch-small"/><path d="M22 72h52m-26-26v52M30 54l36 36M30 90l36-36" class="cover-star"/></svg>
+          <svg viewBox="0 0 320 100" class="course-cover-art" aria-hidden="true">
+            <g class="cover-books">
+              <g class="cover-book cover-book-bottom" transform="rotate(-4 236 80)">
+                <path class="cover-book-cover" d="M171 68h125a4 4 0 0 1 4 4v16a4 4 0 0 1-4 4H171z"/>
+                <path class="cover-book-pages" d="M179 72h117v14H179z"/>
+                <path class="cover-book-spine" d="M180 68v22"/>
+                <path class="cover-book-lines" d="M190 76h93m-93 5h79"/>
+              </g>
+              <g class="cover-book cover-book-middle" transform="rotate(3 242 60)">
+                <path class="cover-book-cover" d="M185 47h111a4 4 0 0 1 4 4v16a4 4 0 0 1-4 4H185z"/>
+                <path class="cover-book-pages" d="M193 51h103v14H193z"/>
+                <path class="cover-book-spine" d="M194 47v22"/>
+                <path class="cover-book-lines" d="M204 55h80m-80 5h66"/>
+              </g>
+              <g class="cover-book cover-book-top" transform="rotate(-5 242 38)">
+                <path class="cover-book-cover" d="M201 25h83a4 4 0 0 1 4 4v16a4 4 0 0 1-4 4h-83z"/>
+                <path class="cover-book-pages" d="M209 29h75v14h-75z"/>
+                <path class="cover-book-spine" d="M210 25v22"/>
+                <path class="cover-book-lines" d="M220 33h54m-54 5h42"/>
+                <path class="cover-book-ribbon" d="M278 25v13l-4-3-4 3V25"/>
+              </g>
+            </g>
+          </svg>
           <span class="cover-index">${escapeHTML(course.code || 'H5P')}</span>
         </div>
         <div class="course-card-body">
