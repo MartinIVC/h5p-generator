@@ -8,8 +8,9 @@ const { academicStorage } = require(path.join(__dirname, '..', 'backend', 'stora
 
 const createWindow = () => {
   const win = new BrowserWindow({
-    width: 1024,
-    height: 720,
+    width: 1320,
+    height: 860,
+    backgroundColor: '#f7f7f2',
     minWidth: 840,
     minHeight: 600,
     webPreferences: {

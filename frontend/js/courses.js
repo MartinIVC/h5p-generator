@@ -8,39 +8,39 @@
 (function () {
   'use strict';
 
-  // Paleta de colores temáticos para los ramos (Tokens de Material Design 3 en light.css)
+  // Paletas del taller docente, compartidas por los temas claro y oscuro.
   const COLOR_PALETTES = [
     {
       id: 'primary',
-      label: 'Cian Primario',
+      label: 'Bosque',
       bg: 'var(--md-sys-color-primary)',
       light: 'var(--md-sys-color-primary-container)',
       text: 'var(--md-sys-color-on-primary-container)'
     },
     {
       id: 'secondary',
-      label: 'Verde Azulado',
+      label: 'Salvia',
       bg: 'var(--md-sys-color-secondary)',
       light: 'var(--md-sys-color-secondary-container)',
       text: 'var(--md-sys-color-on-secondary-container)'
     },
     {
       id: 'tertiary',
-      label: 'Púrpura Docente',
+      label: 'Terracota',
       bg: 'var(--md-sys-color-tertiary)',
       light: 'var(--md-sys-color-tertiary-container)',
       text: 'var(--md-sys-color-on-tertiary-container)'
     },
     {
       id: 'secondary-fixed',
-      label: 'Turquesa Suave',
+      label: 'Azul Pizarra',
       bg: 'var(--md-sys-color-secondary-fixed-dim)',
       light: 'var(--md-sys-color-secondary-fixed)',
       text: 'var(--md-sys-color-on-secondary-fixed-variant)'
     },
     {
       id: 'tertiary-fixed',
-      label: 'Lavanda Suave',
+      label: 'Ocre',
       bg: 'var(--md-sys-color-tertiary-fixed-dim)',
       light: 'var(--md-sys-color-tertiary-fixed)',
       text: 'var(--md-sys-color-on-tertiary-fixed-variant)'
@@ -385,7 +385,7 @@
 
     // Barra superior
     if (topbarBackBtn) topbarBackBtn.classList.add('hidden');
-    if (topbarTitle) topbarTitle.textContent = 'Generador H5P';
+    if (topbarTitle) topbarTitle.textContent = 'Mis ramos';
 
     await Promise.all([loadCourses(), loadDrafts(), loadUnassignedProjects()]);
     renderHomeView();
@@ -506,6 +506,7 @@
       step3.removeAttribute('aria-current');
     }
 
+    if (topbarTitle) topbarTitle.textContent = 'Nueva actividad';
     // Actualizar banner contextual de ramo en el panel de subida
     updateCourseContextBanner(course);
     document.dispatchEvent(new CustomEvent('h5p:start-project-creation', {
@@ -639,7 +640,11 @@
     const isArchived = Boolean(course.archivedAt);
     return `
       <article class="course-card ${isArchived ? 'is-archived' : ''}" data-course-id="${escapeHTML(course.id)}" role="listitem" style="--course-accent: ${palette.bg}; --course-accent-soft: ${palette.light};">
-        <div class="course-card-accent" style="background-color: ${palette.bg};"></div>
+        <div class="course-cover" data-art="${Array.from(String(course.id)).reduce((sum, char) => sum + char.charCodeAt(0), 0) % 3}">
+          <span class="cover-caption" aria-hidden="true">CUADERNO DE ASIGNATURA</span>
+          <svg viewBox="0 0 320 100" class="course-cover-art" aria-hidden="true"><circle cx="224" cy="64" r="52" class="cover-orbit"/><path d="M195 95V47a30 30 0 0 1 60 0v48" class="cover-arch"/><path d="M265 100V62a21 21 0 0 1 42 0v38" class="cover-arch cover-arch-small"/><path d="M22 72h52m-26-26v52M30 54l36 36M30 90l36-36" class="cover-star"/></svg>
+          <span class="cover-index">${escapeHTML(course.code || 'H5P')}</span>
+        </div>
         <div class="course-card-body">
           <header class="course-card-header">
             <div class="course-badge-wrap">
@@ -696,13 +701,12 @@
     const totalProjects = state.courses.reduce((acc, c) => acc + (c.projectsCount || 0), 0);
     const activeCoursesCount = state.courses.filter(course => !course.archivedAt).length;
     const archivedCoursesCount = state.courses.length - activeCoursesCount;
-    const favoriteCoursesCount = state.courses.filter(course => course.isFavorite && !course.archivedAt).length;
     const hasApiKey = window.configManager ? window.configManager.hasApiKey() : true;
     const onboardingComplete = [state.courses.length > 0, state.drafts.length > 0 || totalProjects > 0, hasApiKey].filter(Boolean).length;
     const onboardingHTML = state.isOnboardingDismissed ? '' : `
       <section class="onboarding-checklist" aria-labelledby="onboarding-title">
         <header class="onboarding-checklist-header">
-          <div><span class="home-kicker">Una guía breve y opcional</span><h3 id="onboarding-title">Primeros pasos <span>${onboardingComplete}/3</span></h3></div>
+          <div><span class="home-kicker">DE LA IDEA A LA ACTIVIDAD</span><h3 id="onboarding-title">Primeros pasos <span>${onboardingComplete}/3</span></h3></div>
           <button type="button" class="btn-text-subtle" id="btn-dismiss-onboarding">Cerrar guía</button>
         </header>
         <ol class="onboarding-steps">
@@ -713,7 +717,7 @@
           </li>
           <li class="onboarding-step ${state.drafts.length || totalProjects ? 'is-complete' : ''}">
             <span class="onboarding-step-state" aria-hidden="true">${state.drafts.length || totalProjects ? '✓' : '2'}</span>
-            <span class="onboarding-step-copy"><strong>Prepara material e instrucciones</strong><small>${state.drafts.length || totalProjects ? 'Ya hay trabajo guardado en esta biblioteca.' : 'Selecciona un PDF o TXT y escribe las instrucciones de la actividad.'}</small></span>
+            <span class="onboarding-step-copy"><strong>Prepara material e instrucciones</strong><small>${state.drafts.length || totalProjects ? 'Ya hay trabajo guardado en esta biblioteca.' : 'Añade tus documentos y dale una dirección a la actividad.'}</small></span>
             <button type="button" class="btn-secondary onboarding-step-button" data-step-action="material">Empezar</button>
           </li>
           <li class="onboarding-step ${hasApiKey ? 'is-complete' : ''}">
@@ -793,16 +797,16 @@
                 <path d="M9 6h6"></path>
               </svg>
             </div>
-            <h3 class="hero-title">¡Bienvenido, Profesor!</h3>
+            <h3 class="hero-title">Aquí empieza tu próxima gran clase.</h3>
             <p class="hero-desc">
-              Organiza tus asignaturas docentes para gestionar y crear actividades interactivas H5P a partir de tus documentos y apuntes.
+              Crea tu primer ramo y dale un lugar a tus apuntes, ideas y futuras actividades interactivas.
             </p>
             <button type="button" class="btn-primary" id="btn-empty-create-course">
               <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
-              <span>Crear mi primer Ramo</span>
+              <span>Crear mi primer ramo</span>
             </button>
           </div>
         `;
@@ -812,7 +816,7 @@
       const otherCourses = state.showArchivedCourses ? filteredCourses : filteredCourses.filter(course => !course.isFavorite);
       const renderCourseSection = (courses, title) => courses.length ? `
         <section class="course-library-section" aria-label="${title}">
-          <h3 class="course-library-section-title">${title}<span>${courses.length}</span></h3>
+          <h3 class="course-library-section-title ${title === 'Mis ramos' ? 'sr-only' : ''}">${title}<span>${courses.length}</span></h3>
           <div class="courses-grid" role="list" aria-label="${title}">
             ${courses.map(renderCourseCard).join('')}
           </div>
@@ -824,53 +828,30 @@
     }
 
     panelHome.innerHTML = `
-      <div class="home-container ${state.isFilteringCourses ? 'is-filtering' : ''}">
+      <div class="home-container ${state.courses.length ? 'has-courses' : ''} ${state.isFilteringCourses ? 'is-filtering' : ''}">
+        <div class="workspace-heading"><div><span class="home-kicker">TU TALLER DOCENTE</span><h2>Un espacio para crear.</h2></div><span class="workspace-heading-note">Pequeñas ideas, grandes aprendizajes <span aria-hidden="true">✳</span></span></div>
         <header class="home-hero-header">
           <div class="home-title-wrap">
-            <span class="home-kicker">Tu espacio de trabajo docente</span>
-            <h2 class="home-title">Mis Ramos</h2>
-            <p class="home-subtitle">
-              Gestiona tus asignaturas y accede a los proyectos exportados correspondientes.
-            </p>
+            <span class="hero-eyebrow"><span aria-hidden="true">✦</span> DALE OTRA VIDA A TUS APUNTES</span>
+            <h3 class="home-title">Un buen apunte.<br><em>Mil posibilidades.</em></h3>
+            <p class="home-subtitle">Transforma lo que enseñas en experiencias que invitan a aprender. Todo empieza con tus documentos.</p>
+            <div class="home-header-actions"><button type="button" class="btn-primary" id="btn-top-create-course"><span aria-hidden="true">＋</span><span>Crear un ramo</span><span aria-hidden="true">↗</span></button><span class="hero-small-note">Tu próxima clase empieza aquí.</span></div>
           </div>
-          <svg class="home-paper-art" viewBox="0 0 120 100" fill="none" aria-hidden="true">
-            <rect x="31" y="19" width="58" height="70" rx="10" transform="rotate(-11 31 19)" class="home-paper-back" />
-            <rect x="36" y="15" width="58" height="70" rx="10" transform="rotate(5 36 15)" class="home-paper-mid" />
-            <rect x="27" y="17" width="58" height="70" rx="10" class="home-paper-front" />
-            <path d="M42 39h28M42 49h28M42 59h18" class="home-paper-lines" />
-            <path d="m65 24 12 0 0 13" class="home-paper-fold" />
-            <circle cx="88" cy="19" r="5" class="home-paper-dot" />
-          </svg>
-          <div class="home-header-actions">
-            <button type="button" class="btn-primary" id="btn-top-create-course">
-              <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              <span>Nuevo Ramo</span>
-            </button>
+          <div class="learning-art" aria-hidden="true">
+            <svg class="art-orbit" viewBox="0 0 360 300"><ellipse cx="180" cy="155" rx="157" ry="105" transform="rotate(-22 180 155)"/><path d="M295 40v30m-15-15h30M50 225v22m-11-11h22"/><path d="m87 55 6-12 6 12-6 12Z"/></svg>
+            <div class="art-paper art-paper-back"><span>01 / TU MATERIAL</span><div class="art-text-lines"></div><svg viewBox="0 0 90 70"><path d="M10 55V15h25l10 8 10-8h25v40H55L45 63 35 55Z"/><path d="M45 23v40M18 27h12m-12 9h12m30-9h12m-12 9h12"/></svg></div>
+            <div class="art-paper art-paper-front"><span>02 / UNA NUEVA EXPERIENCIA</span><div class="art-question">¿Y si aprender<br>fuera <em>descubrir?</em></div><div class="art-answers"><i></i><span>Una pregunta que despierta ideas</span></div><div class="art-answers"><i class="is-checked">✓</i><span>Un aprendizaje que se queda</span></div><div class="art-paper-footer">HECHO CON TUS IDEAS <span>↗</span></div></div>
+            <span class="art-sticker">hecho para<br><strong>enseñar</strong><svg viewBox="0 0 30 30"><path d="M15 2v26M2 15h26M6 6l18 18M6 24 24 6"/></svg></span>
           </div>
         </header>
-
-        ${!hasApiKey ? `
-          <div class="api-key-home-banner" id="api-key-home-banner">
-            <div class="api-key-banner-content">
-              <svg class="icon-svg banner-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-              </svg>
-              <span>Para generar actividades didácticas con IA necesitas tu clave de Google Gemini.</span>
-            </div>
-            <button type="button" class="btn-secondary btn-sm" id="btn-banner-config-key">
-              Configurar Clave
-            </button>
-          </div>
-        ` : ''}
-
+        <div class="workspace-metrics" aria-label="Resumen de tu biblioteca">
+          <div><span class="metric-icon" aria-hidden="true">▤</span><strong>${String(activeCoursesCount).padStart(2, '0')}</strong><span>Ramos activos</span></div>
+          <div><span class="metric-icon" aria-hidden="true">✳</span><strong>${String(totalProjects).padStart(2, '0')}</strong><span>Actividades creadas</span></div>
+          <div><span class="metric-icon" aria-hidden="true">✎</span><strong>${String(state.drafts.length).padStart(2, '0')}</strong><span>Borradores por retomar</span></div>
+        </div>
         ${draftsHTML}
         ${unassignedHTML}
-        ${onboardingHTML}
-
+        <div class="library-heading"><div><span class="home-kicker">TU BIBLIOTECA</span><h3>${state.showArchivedCourses ? 'Ramos archivados' : 'Mis ramos'} <span>${state.showArchivedCourses ? archivedCoursesCount : activeCoursesCount}</span></h3></div><button type="button" class="btn-text-subtle" id="btn-library-create-course"><span aria-hidden="true">＋</span> Nuevo ramo</button></div>
         ${state.courses.length > 0 ? `
           <div class="home-search-bar">
             <div class="search-input-wrap">
@@ -890,8 +871,8 @@
             <div class="course-library-controls">
               <label>Vista
                 <select id="course-view-select" aria-label="Filtrar ramos">
-                  <option value="active" ${!state.showArchivedCourses ? 'selected' : ''}>Activos</option>
-                  <option value="archived" ${state.showArchivedCourses ? 'selected' : ''}>Archivados</option>
+                  <option value="active" ${!state.showArchivedCourses ? 'selected' : ''}>Activos (${activeCoursesCount})</option>
+                  <option value="archived" ${state.showArchivedCourses ? 'selected' : ''}>Archivados (${archivedCoursesCount})</option>
                 </select>
               </label>
               <label>Ordenar
@@ -902,26 +883,35 @@
                 </select>
               </label>
             </div>
-            <div class="home-stats-pill">
-              <span><strong>${activeCoursesCount}</strong> activos</span>
-              <span class="dot-divider">•</span>
-              <span><strong>${favoriteCoursesCount}</strong> favoritos</span>
-              <span class="dot-divider">•</span>
-              <span><strong>${archivedCoursesCount}</strong> archivados</span>
-              <span class="dot-divider">•</span>
-              <span><strong>${totalProjects}</strong> proyectos</span>
-            </div>
           </div>
         ` : ''}
 
         <div class="home-courses-content">
           ${coursesCardsHTML}
         </div>
+        ${!hasApiKey ? `
+          <div class="api-key-home-banner" id="api-key-home-banner">
+            <div class="api-key-banner-content">
+              <svg class="icon-svg banner-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              <span><strong>Un último detalle para crear con IA.</strong> Conecta tu clave de Gemini cuando quieras generar actividades.</span>
+            </div>
+            <button type="button" class="btn-secondary btn-sm" id="btn-banner-config-key">
+              Conectar Gemini <span aria-hidden="true">↗</span>
+            </button>
+          </div>
+        ` : ''}
+
+        ${onboardingHTML}
+        <div class="workspace-endnote"><span>BUENAS IDEAS. MEJORES CLASES.</span><span>Tu taller de aprendizaje interactivo <span aria-hidden="true">✳</span></span></div>
       </div>
     `;
 
     // Event listeners del Home
     attachHomeEventListeners();
+    document.dispatchEvent(new CustomEvent('h5p:library-rendered', { detail: { courses: activeCoursesCount, drafts: state.drafts.length } }));
   }
 
   function renderTrashView() {
@@ -1003,6 +993,7 @@
       btnBannerKey.addEventListener('click', () => window.configManager.openSettingsModal());
     }
 
+    document.getElementById('btn-library-create-course')?.addEventListener('click', () => openCourseModal());
     const btnTopCreate = document.getElementById('btn-top-create-course');
     if (btnTopCreate) btnTopCreate.addEventListener('click', () => openCourseModal());
 

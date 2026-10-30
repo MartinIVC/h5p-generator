@@ -76,7 +76,8 @@
     return `
       <div class="upload-card-wrapper">
         <header class="upload-panel-header">
-          <h2 class="upload-panel-title">Material e instrucciones</h2>
+          <span class="home-kicker">PASO 01 / EL PUNTO DE PARTIDA</span>
+          <h2 class="upload-panel-title">Dale forma a tu próxima actividad.</h2>
           <p class="upload-panel-subtitle">
             Añade apuntes y documentos en los formatos compatibles, y orienta la actividad con instrucciones breves.
           </p>
@@ -109,7 +110,7 @@
                 <polyline points="17 8 12 3 7 8"></polyline>
                 <line x1="12" y1="3" x2="12" y2="15"></line>
               </svg>
-              <span>Subir Archivos</span>
+              <span>Elegir documentos</span>
             </button>
 
             <span class="upload-formats-hint" id="upload-formats-hint">Formatos disponibles: ${SUPPORTED_FORMATS_LABEL}.</span>
@@ -153,7 +154,7 @@
             No se han seleccionado archivos
           </div>
           <button type="button" class="btn-primary" id="btn-next-step" disabled>
-            <span>Continuar a Tipo H5P</span>
+            <span>Elegir tipo de actividad</span>
             <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <line x1="5" y1="12" x2="19" y2="12"></line>
               <polyline points="12 5 19 12 12 19"></polyline>

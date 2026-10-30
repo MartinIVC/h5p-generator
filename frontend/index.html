@@ -3,22 +3,46 @@
 
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#203f34" />
   <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-src 'self' blob:; object-src 'self' blob:; connect-src 'self' ws: http://localhost:*;" />
-  <title>Generador H5P</title>
+  <title>Generador H5P · Taller docente</title>
+  <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
 
-  <!-- Google Fonts: Titillium Web -->
+  <!-- Tipografía editorial con alternativas locales para trabajar sin conexión. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="css/light.css">
-  <link rel="stylesheet" href="css/dark.css">
+  <link rel="stylesheet" href="css/light.css?v=studio-1">
+  <link rel="stylesheet" href="css/dark.css?v=studio-1">
   <link rel="stylesheet" href="css/global.css">
+  <link rel="stylesheet" href="css/studio.css">
 </head>
 
 <body>
+  <a class="skip-link" href="#main-content">Ir al contenido</a>
+  <aside class="workspace-sidebar" aria-label="Espacio de trabajo">
+    <button class="studio-brand" type="button" data-studio-action="home" aria-label="Generador H5P, ir a la biblioteca">
+      <img src="assets/mark.svg" width="38" height="38" alt="">
+      <span>Generador <strong>H5P<span class="brand-dot">.</span></strong></span>
+    </button>
+    <div class="sidebar-workspace"><span class="workspace-avatar" aria-hidden="true">D</span><span>Mi espacio docente<small>Ideas que enseñan</small></span></div>
+    <span class="sidebar-label">ESPACIO DE TRABAJO</span>
+    <nav class="studio-nav" aria-label="Navegación principal">
+      <button type="button" class="studio-nav-item is-active" data-studio-action="home" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Mis ramos</span><span class="sidebar-count" id="sidebar-course-count">0</span></button>
+      <button type="button" class="studio-nav-item" data-studio-action="drafts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M8 13h8M8 17h5"/></svg><span>Borradores</span><span class="sidebar-count" id="sidebar-draft-count">0</span></button>
+      <button type="button" class="studio-nav-item" data-studio-action="trash"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg><span>Papelera</span></button>
+    </nav>
+    <div class="sidebar-note"><svg class="note-spark" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 2v36M2 20h36M7 7l26 26M7 33 33 7"/></svg><p>Enseñar también<br>es <em>crear.</em></p><span>Tus apuntes son el inicio de algo extraordinario.</span><button type="button" data-studio-action="guide">Descubre cómo empezar <span aria-hidden="true">↗</span></button></div>
+    <div class="sidebar-bottom">
+      <button type="button" class="studio-nav-item" data-studio-action="guide"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4M12 17h.01"/></svg><span>Primeros pasos</span></button>
+      <button type="button" class="studio-nav-item" data-studio-action="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></svg><span>Configuración</span></button>
+      <div class="sidebar-signoff"><span class="local-dot"></span>Hecho para tu próxima clase</div>
+    </div>
+  </aside>
   <header class="topbar">
     <div class="topbar-brand-wrap">
       <button id="btn-topbar-back" class="btn-icon hidden" title="Volver a Mis Ramos" type="button" aria-label="Volver">
@@ -28,13 +52,17 @@
           <polyline points="12 19 5 12 12 5"></polyline>
         </svg>
       </button>
-      <h1 class="app-title" id="app-topbar-title">Generador H5P</h1>
+      <span class="topbar-parent">Biblioteca <span aria-hidden="true">/</span></span>
+      <h1 class="app-title" id="app-topbar-title">Mis ramos</h1>
     </div>
     <button id="btn-global-search" class="btn-icon global-search-trigger" title="Buscar en la biblioteca (Ctrl/Cmd + K)" type="button" aria-label="Buscar ramos y proyectos">
       <svg class="icon-svg" aria-hidden="true" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path>
       </svg>
+      <span class="search-trigger-label">Buscar en tu espacio</span><kbd>Ctrl K</kbd>
     </button>
+    <span class="topbar-local"><span class="local-dot"></span>Espacio local</span>
+    <button type="button" class="btn-icon" id="btn-quick-theme" aria-label="Cambiar a tema oscuro" title="Cambiar tema"><svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path class="theme-moon" d="M20.9 13a9 9 0 0 1-9.9-9.9A9 9 0 1 0 20.9 13Z"/><g class="theme-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></g></svg></button>
     <button id="btn-menu" class="btn-icon" title="Abrir menu" type="button" aria-label="Abrir menu"
       aria-controls="side-menu" aria-expanded="false">
       <svg class="icon-svg" aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none"
@@ -115,7 +143,7 @@
     </ol>
   </footer>
 
-  <main class="step-container">
+  <main class="step-container" id="main-content" tabindex="-1">
     <!-- Panel de Inicio: Hub de Ramos -->
     <section id="panel-home" class="step-panel"></section>
 
@@ -187,12 +215,13 @@
   <div id="modal-global-search" class="preview-modal-overlay hidden" aria-hidden="true"></div>
 
   <script src="js/ui.js"></script>
-  <script src="js/courses.js"></script>
+  <script src="js/courses.js?v=studio-1"></script>
   <script src="js/menu.js"></script>
-  <script src="js/upload.js"></script>
+  <script src="js/upload.js?v=studio-1"></script>
   <script src="js/preview.js"></script>
   <script src="js/config.js"></script>
   <script src="js/search.js"></script>
+  <script src="js/studio.js"></script>
 </body>
 
 </html>
