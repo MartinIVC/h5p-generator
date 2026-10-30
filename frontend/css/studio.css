@@ -129,6 +129,10 @@ button { -webkit-tap-highlight-color: transparent; }
 .course-library-section { gap: 12px; margin: 13px 0 24px; }
 .course-library-section-title { font-size: 12px; color: var(--md-sys-color-on-surface-variant); font-weight: 500; }
 .course-library-section-title span { min-width: 17px; height: 17px; font-size: 10px; background: var(--md-sys-color-surface-container); color: var(--md-sys-color-on-surface-variant); }
+.home-courses-content { width: 100%; min-width: 0; }
+.home-courses-content > .empty-results-box { max-width: 100%; min-width: 0; padding: 12px 14px; }
+.home-courses-content > .empty-results-box p { margin: 0; white-space: normal; overflow-wrap: anywhere; }
+.home-courses-content > .empty-results-box .empty-icon { margin-bottom: 8px; }
 .courses-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 18px; }
 .course-card { border-radius: 10px; box-shadow: none; }
 .course-card:hover { box-shadow: 0 9px 22px rgb(30 50 30 / 7%); border-color: color-mix(in srgb, var(--course-accent) 50%, var(--md-sys-color-outline-variant)); }

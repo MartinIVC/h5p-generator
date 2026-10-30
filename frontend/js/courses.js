@@ -782,7 +782,9 @@
             </svg>
             <p>${state.showArchivedCourses && !state.searchCoursesQuery
               ? 'No tienes ramos archivados.'
-              : `No se encontraron ramos que coincidan con "<strong>${escapeHTML(state.searchCoursesQuery)}</strong>".`}</p>
+              : !state.searchCoursesQuery && state.courses.length > 0
+                ? 'No tienes ramos activos. Revisa “Archivados” para verlos o reactivarlos.'
+                : `No se encontraron ramos que coincidan con "<strong>${escapeHTML(state.searchCoursesQuery)}</strong>".`}</p>
             ${state.searchCoursesQuery ? '<button type="button" class="btn-text-subtle" id="btn-clear-course-search">Limpiar búsqueda</button>' : ''}
           </div>
         `;
