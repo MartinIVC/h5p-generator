@@ -40,6 +40,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .studio-nav-item:hover { background: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-primary); }
 .studio-nav-item.is-active { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); font-weight: 700; }
 .sidebar-count { display: grid; place-items: center; margin-left: auto; min-width: 20px; height: 20px; background: color-mix(in srgb, var(--md-sys-color-surface-container-lowest) 65%, transparent); border-radius: 5px; font-size: 12px; }
+.studio-nav-item.is-active .sidebar-count { background: var(--md-sys-color-on-primary-container); color: var(--md-sys-color-primary-container); }
 .sidebar-note { position: relative; margin: 24px 4px 12px; padding: 14px 4px 8px; border-top: 1px solid var(--md-sys-color-outline-variant); }
 .note-spark { width: 28px; height: 28px; stroke: var(--md-sys-color-tertiary); stroke-width: 1.5; }
 .sidebar-note p { font-family: var(--studio-serif); font-size: 24px; line-height: 1.15; margin: 12px 0; }
