@@ -1782,12 +1782,12 @@ select.form-control option {
 .form-error-banner {
   padding: 0.65rem 0.85rem;
   border-radius: 6px;
-  background-color: var(--md-sys-color-error-container, #fee2e2);
-  color: var(--md-sys-color-on-error-container, #991b1b);
+  background-color: var(--md-sys-color-error-container, #FFDAD6);
+  color: var(--md-sys-color-on-error-container, #93000A);
   font-size: 0.825rem;
   font-weight: 500;
   line-height: 1.35;
-  border: 1px solid var(--md-sys-color-error, #f87171);
+  border: 1px solid var(--md-sys-color-error, #BA1A1A);
 }
 
 .form-group {
@@ -2894,7 +2894,7 @@ body {
 .trash-view-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.2rem; border: 1px solid var(--md-sys-color-outline-variant); border-radius: 16px; background: var(--md-sys-color-surface-container-lowest); }
 .trash-view-header h2 { margin: 0; font-size: 1.7rem; }
 .trash-view-header p { margin: 0.3rem 0 0; color: var(--md-sys-color-on-surface-variant); }
-.trash-retention-note { padding: 0.8rem 1rem; border-left: 3px solid var(--md-sys-color-tertiary); border-radius: 0 10px 10px 0; background: color-mix(in srgb, var(--md-sys-color-tertiary-container) 38%, var(--md-sys-color-surface-container-lowest)); color: var(--md-sys-color-on-surface-variant); font-size: 0.9rem; }
+.trash-retention-note { padding: 0.8rem 1rem; border-left: 3px solid var(--md-sys-color-tertiary); border-radius: 0 10px 10px 0; background: var(--md-sys-color-surface-container-low); color: var(--md-sys-color-on-surface-variant); font-size: 0.9rem; }
 .trash-items-list { display: grid; gap: 0.65rem; }
 .trash-item-card { display: flex; align-items: center; gap: 0.8rem; padding: 0.95rem; border: 1px solid var(--md-sys-color-outline-variant); border-radius: 13px; background: var(--md-sys-color-surface-container-lowest); }
 .trash-item-icon { display: grid; width: 2.4rem; height: 2.4rem; flex: 0 0 auto; place-items: center; border-radius: 11px; background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); font-size: 0.75rem; font-weight: 700; }

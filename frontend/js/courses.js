@@ -8,47 +8,47 @@
 (function () {
   'use strict';
 
-  // Paletas del taller docente, compartidas por los temas claro y oscuro.
+  // Variantes índigo, lavanda y ciruela derivadas del tema Material.
   const COLOR_PALETTES = [
     {
       id: 'primary',
-      label: 'Bosque',
+      label: 'Índigo',
       bg: 'var(--md-sys-color-primary)',
-      light: 'var(--md-sys-color-primary-container)',
-      text: 'var(--md-sys-color-on-primary-container)'
+      light: 'var(--md-sys-color-primary-fixed)',
+      text: 'var(--md-sys-color-on-primary-fixed)'
     },
     {
       id: 'secondary',
-      label: 'Salvia',
+      label: 'Pizarra',
       bg: 'var(--md-sys-color-secondary)',
       light: 'var(--md-sys-color-secondary-container)',
       text: 'var(--md-sys-color-on-secondary-container)'
     },
     {
       id: 'tertiary',
-      label: 'Terracota',
+      label: 'Ciruela',
       bg: 'var(--md-sys-color-tertiary)',
       light: 'var(--md-sys-color-tertiary-container)',
       text: 'var(--md-sys-color-on-tertiary-container)'
     },
     {
       id: 'secondary-fixed',
-      label: 'Azul Pizarra',
-      bg: 'var(--md-sys-color-secondary-fixed-dim)',
-      light: 'var(--md-sys-color-secondary-fixed)',
-      text: 'var(--md-sys-color-on-secondary-fixed-variant)'
+      label: 'Lavanda',
+      bg: 'var(--course-color-lavender)',
+      light: 'var(--course-color-lavender-container)',
+      text: 'var(--course-color-on-lavender-container)'
     },
     {
       id: 'tertiary-fixed',
-      label: 'Ocre',
-      bg: 'var(--md-sys-color-tertiary-fixed-dim)',
-      light: 'var(--md-sys-color-tertiary-fixed)',
-      text: 'var(--md-sys-color-on-tertiary-fixed-variant)'
+      label: 'Lila',
+      bg: 'var(--course-color-lilac)',
+      light: 'var(--course-color-lilac-container)',
+      text: 'var(--course-color-on-lilac-container)'
     }
   ];
 
   /**
-   * Resuelve la paleta del ramo utilizando estrictamente tokens de light.css
+   * Resuelve la paleta del ramo mediante tokens compartidos por ambos temas.
    * @param {string} colorTag
    * @returns {object}
    */
@@ -864,7 +864,6 @@
             <div class="home-header-actions"><button type="button" class="btn-primary" id="btn-top-create-course"><span aria-hidden="true">＋</span><span>Crear un ramo</span><span aria-hidden="true">↗</span></button><span class="hero-small-note">Tu próxima clase empieza aquí.</span></div>
           </div>
           <div class="learning-art" aria-hidden="true">
-            <svg class="art-orbit" viewBox="0 0 360 300"><ellipse cx="180" cy="155" rx="157" ry="105" transform="rotate(-22 180 155)"/><path d="M295 40v30m-15-15h30M50 225v22m-11-11h22"/><path d="m87 55 6-12 6 12-6 12Z"/></svg>
             <div class="art-paper art-paper-back"><span>01 / TU MATERIAL</span><div class="art-text-lines"></div><svg viewBox="0 0 90 70"><path d="M10 55V15h25l10 8 10-8h25v40H55L45 63 35 55Z"/><path d="M45 23v40M18 27h12m-12 9h12m30-9h12m-12 9h12"/></svg></div>
             <div class="art-paper art-paper-front"><span>02 / UNA NUEVA EXPERIENCIA</span><div class="art-question">¿Y si aprender<br>fuera <em>descubrir?</em></div><div class="art-answers"><i></i><span>Una pregunta que despierta ideas</span></div><div class="art-answers"><i class="is-checked">✓</i><span>Un aprendizaje que se queda</span></div><div class="art-paper-footer">HECHO CON TUS IDEAS <span>↗</span></div></div>
             <span class="art-sticker">hecho para<br><strong>enseñar</strong><svg viewBox="0 0 30 30"><path d="M15 2v26M2 15h26M6 6l18 18M6 24 24 6"/></svg></span>
