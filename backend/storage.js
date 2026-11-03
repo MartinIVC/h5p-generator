@@ -130,7 +130,8 @@ class AcademicStorage {
   }
 
   /**
-   * Lee los datos desde el archivo JSON de manera segura
+   * Lee los datos desde el archivo JSON. Un fallo de lectura debe llegar a la interfaz
+   * para no presentar una biblioteca vacía ni sobrescribir los registros existentes.
    * @private
    * @returns {{ courses: Array<any>, projects: Array<any>, settings: object }}
    */
@@ -141,7 +142,15 @@ class AcademicStorage {
       }
       const raw = fs.readFileSync(this.filePath, 'utf-8');
       const parsed = JSON.parse(raw);
-      const courses = (Array.isArray(parsed.courses) ? parsed.courses : []).map(c => {
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
+          !Array.isArray(parsed.courses) || !Array.isArray(parsed.projects) ||
+          (parsed.drafts !== undefined && !Array.isArray(parsed.drafts)) ||
+          (parsed.trash !== undefined && !Array.isArray(parsed.trash)) ||
+          (parsed.settings !== undefined &&
+            (!parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings)))) {
+        throw new Error('La estructura de los datos locales no es válida.');
+      }
+      const courses = parsed.courses.map(c => {
         if (!c.section) {
           const secFromDesc = c.description && /^s\d+$/i.test(c.description.trim())
             ? c.description.trim().replace(/^s/i, '')
@@ -152,14 +161,13 @@ class AcademicStorage {
       });
       return {
         courses,
-        projects: Array.isArray(parsed.projects) ? parsed.projects : [],
+        projects: parsed.projects,
         settings: parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {},
         drafts: Array.isArray(parsed.drafts) ? parsed.drafts : [],
         trash: Array.isArray(parsed.trash) ? parsed.trash : []
       };
-    } catch (err) {
-      console.error('[AcademicStorage] Error leyendo academic_store.json:', err);
-      return { courses: [], projects: [], settings: {}, drafts: [], trash: [] };
+    } catch {
+      throw new Error('No se pudieron leer los datos locales. Comprueba el almacenamiento e inténtalo de nuevo.');
     }
   }
 
@@ -712,16 +720,18 @@ class AcademicStorage {
    * @private
    */
   _encryptString(plainText) {
+    let safeStorage;
     try {
-      const { safeStorage } = require('electron');
-      if (safeStorage && safeStorage.isEncryptionAvailable()) {
-        const encrypted = safeStorage.encryptString(plainText);
-        return { isEncrypted: true, payload: encrypted.toString('base64') };
-      }
+      ({ safeStorage } = require('electron'));
     } catch {
-      // safeStorage no disponible (ej. headless sin keyring o entorno de test)
+      throw new Error('El almacenamiento seguro de claves no está disponible en este equipo.');
     }
-    return { isEncrypted: false, payload: Buffer.from(plainText).toString('base64') };
+    if (!safeStorage?.isEncryptionAvailable() ||
+        (process.platform === 'linux' && typeof safeStorage.getSelectedStorageBackend === 'function' && safeStorage.getSelectedStorageBackend() === 'basic_text')) {
+      throw new Error('El almacenamiento seguro de claves no está disponible en este equipo.');
+    }
+    const encrypted = safeStorage.encryptString(plainText);
+    return { isEncrypted: true, payload: encrypted.toString('base64') };
   }
 
   /**
@@ -730,22 +740,27 @@ class AcademicStorage {
    */
   _decryptString(envelope) {
     if (!envelope || !envelope.payload) return '';
+    if (!envelope.isEncrypted) throw new Error('La clave antigua requiere migración al almacenamiento seguro.');
     try {
-      if (envelope.isEncrypted) {
-        const { safeStorage } = require('electron');
-        if (safeStorage) {
-          const buffer = Buffer.from(envelope.payload, 'base64');
-          return safeStorage.decryptString(buffer);
-        }
-      }
-    } catch (err) {
-      console.warn('[AcademicStorage] Error desencriptando con safeStorage:', err);
-    }
-    try {
-      return Buffer.from(envelope.payload, 'base64').toString('utf-8');
+      const { safeStorage } = require('electron');
+      if (!safeStorage?.isEncryptionAvailable() ||
+          (process.platform === 'linux' && typeof safeStorage.getSelectedStorageBackend === 'function' && safeStorage.getSelectedStorageBackend() === 'basic_text')) throw new Error();
+      return safeStorage.decryptString(Buffer.from(envelope.payload, 'base64'));
     } catch {
-      return '';
+      throw new Error('No se pudo acceder a la clave con el almacenamiento seguro del equipo.');
     }
+  }
+
+  _readStoredApiKey(data) {
+    const envelope = data.settings?.geminiApiKey;
+    if (!envelope) return '';
+    if (envelope.isEncrypted) return this._decryptString(envelope);
+    const legacy = Buffer.from(envelope.payload || '', 'base64').toString('utf8');
+    if (!legacy) throw new Error('No se pudo leer la clave antigua.');
+    const encrypted = this._encryptString(legacy);
+    data.settings.geminiApiKey = encrypted;
+    this._writeData(data);
+    return legacy;
   }
 
   /**
@@ -770,7 +785,7 @@ class AcademicStorage {
     if (!envelope) {
       return { hasKey: false, maskedKey: '' };
     }
-    const decrypted = this._decryptString(envelope);
+    const decrypted = this._readStoredApiKey(data);
     if (!decrypted) {
       return { hasKey: false, maskedKey: '' };
     }
@@ -785,7 +800,7 @@ class AcademicStorage {
     const data = this._readData();
     const envelope = data.settings && data.settings.geminiApiKey;
     if (!envelope) return '';
-    return this._decryptString(envelope);
+    return this._readStoredApiKey(data);
   }
 
   /**

@@ -42,10 +42,8 @@ contextBridge.exposeInMainWorld('academicAPI', {
   // Configuración y Clave API de Gemini
   getApiKeyStatus: () => ipcRenderer.invoke('academic:getApiKeyStatus'),
   saveApiKey: (apiKey) => ipcRenderer.invoke('academic:saveApiKey', apiKey),
+  verifyApiKey: (apiKey) => ipcRenderer.invoke('llm:verify-key', apiKey),
   removeApiKey: () => ipcRenderer.invoke('academic:removeApiKey'),
-
-  // Notificaciones del Sistema
-  showNotification: (title, body) => ipcRenderer.invoke('show-notification', { title, body }),
 
   // Enlaces Externos
   openExternalUrl: (url) => ipcRenderer.invoke('app:openExternalUrl', url)

@@ -587,9 +587,9 @@
     try {
       state.courses = await api.getCourses();
       state.coursesLoadError = null;
-    } catch (err) {
-      console.error('[courses.js] Error cargando ramos:', err);
-      state.coursesLoadError = err;
+    } catch {
+      state.courses = [];
+      state.coursesLoadError = true;
     }
   }
 
@@ -728,9 +728,11 @@
     const onboardingHTML = state.isOnboardingDismissed ? '' : `
       <section class="onboarding-checklist" aria-labelledby="onboarding-title">
         <header class="onboarding-checklist-header">
-          <div><span class="home-kicker">DE LA IDEA A LA ACTIVIDAD</span><h3 id="onboarding-title">Primeros pasos <span>${onboardingComplete}/3</span></h3></div>
+          <div><span class="home-kicker">DE LA IDEA A LA ACTIVIDAD</span><h3 id="onboarding-title" tabindex="-1">Primeros pasos <span aria-label="${onboardingComplete} de 3 preparativos completados">${onboardingComplete}/3</span></h3></div>
           <button type="button" class="btn-text-subtle" id="btn-dismiss-onboarding">Cerrar guía</button>
         </header>
+        <p class="onboarding-intro">Crea o elige un ramo, prepara tus documentos y luego podrás elegir una actividad, revisar el resultado y exportarlo como H5P.</p>
+        <p class="onboarding-availability"><strong>Aún no disponible:</strong> la selección de actividad, la generación, la revisión y la exportación están en desarrollo. Puedes explorar tus ramos sin configurar Gemini.</p>
         <ol class="onboarding-steps">
           <li class="onboarding-step ${state.courses.length ? 'is-complete' : ''}">
             <span class="onboarding-step-state" aria-hidden="true">${state.courses.length ? '✓' : '1'}</span>
@@ -744,7 +746,7 @@
           </li>
           <li class="onboarding-step ${hasApiKey ? 'is-complete' : ''}">
             <span class="onboarding-step-state" aria-hidden="true">${hasApiKey ? '✓' : '3'}</span>
-            <span class="onboarding-step-copy"><strong>Revisa la configuración de Gemini</strong><small>${hasApiKey ? 'Hay una clave registrada en este equipo.' : 'La clave se guarda localmente y queda fuera de las copias de seguridad.'}</small></span>
+            <span class="onboarding-step-copy"><strong>Configura Gemini cuando lo necesites</strong><small>${hasApiKey ? 'Hay una clave registrada en este equipo.' : 'La clave es necesaria para generar actividades, pero no para consultar ramos.'}</small></span>
             <button type="button" class="btn-secondary onboarding-step-button" data-step-action="settings">${hasApiKey ? 'Revisar' : 'Configurar'}</button>
           </li>
         </ol>
@@ -1036,6 +1038,7 @@
       state.isOnboardingDismissed = true;
       localStorage.setItem('h5p_onboarding_dismissed', 'true');
       renderHomeView();
+      document.getElementById('btn-library-create-course')?.focus();
     });
     panelHome.querySelectorAll('.onboarding-step-button').forEach(button => button.addEventListener('click', () => {
       const action = button.dataset.stepAction;
@@ -1909,10 +1912,10 @@
           } else {
             renderHomeView();
           }
+          window.uiMessage?.(state.isEditingCourse ? 'Ramo actualizado.' : 'Ramo creado.', 'success');
         } catch (err) {
-          console.error('[courses.js] Error guardando ramo:', err);
           if (errBanner) {
-            errBanner.textContent = `No se pudo guardar el ramo: ${err.message}`;
+            errBanner.textContent = 'No se pudo guardar el ramo. Revisa los datos e inténtalo de nuevo.';
             errBanner.classList.remove('hidden');
           }
           document.getElementById('input-course-name')?.setAttribute('aria-invalid', 'true');
@@ -2093,7 +2096,11 @@
       document.getElementById('btn-close-menu')?.click();
       state.isOnboardingDismissed = false;
       localStorage.setItem('h5p_onboarding_dismissed', 'false');
-      navigateToHome().then(() => document.getElementById('onboarding-title')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+      navigateToHome().then(() => {
+        const title = document.getElementById('onboarding-title');
+        title?.focus();
+        title?.scrollIntoView({ block: 'center' });
+      });
     });
 
     document.getElementById('menu-opt-trash')?.addEventListener('click', () => {
@@ -2123,10 +2130,11 @@
     navigateToCourseDetail,
     startProjectCreation,
     openCourseModal,
-    openOnboarding: () => {
+    openOnboarding: async () => {
       state.isOnboardingDismissed = false;
       localStorage.setItem('h5p_onboarding_dismissed', 'false');
-      return navigateToHome();
+      await navigateToHome();
+      document.getElementById('onboarding-title')?.focus();
     },
     getDrafts: () => api.getDrafts(),
     openProjectSearch: (courseId, title) => navigateToCourseDetail(courseId || 'unassigned', title || ''),

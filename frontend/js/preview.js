@@ -31,6 +31,14 @@
   let nextBtnEl = null;
   let counterEl = null;
   let detailsEl = null;
+  let loadStatusEl = null;
+  let loadToken = 0;
+
+  function setLoadStatus(message, isError = false) {
+    if (!loadStatusEl) return;
+    loadStatusEl.setAttribute('role', isError ? 'alert' : 'status');
+    loadStatusEl.textContent = message;
+  }
 
   /**
    * Obtiene la extensión en minúsculas de un nombre de archivo.
@@ -99,14 +107,21 @@
    * Renderiza un archivo PDF en un iframe mediante un Object URL de blob.
    * @param {File} file
    */
-  function renderPdf(file) {
+  function renderPdf(file, token) {
     revokeActiveObjectUrl();
     state.currentObjectUrl = URL.createObjectURL(file);
+    setLoadStatus('Cargando vista previa…');
 
     const iframe = document.createElement('iframe');
     iframe.className = 'preview-iframe';
     iframe.src = state.currentObjectUrl;
     iframe.title = `Visor PDF de ${file.name}`;
+    iframe.addEventListener('load', () => {
+      if (state.isOpen && token === loadToken) setLoadStatus('Vista previa lista.');
+    });
+    iframe.addEventListener('error', () => {
+      if (state.isOpen && token === loadToken) setLoadStatus('No se pudo cargar la vista previa.', true);
+    });
 
     bodyEl.innerHTML = '';
     bodyEl.appendChild(iframe);
@@ -116,17 +131,19 @@
    * Renderiza archivos de texto plano o markdown con lectura segura en pre/code.
    * @param {File} file
    */
-  function renderText(file) {
+  function renderText(file, token) {
     revokeActiveObjectUrl();
+    setLoadStatus('Cargando vista previa…');
     bodyEl.innerHTML = `
       <div class="preview-text-wrapper">
-        <p class="preview-loading-text">Cargando contenido...</p>
+        <p class="preview-loading-text" aria-hidden="true">Cargando contenido...</p>
       </div>
     `;
 
     const reader = new FileReader();
 
     reader.onload = function (event) {
+      if (!state.isOpen || token !== loadToken) return;
       const textContent = event.target.result || '(El archivo está vacío)';
 
       const wrapper = document.createElement('div');
@@ -144,16 +161,19 @@
 
       bodyEl.innerHTML = '';
       bodyEl.appendChild(wrapper);
+      setLoadStatus('Vista previa lista.');
     };
 
     reader.onerror = function () {
+      if (!state.isOpen || token !== loadToken) return;
       bodyEl.innerHTML = `
         <div class="preview-unsupported-card">
           <p class="preview-unsupported-desc is-error">
-            No fue posible leer el archivo de texto: ${escapeHtml(file.name)}
+            No fue posible leer el archivo de texto.
           </p>
         </div>
       `;
+      setLoadStatus('No se pudo cargar la vista previa.', true);
     };
 
     reader.readAsText(file, 'utf-8');
@@ -166,6 +186,7 @@
    */
   function renderUnsupportedOffice(file, ext) {
     revokeActiveObjectUrl();
+    setLoadStatus('Este formato no tiene vista previa.');
 
     const isOffice = OFFICE_EXTENSIONS.includes(ext);
     const badgeText = isOffice ? 'Documento de Oficina' : 'Formato Binario';
@@ -220,6 +241,7 @@
     const total = state.files.length;
     const currentFile = state.files[state.currentIndex];
     const ext = getFileExtension(currentFile.name);
+    const token = ++loadToken;
 
     // Actualizar cabecera
     titleEl.textContent = currentFile.name;
@@ -235,9 +257,9 @@
 
     // Renderizar según tipo de archivo
     if (ext === 'pdf' || currentFile.type === 'application/pdf') {
-      renderPdf(currentFile);
+      renderPdf(currentFile, token);
     } else if (TEXT_EXTENSIONS.includes(ext) || (currentFile.type && currentFile.type.startsWith('text/'))) {
-      renderText(currentFile);
+      renderText(currentFile, token);
     } else {
       renderUnsupportedOffice(currentFile, ext);
     }
@@ -302,7 +324,9 @@
    */
   function closeModal() {
     state.isOpen = false;
+    loadToken++;
     revokeActiveObjectUrl();
+    if (loadStatusEl) loadStatusEl.textContent = '';
 
     if (modalEl) {
       if (window.uiDialog) window.uiDialog.close(modalEl);
@@ -333,6 +357,7 @@
     closeBtnEl = document.getElementById('btn-close-preview');
     titleEl = document.getElementById('preview-modal-title');
     subtitleEl = document.getElementById('preview-modal-subtitle');
+    loadStatusEl = document.getElementById('preview-load-status');
     bodyEl = document.getElementById('preview-body');
     prevBtnEl = document.getElementById('btn-prev-preview');
     nextBtnEl = document.getElementById('btn-next-preview');

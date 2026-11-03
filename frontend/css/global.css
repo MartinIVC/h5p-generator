@@ -139,6 +139,8 @@ body {
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+  padding-block: 6px;
+  scroll-padding-block: 6px;
 }
 
 .menu-item {
@@ -852,6 +854,13 @@ body {
   font-size: 0.8rem;
   color: var(--md-sys-color-outline);
 }
+
+.preview-load-status {
+  font-size: 0.8rem;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.preview-load-status[role="alert"] { color: var(--md-sys-color-error); }
 
 .preview-body {
   flex: 1;

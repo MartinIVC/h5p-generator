@@ -85,7 +85,7 @@
             <strong>Estás retomando un borrador.</strong>
             <span id="draft-resume-files"></span>
           </div>
-          <p class="draft-save-status" id="draft-save-status" role="status" aria-live="polite">Los borradores se guardan en este equipo; los documentos no se copian.</p>
+          <p class="draft-save-status" id="draft-save-status" role="status">Los borradores se guardan en este equipo; los documentos no se copian.</p>
         </header>
 
         <div class="upload-main-grid">
@@ -150,7 +150,7 @@
 
         <!-- Acciones del pie del panel -->
         <footer class="upload-footer-actions">
-          <div class="upload-summary-info" id="upload-summary-info" role="status" aria-live="polite" aria-atomic="true">
+          <div class="upload-summary-info" id="upload-summary-info" role="status" aria-atomic="true">
             No se han seleccionado archivos
           </div>
           <button type="button" class="btn-primary" id="btn-next-step" disabled>
@@ -309,7 +309,10 @@
 
       const courseId = state.courseId;
       const draftId = state.draftId;
-      if (draftStatus) draftStatus.textContent = 'Guardando borrador…';
+      if (draftStatus) {
+        draftStatus.setAttribute('role', 'status');
+        draftStatus.textContent = 'Guardando borrador…';
+      }
       try {
         const saved = await window.coursesManager.saveDraft({
           id: draftId,
@@ -327,9 +330,10 @@
           if (draftStatus) draftStatus.textContent = `Borrador guardado · ${new Date(saved.updatedAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}. Los documentos no se copiaron.`;
         }
       } catch (err) {
-        console.error('[upload.js] Error guardando borrador:', err);
-        if (draftStatus) draftStatus.textContent = 'No se pudo guardar el borrador.';
-        window.uiMessage?.('No se pudo guardar el borrador. Mantén esta ventana abierta y vuelve a intentarlo.', 'error');
+        if (draftStatus) {
+          draftStatus.setAttribute('role', 'alert');
+          draftStatus.textContent = 'No se pudo guardar el borrador. Mantén esta ventana abierta y vuelve a intentarlo.';
+        }
       }
     }
 
@@ -392,6 +396,7 @@
         btnClearAll.classList.add('hidden');
         btnNextStep.disabled = true;
         summaryInfo.className = 'upload-summary-info';
+        summaryInfo.setAttribute('role', 'status');
         summaryInfo.innerHTML = state.restoredFiles.length
           ? `Este borrador recuerda ${state.restoredFiles.length} documento${state.restoredFiles.length === 1 ? '' : 's'}. Selecciónalo${state.restoredFiles.length === 1 ? '' : 's'} otra vez para continuar.`
           : 'No se han seleccionado archivos';
@@ -410,10 +415,12 @@
 
       if (hasErrors) {
         summaryInfo.className = 'upload-summary-info has-error';
+        summaryInfo.setAttribute('role', 'alert');
         const errPlural = errorFiles.length === 1 ? 'archivo con formato no permitido' : 'archivos con formatos no permitidos';
         summaryInfo.innerHTML = `<strong>Formato no disponible:</strong> ${errorFiles.length} ${errPlural}. Formatos permitidos: ${SUPPORTED_FORMATS_LABEL}.`;
       } else {
         summaryInfo.className = 'upload-summary-info';
+        summaryInfo.setAttribute('role', 'status');
         const totalBytes = validFiles.reduce((acc, f) => acc + (f.size || 0), 0);
         const plural = count === 1 ? 'archivo' : 'archivos';
         summaryInfo.innerHTML = `<strong>${count}</strong> ${plural} válido${count === 1 ? '' : 's'} (${formatFileSize(totalBytes)} en total)`;
@@ -586,7 +593,16 @@
     }
 
     // El selector H5P real se integra junto con la generación; nunca dejar el paso vacío.
-    btnNextStep.addEventListener('click', () => {
+    btnNextStep.addEventListener('click', async () => {
+      if (!window.configManager) {
+        window.uiMessage?.('No se pudo comprobar la configuración de Gemini.', 'error');
+        return;
+      }
+      await window.configManager.refreshStatus();
+      if (!window.configManager.hasApiKey()) {
+        await window.configManager.requireApiKey(() => btnNextStep.click());
+        return;
+      }
       const panelUpload = document.getElementById('panel-upload');
       const panelSelector = document.getElementById('panel-selector');
       if (!panelUpload || !panelSelector) return;

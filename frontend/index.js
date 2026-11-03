@@ -2,6 +2,10 @@ const { app, BrowserWindow, ipcMain, shell, Notification, dialog } = require('el
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
+// Chromium no detecta automáticamente Libsecret en sesiones Hyprland.
+if (process.platform === 'linux' && (process.env.XDG_CURRENT_DESKTOP || '').toLowerCase().split(':').includes('hyprland')) {
+  app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
+}
 app.setName('h5p-generator');
 app.commandLine.appendSwitch('lang', 'es');
 const { academicStorage } = require(path.join(__dirname, '..', 'backend', 'storage.js'));
@@ -36,6 +40,16 @@ const createWindow = () => {
 
 let ipcRegistered = false;
 let pendingBackupImport = null;
+
+function notifyWhenInBackground(event, body) {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed() || win.isFocused() || !Notification.isSupported()) return;
+  try {
+    new Notification({ title: 'Generador H5P', body }).show();
+  } catch {
+    // El aviso visible dentro de la aplicación sigue disponible.
+  }
+}
 
 function registerIpcHandlers() {
   if (ipcRegistered) return;
@@ -83,6 +97,7 @@ function registerIpcHandlers() {
 
     const payload = academicStorage.createBackupPayload();
     fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), { encoding: 'utf-8', mode: 0o600 });
+    notifyWhenInBackground(event, 'Copia de seguridad creada.');
     return {
       canceled: false,
       filePath,
@@ -107,12 +122,13 @@ function registerIpcHandlers() {
     return { canceled: false, backupId: pendingBackupImport.id, ...summary };
   });
 
-  ipcMain.handle('academic:restoreBackup', async (_event, { backupId, strategy } = {}) => {
+  ipcMain.handle('academic:restoreBackup', async (event, { backupId, strategy } = {}) => {
     if (!pendingBackupImport || backupId !== pendingBackupImport.id) {
       throw new Error('La copia debe seleccionarse y revisarse antes de restaurarla.');
     }
     const result = academicStorage.restoreBackupPayload(pendingBackupImport.payload, strategy);
     pendingBackupImport = null;
+    notifyWhenInBackground(event, 'Copia de seguridad restaurada.');
     return result;
   });
 
@@ -165,6 +181,28 @@ function registerIpcHandlers() {
     return academicStorage.saveApiKey(apiKey);
   });
 
+  ipcMain.handle('llm:verify-key', async (_event, candidate) => {
+    if (candidate != null && (typeof candidate !== 'string' || candidate.length > 1024)) {
+      return { status: 'error' };
+    }
+    const key = candidate == null ? academicStorage.getApiKey() : candidate.trim();
+    if (!key) return { status: 'missing' };
+    try {
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({ contents: [{ parts: [{ text: 'Responde OK.' }] }], generationConfig: { maxOutputTokens: 8 } }),
+        signal: AbortSignal.timeout(15000)
+      });
+      if (response.ok) return { status: 'valid' };
+      if (response.status === 400 || response.status === 401 || response.status === 403) return { status: 'invalid' };
+      if (response.status === 429) return { status: 'quota' };
+      return { status: 'error' };
+    } catch {
+      return { status: 'error' };
+    }
+  });
+
   ipcMain.handle('academic:removeApiKey', async () => {
     return academicStorage.removeApiKey();
   });
@@ -200,17 +238,3 @@ module.exports = {
   registerIpcHandlers,
   createWindow
 };
-
-// =============================================================================
-// NOTIFICACIONES DEL SISTEMA
-// =============================================================================
-ipcMain.handle('show-notification', (event, { title, body }) => {
-  if (Notification.isSupported()) {
-    new Notification({
-      title: title || 'H5P RAG Generator',
-      body: body || ''
-    }).show();
-    return { success: true };
-  }
-  return { success: false, error: 'Notificaciones no soportadas' };
-});

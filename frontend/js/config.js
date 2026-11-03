@@ -105,17 +105,12 @@
   // =========================================================================
 
   /**
-   * Helper para invocar la API segura de Electron con fallback a localStorage
+   * Helper para invocar la API segura de Electron.
    */
   const api = {
     async getApiKeyStatus() {
       if (window.academicAPI && typeof window.academicAPI.getApiKeyStatus === 'function') {
         return window.academicAPI.getApiKeyStatus();
-      }
-      const raw = localStorage.getItem('h5p_gemini_api_key');
-      if (raw && raw.trim()) {
-        const masked = raw.length > 8 ? `${raw.slice(0, 4)}••••••••••••${raw.slice(-4)}` : '••••••••';
-        return { hasKey: true, maskedKey: masked };
       }
       return { hasKey: false, maskedKey: '' };
     },
@@ -123,9 +118,7 @@
       if (window.academicAPI && typeof window.academicAPI.saveApiKey === 'function') {
         return window.academicAPI.saveApiKey(key);
       }
-      localStorage.setItem('h5p_gemini_api_key', key.trim());
-      const masked = key.length > 8 ? `${key.slice(0, 4)}••••••••••••${key.slice(-4)}` : '••••••••';
-      return { hasKey: true, maskedKey: masked };
+      throw new Error('El almacenamiento seguro solo está disponible en la aplicación de escritorio.');
     },
     async removeApiKey() {
       if (window.academicAPI && typeof window.academicAPI.removeApiKey === 'function') {
@@ -331,6 +324,7 @@
             <code class="api-key-masked">${state.maskedKey}</code>
           </div>
           <div class="api-key-card-actions">
+            <button type="button" class="btn-secondary" id="btn-verify-api-key">Probar clave</button>
             <button type="button" class="btn-secondary" id="btn-change-api-key">
               Cambiar Clave
             </button>
@@ -378,6 +372,7 @@
             </p>
           </div>
           <div class="api-key-actions-row">
+            <button type="button" class="btn-secondary" id="btn-verify-api-key">Probar clave</button>
             ${state.hasKey ? `
               <button type="button" class="btn-secondary" id="btn-cancel-edit-key">
                 Cancelar
@@ -402,6 +397,7 @@
           </p>
         </div>
         ${keyContentHTML}
+        <p id="api-key-verification" role="status" aria-live="polite"></p>
       </section>
     `;
   }
@@ -533,8 +529,7 @@
         if (result.canceled) return;
         if (backupStatus) backupStatus.textContent = `Copia creada con ${formatBackupCounts(result.summary.counts)} Guardada en: ${result.filePath}`;
       } catch (err) {
-        if (backupStatus) backupStatus.textContent = `No se pudo crear la copia: ${err.message}`;
-        window.uiMessage?.(`No se pudo crear la copia: ${err.message}`, 'error');
+        if (backupStatus) backupStatus.textContent = 'No se pudo crear la copia de seguridad. Inténtalo de nuevo.';
       } finally {
         button.disabled = false;
         button.textContent = 'Crear copia';
@@ -556,8 +551,7 @@
         replaceConfirm.classList.add('hidden');
         document.getElementById('btn-merge-backup')?.focus();
       } catch (err) {
-        if (backupStatus) backupStatus.textContent = `No se pudo leer la copia: ${err.message}`;
-        window.uiMessage?.(`No se pudo leer la copia: ${err.message}`, 'error');
+        if (backupStatus) backupStatus.textContent = 'No se pudo leer la copia de seguridad. Comprueba el archivo e inténtalo de nuevo.';
       } finally {
         button.disabled = false;
         button.textContent = 'Restaurar copia';
@@ -578,8 +572,8 @@
         window.uiMessage?.('Copia restaurada. Se actualizará la biblioteca.', 'info');
         await window.coursesManager?.navigateToHome?.();
       } catch (err) {
-        if (backupStatus) backupStatus.textContent = `No se pudo restaurar la copia: ${err.message}`;
-        window.uiMessage?.(`No se pudo restaurar la copia: ${err.message}`, 'error');
+        if (backupStatus) backupStatus.textContent = 'No se pudo restaurar la copia de seguridad. Inténtalo de nuevo.';
+        window.uiMessage?.('No se pudo restaurar la copia de seguridad. Inténtalo de nuevo.', 'error');
       } finally {
         button.disabled = false;
         button.textContent = previousText;
@@ -669,6 +663,30 @@
     // Toggle visibilidad de clave
     const btnTogglePwd = document.getElementById('btn-toggle-key-visibility');
     const inputKey = document.getElementById('input-gemini-key');
+    const verifyButton = document.getElementById('btn-verify-api-key');
+    const verification = document.getElementById('api-key-verification');
+    if (verifyButton && verification) {
+      verifyButton.addEventListener('click', async () => {
+        const candidate = inputKey ? inputKey.value.trim() : null;
+        if (inputKey && !candidate) {
+          verification.textContent = 'Ingresa una clave para probarla.';
+          return;
+        }
+        verifyButton.disabled = true;
+        verification.textContent = 'Comprobando clave…';
+        try {
+          const result = await window.academicAPI?.verifyApiKey?.(candidate);
+          const messages = { valid: 'Clave válida.', invalid: 'Clave inválida o sin permisos.', quota: 'Cuota agotada o límite de solicitudes alcanzado.', missing: 'No hay una clave guardada.', error: 'No se pudo comprobar la clave. Revisa la conexión e inténtalo de nuevo.' };
+          verification.textContent = messages[result?.status] || messages.error;
+          verification.className = result?.status === 'valid' ? 'api-key-verification-success' : 'api-key-verification-error';
+        } catch {
+          verification.textContent = 'No se pudo comprobar la clave. Revisa la conexión e inténtalo de nuevo.';
+        } finally {
+          verifyButton.disabled = false;
+        }
+      });
+      inputKey?.addEventListener('input', () => { verification.textContent = ''; });
+    }
     if (btnTogglePwd && inputKey) {
       btnTogglePwd.addEventListener('click', () => {
         const isPassword = inputKey.type === 'password';
@@ -712,12 +730,13 @@
 
           const cb = state.onSuccessCallback;
           closeModal();
+          window.uiMessage?.('Clave de Gemini guardada.', 'success');
 
           if (typeof cb === 'function') {
             cb();
           }
         } catch (err) {
-          window.uiMessage?.(`No se pudo guardar la clave API: ${err.message}`, 'error');
+          window.uiMessage?.('No se pudo guardar la clave API de forma segura.', 'error');
         }
       });
     }

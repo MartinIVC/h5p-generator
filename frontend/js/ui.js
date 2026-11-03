@@ -171,16 +171,20 @@
 
   let messageRegion = null;
   window.uiMessage = function (message, type = 'info') {
+    if (typeof message !== 'string' || !message.trim()) return;
     if (!messageRegion) {
       messageRegion = document.createElement('div');
       messageRegion.className = 'ui-message-region';
-      messageRegion.setAttribute('aria-live', 'polite');
-      messageRegion.setAttribute('aria-atomic', 'false');
       document.body.appendChild(messageRegion);
     }
 
+    // Un mismo resultado no debe acumular avisos ni anunciarse varias veces.
+    if (Array.from(messageRegion.children).some(item => item.textContent === message && item.dataset.type === type)) return;
+    while (messageRegion.children.length >= 3) messageRegion.firstElementChild.remove();
+
     const toast = document.createElement('div');
     toast.className = `ui-message ui-message-${type}`;
+    toast.dataset.type = type;
     toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
     toast.textContent = message;
     messageRegion.appendChild(toast);
@@ -188,6 +192,6 @@
     window.setTimeout(() => {
       toast.classList.add('is-leaving');
       window.setTimeout(() => toast.remove(), 180);
-    }, 6500);
+    }, type === 'error' ? 10000 : 6500);
   };
 })();
