@@ -17,6 +17,7 @@ function setup(opts = {}) {
   const storage = { getApiKey: () => 'clave-privada', getCourseById: () => ({ id: 'curso' }), saveProject: project => { projects.push(project); } };
   const generation = createH5PGeneration({
     inspection: { getDocument: (s, id) => s === owner && id === documentId ? doc : undefined },
+    WorkerClass: opts.WorkerClass,
     storage: { ...storage, ...opts.storage }, dialog: opts.dialog || {}, BrowserWindow: { fromWebContents: () => ({}) },
     app: { getPath: () => os.tmpdir() }, generate: opts.generate || (async () => questions)
   });
@@ -127,4 +128,20 @@ test('errores de escritura no registran proyectos ni exponen el error', async ()
   const generated = await generation.generateH5P(request, { sender: owner });
   const result = await generation.saveH5PFile({ packageId: generated.packageId, suggestedName: 'actividad' }, { sender: owner });
   assert.equal(result.code, 'SAVE_FAILED'); assert.equal(projects.length, 0); assert.doesNotMatch(JSON.stringify(result), /carpeta-inexistente/);
+});
+
+test('IPC diferencia fallos de red, servicio, timeout y empaquetado sin revelar excepciones', async () => {
+  for (const code of ['NETWORK_ERROR', 'SERVICE_UNAVAILABLE', 'API_REQUEST_FAILED', 'GENERATION_TIMEOUT']) {
+    const { generation, owner } = setup({ generate: async () => { throw new Error(code); } });
+    const result = await generation.generateH5P(request, { sender: owner });
+    assert.equal(result.code, code); assert.ok(result.message);
+  }
+  class FailedWorker extends EventEmitter {
+    constructor() { super(); queueMicrotask(() => this.emit('error', new Error('ruta y contenido privados'))); }
+    async terminate() {}
+  }
+  const { generation, owner } = setup({ WorkerClass: FailedWorker });
+  const result = await generation.generateH5P(request, { sender: owner });
+  assert.equal(result.code, 'PACKAGE_FAILED');
+  assert.doesNotMatch(JSON.stringify(result), /privados|conexión/);
 });

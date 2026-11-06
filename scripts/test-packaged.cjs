@@ -4,7 +4,9 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 (async () => {
-  const source = path.resolve(__dirname, '../dist', `h5p-generator-linux-${process.arch}`);
+  const outputName = process.argv[2] || `h5p-generator-linux-${process.arch}`;
+  if (!/^h5p-generator-linux-[a-z0-9-]+$/.test(outputName)) throw new Error('Nombre de distribución inválido.');
+  const source = path.resolve(__dirname, '../dist', outputName);
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'h5p-packaged-'));
   try {
     const target = path.join(temporary, 'application');

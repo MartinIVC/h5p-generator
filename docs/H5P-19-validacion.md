@@ -9,7 +9,7 @@ Estado local comprobado el 2026-11-06 en Linux x64. Alcance: puente IPC nativo p
 - Inspección y ensamblado en workers incluidos en la distribución. Documentos y paquetes identificados mediante UUID asociados a una ventana, sin texto fuente ni credenciales en las respuestas.
 - Errores controlados con mensajes fijos; guardado mediante diálogo nativo, escritura temporal y registro posterior del proyecto. Cancelar permite reintentar.
 - Distribución Linux con runtime Electron, backend, dependencias del lockfile y plantilla. No requiere instalar Node.js en el equipo de destino. Se conserva la estructura de directorios, sin ASAR, para los workers y módulos nativos.
-- 34 pruebas backend aprobadas: contratos, extracción, límites, limpieza de sesiones, cliente Gemini, contenido del ZIP, guardado y errores, además de las regresiones existentes.
+- 39 pruebas backend aprobadas: contratos, extracción, límites, limpieza de sesiones, cliente Gemini, contenido del ZIP, guardado y errores, además de las regresiones existentes.
 - Integración en Electron empaquetado aprobada: renderer → preload → main → workers → archivo → registro. Incluye prompt vacío, red caída, cuota, documento vacío, cancelación, escritura fallida, reintento y rechazo entre ventanas/orígenes.
 - Interfaz real ejercitada a 840 × 600: estado vacío, inspección, foco al entrar al paso 2, Tab entre campos, error al generar, reintento, foco en guardar, cancelación y éxito.
 - Sin sockets TCP LISTEN de los procesos de la aplicación al inicio y al final del recorrido (inspección de `/proc`). No significa ausencia de conexiones HTTPS salientes a Gemini.
@@ -38,3 +38,11 @@ Dependencias: una clave Gemini válida con cuota, conexión y un llavero disponi
 El usuario ya mostró un paquete anterior ejecutándose en Lumi con navegación y puntuación. La corrección posterior del orden/prefijos está verificada en el ZIP generado; su nueva comprobación visual en Lumi queda pendiente. La validación en Moodle corresponde a H5P-17, no bloquea por sí sola el puente de H5P-19. Selector de formatos, nuevas versiones de plantillas y edición de preguntas corresponden a H5P-7, H5P-15 y H5P-30.
 
 La integración a `develop`, publicación remota y actualización del estado en Jira no forman parte de esta validación local. El trabajo permanece en la rama de la tarea.
+
+## Corrección de fallos intermitentes
+
+El usuario confirmó generación sin instrucciones en el ejecutable, y posteriormente informó dos errores genéricos antes de una generación exitosa. Las capturas no permiten recuperar la causa exacta de esos errores anteriores.
+
+Se añadieron reintentos limitados para fallos de transporte y HTTP transitorios y mensajes específicos para distinguir conexión, disponibilidad, solicitud rechazada, timeout y ensamblado. Las pruebas simulan dos errores seguidos de éxito en una sola invocación; también cubren agotamiento, cancelación y errores que no deben reintentarse. Se mantiene pendiente confirmar el comportamiento con Gemini real usando el nuevo ejecutable.
+
+La distribución corregida se genera en `dist/h5p-generator-linux-x64-h5p19-fix` para conservar intacta la distribución que el usuario tenía abierta.

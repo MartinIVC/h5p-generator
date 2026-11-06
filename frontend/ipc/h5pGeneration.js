@@ -12,7 +12,13 @@ const messages = {
   API_KEY_INVALID: 'La clave de Gemini no es válida o no tiene acceso al modelo.',
   QUOTA: 'Gemini ha alcanzado el límite de solicitudes. Inténtalo más tarde.',
   INVALID_RESPONSE: 'Gemini no devolvió preguntas válidas. Inténtalo nuevamente.',
-  GENERATION_FAILED: 'No se pudo generar el cuestionario. Comprueba la conexión e inténtalo nuevamente.',
+  GENERATION_FAILED: 'No se pudo completar la generación. Inténtalo nuevamente.',
+  NETWORK_ERROR: 'No se pudo conectar con Gemini después de tres intentos. Comprueba tu conexión.',
+  SERVICE_UNAVAILABLE: 'Gemini sigue temporalmente no disponible después de tres intentos. Inténtalo más tarde.',
+  API_REQUEST_FAILED: 'Gemini rechazó la solicitud. Revisa la configuración y el acceso al modelo.',
+  GENERATION_TIMEOUT: 'Gemini superó el tiempo de espera de 90 segundos. Inténtalo más tarde.',
+  GENERATION_CANCELLED: 'La generación se canceló al salir de la actividad.',
+  PACKAGE_FAILED: 'Se generaron las preguntas, pero no se pudo preparar el archivo H5P.',
   NOT_FOUND: 'El cuestionario ya no está disponible. Vuelve a generarlo.',
   INVALID_COURSE: 'El ramo seleccionado ya no está disponible.',
   UNSUPPORTED_TYPE: 'El tipo de actividad no está disponible.',
@@ -68,13 +74,15 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
       if (!key) return fail('MISSING_KEY');
       const questions = await generate(source, key, request.instructions, request.questionCount, { signal: AbortSignal.any([session.abort.signal, AbortSignal.timeout(90000)]) });
       if (session.closed || sender.isDestroyed() || request.documentIds.some((id, i) => inspection.getDocument(sender, id) !== documents[i])) return fail('DOCUMENT_NOT_FOUND');
-      const bytes = await buildPackage(questions, session);
+      let bytes;
+      try { bytes = await buildPackage(questions, session); }
+      catch { return fail('PACKAGE_FAILED'); }
       if (session.closed || sender.isDestroyed() || request.documentIds.some((id, i) => inspection.getDocument(sender, id) !== documents[i])) return fail('DOCUMENT_NOT_FOUND');
       const packageId = randomUUID();
       session.package = { id: packageId, bytes };
       return { status: 'ok', kind: 'package', packageId, questionCount: questions.length };
     } catch (error) {
-      const code = ['API_KEY_INVALID', 'QUOTA', 'INVALID_RESPONSE'].includes(error?.message) ? error.message : 'GENERATION_FAILED';
+      const code = ['API_KEY_INVALID', 'QUOTA', 'INVALID_RESPONSE', 'NETWORK_ERROR', 'SERVICE_UNAVAILABLE', 'API_REQUEST_FAILED', 'GENERATION_TIMEOUT', 'GENERATION_CANCELLED'].includes(error?.message) ? error.message : 'GENERATION_FAILED';
       return fail(code);
     } finally { session.busy = false; }
   }

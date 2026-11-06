@@ -5,8 +5,10 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 (async () => {
+  const outputName = process.argv[2] || `h5p-generator-linux-${process.arch}`;
+  if (!/^h5p-generator-linux-[a-z0-9-]+$/.test(outputName)) throw new Error('Nombre de distribución inválido.');
   if (process.platform !== 'linux') throw new Error('Este empaquetado solo está verificado para Linux.');
-  const output = path.join(root, 'dist', `h5p-generator-linux-${process.arch}`);
+  const output = path.join(root, 'dist', outputName);
   await fs.rm(output, { recursive: true, force: true });
   await fs.cp(path.join(root, 'frontend/node_modules/electron/dist'), output, { recursive: true });
   await fs.rm(path.join(output, 'resources/default_app.asar'), { force: true });
