@@ -728,7 +728,7 @@
           }
           packageId = result.packageId;
           saveButton.classList.remove('hidden');
-          showStatus(`Cuestionario preparado con ${result.questionCount} preguntas. Puedes guardarlo.`);
+          showStatus(`Cuestionario preparado con ${result.questionCount} preguntas. Puedes guardarlo y revisarlo en Lumi. Comprueba las respuestas y explicaciones antes de usarlo con estudiantes.`);
           saveButton.focus();
         } catch { showStatus('No se pudo generar el cuestionario. Inténtalo nuevamente.', true); }
         finally { generateButton.disabled = false; }

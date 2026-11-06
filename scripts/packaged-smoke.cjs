@@ -16,7 +16,7 @@ let dialogMode = 'cancel';
 let fetchCalls = 0;
 let transientFailures = 0;
 let invalidResponses = 0;
-const questions = [{ pregunta: '¿Qué conserva la integridad?', opciones: ['A) Exactitud', 'B) Publicidad', 'C) Velocidad', 'D) Color'], respuestaCorrecta: 'A) Exactitud' }];
+const questions = [{ pregunta: '¿Qué conserva la integridad?', opciones: ['A) Exactitud', 'B) Publicidad', 'C) Velocidad', 'D) Color'], respuestaCorrecta: 'A) Exactitud', retroalimentacion: 'La integridad protege la exactitud de la información.' }];
 global.fetch = async (url, options) => {
   assert.match(url, /^https:\/\/generativelanguage.googleapis.com\//);
   assert.equal(options.headers['x-goog-api-key'], 'synthetic-test-key');
@@ -26,7 +26,7 @@ global.fetch = async (url, options) => {
   if (networkMode === 'quota') return { ok: false, status: 429 };
   const schema = JSON.parse(options.body).generationConfig.responseJsonSchema;
   const count = schema?.minItems || 1;
-  const values = Array.from({ length: networkMode === 'invalid' && invalidResponses++ === 0 ? count - 1 : count }, (_, i) => ({ ...questions[0], pregunta: `Pregunta ${i + 1}` }));
+  const values = Array.from({ length: networkMode === 'invalid' && invalidResponses++ === 0 ? count - 1 : count }, (_, i) => ({ ...questions[0], pregunta: `Pregunta ${i + 1}`, retroalimentacion: `${questions[0].retroalimentacion} Pregunta ${i + 1}.` }));
   return { ok: true, json: async () => ({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(values) }] } }] }) };
 };
 dialog.showSaveDialog = async () => dialogMode === 'cancel' ? { canceled: true } :
@@ -102,6 +102,7 @@ async function run() {
   assert.equal(content.questions[0].params.behaviour.randomAnswers, false);
   assert.equal(content.questions[0].params.answers[0].text, '<div>Exactitud</div>');
   assert.equal(content.questions[0].params.answers[0].correct, true);
+  assert.deepEqual(content.questions[0].params.overallFeedback, [{ from: 0, to: 100, feedback: `${questions[0].retroalimentacion} Pregunta 1.` }]);
   assert.equal((await invoke('getProjects', 'unassigned')).length, 1);
   networkMode = 'invalid';
   const beforeCorrection = fetchCalls;
@@ -112,9 +113,10 @@ async function run() {
   const recoveredZip = await JSZip.loadAsync(fs.readFileSync(path.join(directory, 'output.h5p')));
   const recoveredContent = JSON.parse(await recoveredZip.file('content/content.json').async('string'));
   assert.equal(recoveredContent.questions.length, 20);
-  for (const question of recoveredContent.questions) {
+  for (const [i, question] of recoveredContent.questions.entries()) {
     assert.equal(question.params.answers.length, 4);
     assert.equal(question.params.answers.filter(answer => answer.correct).length, 1);
+    assert.deepEqual(question.params.overallFeedback, [{ from: 0, to: 100, feedback: `${questions[0].retroalimentacion} Pregunta ${i + 1}.` }]);
   }
   networkMode = 'ok';
   assert.equal((await invoke('releaseDocument', inspected.documentId)).status, 'ok');
@@ -158,6 +160,7 @@ async function run() {
   networkMode = 'ok';
   await evaluate('document.getElementById("btn-generate-h5p").click()');
   await waitFor('!document.getElementById("btn-save-h5p").classList.contains("hidden")');
+  assert.match(await evaluate('document.getElementById("generation-status").textContent'), /Comprueba las respuestas y explicaciones/);
   assert.equal(await evaluate('document.activeElement.id'), 'btn-save-h5p');
   dialogMode = 'cancel';
   await evaluate('document.getElementById("btn-save-h5p").click()');

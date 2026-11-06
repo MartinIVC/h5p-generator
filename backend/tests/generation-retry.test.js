@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { generateQuestionsFromChunk } = require('../llmClient');
-const questions = [{ pregunta: 'Pregunta', opciones: ['Uno', 'Dos', 'Tres', 'Cuatro'], respuestaCorrecta: 'Dos' }];
+const questions = [{ pregunta: 'Pregunta', opciones: ['Uno', 'Dos', 'Tres', 'Cuatro'], respuestaCorrecta: 'Dos', retroalimentacion: 'Explicación de la respuesta.' }];
 const success = () => ({ ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(questions) }] } }] }) });
 const generate = options => generateQuestionsFromChunk('texto sintético', 'clave-sintética', '', 1, options);
 test('recupera dos fallos transitorios en una sola generación, con espera creciente', async () => {

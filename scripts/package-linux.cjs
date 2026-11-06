@@ -21,7 +21,7 @@ const root = path.resolve(__dirname, '..');
   for (const entry of ['index.js', 'index.html', 'preload.js', 'ipc', 'js', 'css', 'assets']) {
     await fs.cp(path.join(root, 'frontend', entry), path.join(app, 'frontend', entry), { recursive: true });
   }
-  for (const entry of ['storage.js', 'chunker.js', 'llmClient.js', 'inspectionWorker.js', 'h5pPackageWorker.js', 'templates', 'package.json', 'package-lock.json']) {
+  for (const entry of ['storage.js', 'chunker.js', 'llmClient.js', 'prompts.js', 'inspectionWorker.js', 'h5pPackageWorker.js', 'templates', 'package.json', 'package-lock.json']) {
     await fs.cp(path.join(root, 'backend', entry), path.join(app, 'backend', entry), { recursive: true });
   }
   execFileSync('npm', ['ci', '--omit=dev', '--no-audit', '--no-fund'], { cwd: path.join(app, 'backend'), stdio: 'inherit' });
