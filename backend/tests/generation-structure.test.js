@@ -14,6 +14,9 @@ const invalids = [
   [[{ ...one, pregunta: '' }, ...twenty.slice(1)], 'QUESTION'],
   [[{ ...one, retroalimentacion: undefined }, ...twenty.slice(1)], 'FEEDBACK'],
   [[{ ...one, retroalimentacion: '   ' }, ...twenty.slice(1)], 'FEEDBACK'],
+  [[{ ...one, retroalimentacion: '' }, ...twenty.slice(1)], 'FEEDBACK'],
+  [[{ ...one, retroalimentacion: null }, ...twenty.slice(1)], 'FEEDBACK'],
+  [[{ ...one, retroalimentacion: { texto: 'No es una cadena' } }, ...twenty.slice(1)], 'FEEDBACK'],
   [[{ ...one, retroalimentacion: 42 }, ...twenty.slice(1)], 'FEEDBACK'],
   [[{ ...one, retroalimentacion: 'x'.repeat(2001) }, ...twenty.slice(1)], 'FEEDBACK'],
   [{ preguntas: twenty }, 'STRUCTURE']
@@ -91,6 +94,11 @@ test('valida los límites y conserva la retroalimentación sin alterar su conten
   const feedback = 'x'.repeat(2000);
   assert.equal(validateQuestions([{ ...one, retroalimentacion: feedback }], 1)[0].retroalimentacion, feedback);
   assert.equal(validateQuestions([{ ...one, retroalimentacion: '  Explicación válida.  ' }], 1)[0].retroalimentacion, 'Explicación válida.');
+});
+test('impide empaquetar cantidades fuera del contrato aunque coincidan con el array', () => {
+  for (const count of [0, 21]) {
+    assert.throws(() => validateQuestions(Array.from({ length: count }, () => one), count), { message: 'INVALID_RESPONSE', reason: 'COUNT' });
+  }
 });
 test('rechaza JSON envuelto en Markdown sin extraerlo ni reparar la respuesta', async () => {
   let calls = 0;

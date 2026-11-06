@@ -32,3 +32,9 @@ Antes de la versión v4 se observó otro error: una pregunta sobre resúmenes cr
 | CA-5: análisis JSON | Se usa `JSON.parse` sin extraer bloques Markdown mediante expresiones regulares. Hay pruebas de rechazo y corrección limitada. |
 
 Antes de cerrar el ticket debe resolverse CA-4 y revisarse la aceptación de la calidad pedagógica observada. La validación de Moodle y la edición manual de preguntas pertenecen a tareas separadas.
+
+## Auditoría posterior de las cuatro entregas
+
+Se revisaron el prompt, la validación, el empaquetador y el recorrido preload/IPC/generación/guardado. Se corrigió el límite del validador compartido: ahora rechaza cantidades fuera de 1–20 incluso cuando coinciden con el array recibido. Se ampliaron los casos de retroalimentación inválida y se hizo visible en la interfaz la necesidad de comprobar respuestas y explicaciones en Lumi antes de usarlas con estudiantes.
+
+La suite actual tiene 51 pruebas aprobadas. La distribución `h5p-generator-linux-h5p14-auditoria` incorpora estas correcciones. Los hallazgos de calidad de la evaluación real permanecen documentados: el aviso al docente no demuestra que hayan desaparecido. El cierre del ticket sigue condicionado a resolver CA-4 y la aceptación pedagógica; no se ha declarado que todos los criterios estén satisfechos.

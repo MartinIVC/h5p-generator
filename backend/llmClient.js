@@ -41,6 +41,7 @@ function questionSchema(count) {
   };
 }
 function validateQuestions(value, count) {
+  if (!Number.isInteger(count) || count < 1 || count > 20) throw invalidResponse('COUNT');
   if (!Array.isArray(value)) throw invalidResponse('STRUCTURE');
   if (value.length !== count) throw invalidResponse('COUNT');
   return value.map(item => {

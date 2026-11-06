@@ -160,6 +160,7 @@ async function run() {
   networkMode = 'ok';
   await evaluate('document.getElementById("btn-generate-h5p").click()');
   await waitFor('!document.getElementById("btn-save-h5p").classList.contains("hidden")');
+  assert.match(await evaluate('document.getElementById("generation-status").textContent'), /Comprueba las respuestas y explicaciones/);
   assert.equal(await evaluate('document.activeElement.id'), 'btn-save-h5p');
   dialogMode = 'cancel';
   await evaluate('document.getElementById("btn-save-h5p").click()');
