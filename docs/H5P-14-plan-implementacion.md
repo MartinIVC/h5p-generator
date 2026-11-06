@@ -2,7 +2,7 @@
 
 Fecha: 2026-11-06  
 Ticket: [H5P-14 — Diseñar System Prompts y validación de esquema JSON](https://h5p-rag-generator.atlassian.net/browse/H5P-14)  
-Estado: entregas 1 a 4 realizadas y evidencia registrada en [H5P-14-validacion.md](H5P-14-validacion.md). La aceptación de la calidad pedagógica observada sigue pendiente para el cierre. CA-4 fue ajustado en Jira con autorización del usuario para conservar REST.
+Estado: entregas 1 a 4 realizadas y evidencia registrada en [H5P-14-validacion.md](H5P-14-validacion.md). Ticket cerrado en Jira con autorización del usuario y aceptación de la revisión docente como condición de uso. Las limitaciones pedagógicas observadas siguen documentadas. CA-4 fue ajustado en Jira con autorización del usuario para conservar REST.
 
 ## Objetivo
 
