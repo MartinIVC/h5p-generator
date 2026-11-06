@@ -12,7 +12,7 @@
 - `frontend/css/`: estilos globales, del estudio y temas claro/oscuro.
 - `backend/storage.js`: persistencia JSON de ramos, proyectos, borradores, papelera y configuración bajo `app.getPath('userData')` al correr en Electron; usa `../data/academic_store.json` como ruta fuera de Electron.
 - `backend/chunker.js`: extracción y limpieza de texto desde documentos.
-- `backend/prompts.js`: instrucciones pedagógicas versionadas y separación del material y directrices del docente para la petición Gemini. La explicación formativa se solicita y valida, pero todavía no se exporta al H5P (H5P-14 entrega 3).
+- `backend/prompts.js`: instrucciones pedagógicas versionadas y separación del material y directrices del docente para la petición Gemini. La explicación formativa se solicita y valida antes de exportarse al H5P.
 - `backend/llmClient.js`: cliente de Google Generative AI para generar preguntas desde texto.
 
 ## Comandos
@@ -54,7 +54,7 @@ La inspección devuelve `{ status: 'ok', documentId, name, size }` sin enviar el
 
 El cliente reintenta hasta tres intentos totales ante fallos de transporte o HTTP 408/500/502/503/504, con esperas de 1 y 2 segundos más variación aleatoria. Solicitudes y esperas comparten un presupuesto de 90 segundos y la señal de cancelación de la ventana. Solicita `responseJsonSchema` con cantidad exacta de preguntas, cuatro opciones y una explicación formativa obligatoria. Una respuesta inválida puede producir una única regeneración correctiva dentro del mismo máximo global de tres solicitudes y 90 segundos. No reintenta cuota, autenticación ni bloqueos de contenido. No se registran cuerpos de error del proveedor. `INVALID_RESPONSE` puede incluir `reason` de una lista fija (`COUNT`, `OPTIONS`, `DUPLICATE_OPTIONS`, `CORRECT_ANSWER`, `FEEDBACK`, `JSON`, `STRUCTURE`, `QUESTION`, `INCOMPLETE`, `BLOCKED`, `EMPTY`, `TOO_LARGE`) y un mensaje fijo; nunca contiene preguntas ni respuestas del modelo.
 
-La generación devuelve `{ status: 'ok', kind: 'package', packageId, questionCount }`. El guardado devuelve `{ status: 'ok', fileName, projectSaved }` o `{ status: 'cancelled' }`; `projectSaved: false` significa que el archivo se guardó pero falló el registro. El paquete y los UUID pertenecen a la ventana y se liberan al navegar o cerrarla. El cliente valida el JSON, cuatro opciones únicas, una respuesta correcta y una explicación no vacía de hasta 2000 caracteres antes de empaquetar. La explicación se descarta al armar el H5P hasta implementar la entrega 3.
+La generación devuelve `{ status: 'ok', kind: 'package', packageId, questionCount }`. El guardado devuelve `{ status: 'ok', fileName, projectSaved }` o `{ status: 'cancelled' }`; `projectSaved: false` significa que el archivo se guardó pero falló el registro. El paquete y los UUID pertenecen a la ventana y se liberan al navegar o cerrarla. El cliente valida el JSON, cuatro opciones únicas, una respuesta correcta y una explicación no vacía de hasta 2000 caracteres antes de empaquetar. El worker escapa la explicación y la incorpora al `overallFeedback` de cada MultiChoice para todos los puntajes. Queda pendiente verificar su visualización en Lumi con un archivo nuevo.
 
 ## Mantenimiento de esta memoria
 

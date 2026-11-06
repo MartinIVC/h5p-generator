@@ -2,7 +2,7 @@
 
 Fecha: 2026-11-06  
 Ticket: [H5P-14 — Diseñar System Prompts y validación de esquema JSON](https://h5p-rag-generator.atlassian.net/browse/H5P-14)  
-Estado: entregas 1 y 2 implementadas; entregas 3 y 4 pendientes. La decisión del CA-4 sigue pendiente.
+Estado: entregas 1 a 3 implementadas; entrega 4 pendiente. La visualización en Lumi y la decisión del CA-4 siguen pendientes de verificación y acuerdo, respectivamente.
 
 ## Objetivo
 
@@ -55,19 +55,19 @@ El prompt conserva las instrucciones del docente, incluye el material completo a
 
 ### Resultado verificable
 
-Se rechazan respuestas incompletas o inconsistentes sin inventar contenido ni filtrar documentos o claves. El campo `retroalimentacion` es obligatorio, se valida como texto no vacío de hasta 2000 caracteres y se conserva en el resultado interno. Su exportación queda para la entrega 3. La decisión del CA-4 sigue pendiente de acuerdo; la implementación conserva REST con `responseJsonSchema`.
+Se rechazan respuestas incompletas o inconsistentes sin inventar contenido ni filtrar documentos o claves. El campo `retroalimentacion` es obligatorio, se valida como texto no vacío de hasta 2000 caracteres y se conserva en el resultado interno. La decisión del CA-4 sigue pendiente de acuerdo; la implementación conserva REST con `responseJsonSchema`.
 
 ## Entrega 3 — Conservar la retroalimentación hasta el H5P
 
 ### Trabajo
 
-- Adaptar `backend/h5pPackageWorker.js` para trasladar la explicación al cuestionario y mostrarla después de comprobar la respuesta. Actualmente esos campos se exportan vacíos.
+- Adaptar `backend/h5pPackageWorker.js` para trasladar la explicación al cuestionario y mostrarla después de comprobar la respuesta.
 - Incluir los nuevos módulos en el empaquetado Linux.
 - Mantener el contrato IPC existente.
 
 ### Resultado verificable
 
-La explicación generada llega al archivo `.h5p` y puede verse en Lumi. La mejora pedagógica queda disponible para el docente y el estudiante.
+La explicación generada se incluye en la retroalimentación general de cada pregunta, para respuestas correctas e incorrectas. La presencia en el archivo se verifica con datos simulados; queda pendiente comprobar visualmente un archivo nuevo en Lumi.
 
 ## Entrega 4 — Verificación y evidencia de cierre
 

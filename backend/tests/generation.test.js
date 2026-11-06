@@ -9,7 +9,7 @@ const JSZip = require('jszip');
 const { createH5PGeneration } = require('../../frontend/ipc/h5pGeneration');
 const { generateQuestionsFromChunk, validateQuestions } = require('../llmClient');
 const documentId = '01234567-89ab-4cde-8fab-0123456789ab';
-const questions = [{ pregunta: '¿Qué es <H5P>?', opciones: ['Una actividad', 'Otra', 'Tercera', 'Cuarta'], respuestaCorrecta: 'Una actividad', retroalimentacion: 'Una actividad interactiva permite evaluar lo aprendido.' }];
+const questions = [{ pregunta: '¿Qué es <H5P>?', opciones: ['Una actividad', 'Otra', 'Tercera', 'Cuarta'], respuestaCorrecta: 'Una actividad', retroalimentacion: 'Una actividad <interactiva> & formativa; @score y @total son texto.' }];
 const request = { documentIds: [documentId], activityType: 'multiple-choice', questionCount: 1, instructions: '' };
 const sender = () => Object.assign(new EventEmitter(), { isDestroyed: () => false });
 function setup(opts = {}) {
@@ -37,6 +37,7 @@ test('genera y guarda H5P con bibliotecas, respuestas válidas y registro', asyn
   assert.equal(meta.mainLibrary, 'H5P.QuestionSet'); assert.equal(content.questions.length, 1);
   assert.equal(content.questions[0].params.question, '<p>¿Qué es &lt;H5P&gt;?</p>');
   assert.equal(content.questions[0].params.answers.filter(answer => answer.correct).length, 1);
+  assert.deepEqual(content.questions[0].params.overallFeedback, [{ from: 0, to: 100, feedback: 'Una actividad &lt;interactiva&gt; &amp; formativa; &#64;score y &#64;total son texto.' }]);
   assert.equal(content.questions[0].params.behaviour.randomAnswers, false);
   assert.equal(zip.file('content/images/file-5885c0f3dcafc.jpg'), null);
   for (const dep of meta.preloadedDependencies) assert.ok(zip.file(`${dep.machineName}-${dep.majorVersion}.${dep.minorVersion}/library.json`), dep.machineName);

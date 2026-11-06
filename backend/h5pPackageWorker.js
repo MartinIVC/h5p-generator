@@ -10,6 +10,11 @@ function html(value) {
   return value.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 }
 
+function feedbackHtml(value) {
+  // MultiChoice sustituye estas marcas por puntuaciones antes de renderizar.
+  return html(value).replace(/@(?=score|total)/g, '&#64;');
+}
+
 (async () => {
   try {
     const questions = validateQuestions(workerData.questions, workerData.questions.length);
@@ -27,7 +32,7 @@ function html(value) {
     template.questions = questions.map(question => ({
       library: 'H5P.MultiChoice 1.14', subContentId: crypto.randomUUID(),
       metadata: { title: question.pregunta.slice(0, 120), license: 'U', contentType: 'Multiple Choice' },
-      params: { ...base, question: `<p>${html(question.pregunta)}</p>`, answers: question.opciones.map(option => ({ text: `<div>${html(option)}</div>`, correct: option === question.respuestaCorrecta, tipsAndFeedback: { tip: '', chosenFeedback: '', notChosenFeedback: '' } })) }
+      params: { ...base, question: `<p>${html(question.pregunta)}</p>`, overallFeedback: [{ from: 0, to: 100, feedback: feedbackHtml(question.retroalimentacion) }], answers: question.opciones.map(option => ({ text: `<div>${html(option)}</div>`, correct: option === question.respuestaCorrecta, tipsAndFeedback: { tip: '', chosenFeedback: '', notChosenFeedback: '' } })) }
     }));
     template.texts = { prevButton: 'Anterior', nextButton: 'Siguiente', finishButton: 'Finalizar', textualProgress: 'Pregunta @current de @total', questionLabel: 'Pregunta', jumpToQuestion: 'Ir a la pregunta %d', readSpeakerProgress: 'Pregunta @current de @total', unansweredText: 'Sin responder', answeredText: 'Respondida', currentQuestionText: 'Pregunta actual' };
     template.endGame = { ...template.endGame, message: 'Tu resultado:', finishButtonText: 'Finalizar', solutionButtonText: 'Mostrar solución', retryButtonText: 'Reintentar', noResultMessage: 'Finalizado', overallFeedback: [{ from: 0, to: 100, feedback: 'Obtuviste @score de @total puntos.' }] };
