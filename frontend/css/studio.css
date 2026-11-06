@@ -216,7 +216,14 @@ button { -webkit-tap-highlight-color: transparent; }
 .upload-panel-title { font-family: var(--studio-serif); font-size: 31px; font-weight: 400; letter-spacing: -.5px; margin: 8px 0; }
 .upload-panel-subtitle { font-size: 14px; color: var(--md-sys-color-on-surface-variant); line-height: 1.8; }
 .draft-save-status { font-size: 12px; margin-top: 10px; }
-.upload-main-grid { gap: 20px; }
+.upload-main-grid {
+  /* El ancho disponible depende también de la barra lateral y del padding. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 20px;
+}
+.upload-main-grid > * { min-width: 0; }
+.file-list-header { gap: 10px; flex-wrap: wrap; }
+.file-list-title-wrap, .file-list-scroll { min-width: 0; }
 .upload-dropzone { background: var(--studio-paper); border: 1px dashed color-mix(in srgb, var(--md-sys-color-primary) 40%, var(--md-sys-color-outline-variant)); box-shadow: none; border-radius: 9px; padding: 27px 20px; }
 .upload-dropzone-title { font-size: 17px; font-weight: 500; }
 .upload-dropzone-desc, .upload-formats-hint { font-size: 12px; line-height: 1.8; }
