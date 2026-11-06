@@ -15,6 +15,8 @@ test('envía instrucciones, material íntegro y reglas pedagógicas separadas en
       const system = body.systemInstruction.parts[0].text;
       assert.match(system, /especialista en didáctica universitaria/);
       assert.match(system, /retroalimentación formativa/);
+      assert.match(system, /aplicación, comparación o inferencia/);
+      assert.match(system, /No conviertas una posibilidad en una garantía/);
       assert.match(system, /material completo/);
       assert.match(system, /sin favorecer el inicio/);
       assert.match(system, /Si el docente acota el tema/);
@@ -29,7 +31,7 @@ test('envía instrucciones, material íntegro y reglas pedagógicas separadas en
       return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(calls === 1 ? [] : valid) }] } }] }) };
     }
   });
-  assert.equal(PROMPT_VERSION, 'h5p-14-v2');
+  assert.equal(PROMPT_VERSION, 'h5p-14-v4');
   assert.equal(calls, 2); assert.deepEqual(result, valid);
 });
 test('las directrices opcionales vacías se conservan separadas', async () => {

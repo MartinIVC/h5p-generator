@@ -2,7 +2,7 @@
 
 Fecha: 2026-11-06  
 Ticket: [H5P-14 — Diseñar System Prompts y validación de esquema JSON](https://h5p-rag-generator.atlassian.net/browse/H5P-14)  
-Estado: entregas 1 a 3 implementadas; entrega 4 pendiente. La visualización en Lumi y la decisión del CA-4 siguen pendientes de verificación y acuerdo, respectivamente.
+Estado: entregas 1 a 4 realizadas y evidencia registrada en [H5P-14-validacion.md](H5P-14-validacion.md). La aceptación de la calidad pedagógica observada y la decisión del CA-4 siguen pendientes para el cierre.
 
 ## Objetivo
 
@@ -67,7 +67,7 @@ Se rechazan respuestas incompletas o inconsistentes sin inventar contenido ni fi
 
 ### Resultado verificable
 
-La explicación generada se incluye en la retroalimentación general de cada pregunta, para respuestas correctas e incorrectas. La presencia en el archivo se verifica con datos simulados; queda pendiente comprobar visualmente un archivo nuevo en Lumi.
+La explicación se incluye en la retroalimentación general de cada pregunta, para respuestas correctas e incorrectas. El usuario confirmó la visualización en Lumi con un archivo sintético; la evidencia distingue ese ejemplo de las pruebas con Gemini real.
 
 ## Entrega 4 — Verificación y evidencia de cierre
 
