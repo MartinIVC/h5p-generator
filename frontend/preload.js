@@ -45,8 +45,9 @@ contextBridge.exposeInMainWorld('academicAPI', {
   verifyApiKey: (apiKey) => ipcRenderer.invoke('llm:verify-key', apiKey),
   removeApiKey: () => ipcRenderer.invoke('academic:removeApiKey'),
 
-  // Contratos del flujo H5P; los servicios se conectarán en entregas posteriores.
+  // Operaciones explícitas del flujo H5P.
   inspectDocument: (document) => ipcRenderer.invoke('h5p:inspect-document', document),
+  releaseDocument: (documentId) => ipcRenderer.invoke('h5p:release-document', { documentId }),
   generateH5P: (request) => ipcRenderer.invoke('h5p:generate', request),
   saveH5PFile: (request) => ipcRenderer.invoke('h5p:save-file', request),
 

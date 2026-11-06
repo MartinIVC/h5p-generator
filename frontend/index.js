@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { registerH5PIpcHandlers } = require(path.join(__dirname, 'ipc', 'h5pHandlers.js'));
+const { createDocumentInspection } = require(path.join(__dirname, 'ipc', 'documentInspection.js'));
+const { createH5PGeneration } = require(path.join(__dirname, 'ipc', 'h5pGeneration.js'));
 // Chromium no detecta automáticamente Libsecret en sesiones Hyprland.
 if (process.platform === 'linux' && (process.env.XDG_CURRENT_DESKTOP || '').toLowerCase().split(':').includes('hyprland')) {
   app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
@@ -56,13 +58,16 @@ function notifyWhenInBackground(event, body) {
 function registerIpcHandlers() {
   if (ipcRegistered) return;
   ipcRegistered = true;
-  registerH5PIpcHandlers(ipcMain, (event) => {
+  const inspection = createDocumentInspection();
+  const generation = createH5PGeneration({ inspection, storage: academicStorage, dialog, BrowserWindow, app });
+  const isTrustedSender = (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const frame = event.senderFrame;
     return Boolean(win && !win.isDestroyed() && win.webContents === event.sender &&
       frame && frame === event.sender.mainFrame &&
       frame.url === pathToFileURL(path.join(__dirname, 'index.html')).href);
-  });
+  };
+  registerH5PIpcHandlers(ipcMain, isTrustedSender, inspection, generation);
   // Ramos (Courses)
   ipcMain.handle('academic:getCourses', async () => {
     return academicStorage.getAllCourses();
@@ -190,7 +195,8 @@ function registerIpcHandlers() {
     return academicStorage.saveApiKey(apiKey);
   });
 
-  ipcMain.handle('llm:verify-key', async (_event, candidate) => {
+  ipcMain.handle('llm:verify-key', async (event, candidate) => {
+    if (!isTrustedSender(event)) return { status: 'error' };
     if (candidate != null && (typeof candidate !== 'string' || candidate.length > 1024)) {
       return { status: 'error' };
     }

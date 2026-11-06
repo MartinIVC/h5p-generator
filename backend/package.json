@@ -13,6 +13,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "dotenv": "^18.0.7",
+    "jszip": "3.10.1",
     "mammoth": "^1.13.0",
     "officeparser": "^8.3.0",
     "pdf-parse": "^2.4.5",

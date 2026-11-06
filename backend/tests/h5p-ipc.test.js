@@ -13,7 +13,7 @@ const requests = {
 };
 function setup() {
   const handlers = new Map();
-  registerH5PIpcHandlers({ handle: (channel, fn) => handlers.set(channel, fn) }, event => event.trusted);
+  registerH5PIpcHandlers({ handle: (channel, fn) => handlers.set(channel, fn) }, event => event.trusted, { inspect: async () => ({ status: 'ok', documentId: id }), release: async () => ({ status: 'ok' }) });
   return handlers;
 }
 test('preload conecta los métodos explícitos con los canales registrados', async () => {
@@ -27,7 +27,8 @@ test('preload conecta los métodos explícitos con los canales registrados', asy
     })
   }, { filename });
   for (const [method, channel] of [['inspectDocument', 'h5p:inspect-document'], ['generateH5P', 'h5p:generate'], ['saveH5PFile', 'h5p:save-file']]) {
-    assert.equal((await api[method](requests[channel])).code, 'NOT_AVAILABLE');
+    const result = await api[method](requests[channel]);
+    assert.equal(result.status, method === 'inspectDocument' ? 'ok' : 'error');
   }
   assert.equal(typeof api.verifyApiKey, 'function');
   assert.equal(api.ipcRenderer, undefined);
@@ -62,7 +63,7 @@ test('el proceso principal valida el marco y captura errores de almacenamiento d
   const handlers = new Map();
   const mainFile = path.join(__dirname, '../../frontend/index.js');
   const frame = { url: require('node:url').pathToFileURL(path.join(path.dirname(mainFile), 'index.html')).href };
-  const sender = { mainFrame: frame };
+  const sender = Object.assign(new (require('node:events').EventEmitter)(), { mainFrame: frame, isDestroyed: () => false });
   const win = { webContents: sender, isDestroyed: () => false };
   const electron = {
     app: { commandLine: { appendSwitch() {} }, setName() {}, on() {}, whenReady: () => new Promise(() => {}) },
@@ -80,8 +81,12 @@ test('el proceso principal valida el marco y captura errores de almacenamiento d
   }, { filename: mainFile });
   module.exports.registerIpcHandlers();
   const inspect = handlers.get('h5p:inspect-document');
-  assert.equal((await inspect({ sender, senderFrame: frame }, requests['h5p:inspect-document'])).code, 'NOT_AVAILABLE');
+  const result = await inspect({ sender, senderFrame: frame }, { name: 'a.txt', bytes: new Uint8Array(Buffer.from('texto legible')) });
+  assert.equal(result.status, 'ok');
+  assert.equal(result.name, 'a.txt');
+  assert.equal(result.text, undefined);
   assert.equal((await inspect({ sender, senderFrame: { url: frame.url } }, requests['h5p:inspect-document'])).code, 'INVALID_SENDER');
+  assert.equal((await handlers.get('llm:verify-key')({ sender, senderFrame: frame }, null)).status, 'error');
   frame.url = 'https://example.com/';
   assert.equal((await inspect({ sender, senderFrame: frame }, requests['h5p:inspect-document'])).code, 'INVALID_SENDER');
   assert.equal((await handlers.get('llm:verify-key')({}, null)).status, 'error');

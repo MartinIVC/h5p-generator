@@ -6,7 +6,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 const mammoth = require('mammoth');
 const WordExtractor = require('word-extractor');
 const XLSX = require('xlsx');
@@ -50,7 +50,12 @@ async function extractTextFromFile(filePath, options = {}) {
         );
     }
 
-    const ext = path.extname(filePath).toLowerCase();
+    return extractTextFromBuffer(fs.readFileSync(filePath), path.basename(filePath));
+}
+
+async function extractTextFromBuffer(bytes, filename) {
+    const ext = path.extname(filename).toLowerCase();
+    const dataBuffer = Buffer.from(bytes);
     let rawText = '';
 
     // 3. Extracción según extensión de archivo
@@ -59,21 +64,25 @@ async function extractTextFromFile(filePath, options = {}) {
         case '.txt':
         case '.md':
         case '.csv': {
-            rawText = fs.readFileSync(filePath, 'utf-8');
+            rawText = dataBuffer.toString('utf-8');
             break;
         }
 
         // --- Documentos PDF ---
         case '.pdf': {
-            const dataBuffer = fs.readFileSync(filePath);
-            const pdfData = await pdfParse(dataBuffer);
-            rawText = pdfData.text;
+            const parser = new PDFParse({ data: dataBuffer });
+            try {
+                const pdfData = await parser.getText();
+                rawText = pdfData.text;
+            } finally {
+                await parser.destroy();
+            }
             break;
         }
 
         // --- Word Moderno (.docx) ---
         case '.docx': {
-            const result = await mammoth.extractRawText({ path: filePath });
+            const result = await mammoth.extractRawText({ buffer: dataBuffer });
             rawText = result.value || '';
             break;
         }
@@ -81,7 +90,7 @@ async function extractTextFromFile(filePath, options = {}) {
         // --- Word Clásico 97-2003 (.doc) ---
         case '.doc': {
             const wordExtractor = new WordExtractor();
-            const extracted = await wordExtractor.extract(filePath);
+            const extracted = await wordExtractor.extract(dataBuffer);
             rawText = extracted.getBody() || '';
             break;
         }
@@ -89,7 +98,7 @@ async function extractTextFromFile(filePath, options = {}) {
         // --- Hojas de cálculo (.xlsx, .xls) ---
         case '.xlsx':
         case '.xls': {
-            const workbook = XLSX.readFile(filePath);
+            const workbook = XLSX.read(dataBuffer, { type: 'buffer' });
             const sheetTexts = [];
             for (const sheetName of workbook.SheetNames) {
                 const sheet = workbook.Sheets[sheetName];
@@ -108,7 +117,7 @@ async function extractTextFromFile(filePath, options = {}) {
         case '.odt':
         case '.ods':
         case '.rtf': {
-            const officeDoc = await parseOffice(filePath);
+            const officeDoc = await parseOffice(dataBuffer, { fileType: ext.slice(1) });
             const converted = await officeDoc.to('text');
             rawText = converted && converted.value ? converted.value : '';
             break;
@@ -126,7 +135,7 @@ async function extractTextFromFile(filePath, options = {}) {
     // 5. Validación de legibilidad mínima (detecta archivos corruptos o imágenes vacías)
     if (cleaned.length < 5) {
         throw new Error(
-            `No se pudo extraer texto legible del archivo ${path.basename(filePath)}. Verifique que no sea un documento escaneado sólo como imagen o protegido con contraseña.`
+            `No se pudo extraer texto legible del archivo ${path.basename(filename)}. Verifique que no sea un documento escaneado sólo como imagen o protegido con contraseña.`
         );
     }
 
@@ -138,5 +147,6 @@ async function extractTextFromFile(filePath, options = {}) {
 // ============================================================================
 module.exports = {
     extractTextFromFile,
+    extractTextFromBuffer,
     cleanText
 };
