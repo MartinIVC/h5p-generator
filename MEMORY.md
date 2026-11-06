@@ -5,6 +5,8 @@
 - `frontend/index.js`: proceso principal de Electron, creación de ventana, diálogos, sistema de archivos y manejadores IPC. Importa `backend/storage.js`.
 - `frontend/preload.js`: puente seguro de APIs permitidas usando `contextBridge` e `ipcRenderer.invoke`. Cada capacidad del renderer debe tener un método explícito aquí y un manejador correspondiente en el proceso principal.
 - `frontend/ipc/h5pHandlers.js`: contratos, validación de argumentos y captura de errores de los nuevos canales H5P, registrados desde el proceso principal.
+- `frontend/ipc/documentInspection.js` y `backend/inspectionWorker.js`: inspección en un worker y almacenamiento temporal del texto en memoria, aislado por ventana.
+- `frontend/ipc/h5pGeneration.js` y `backend/h5pPackageWorker.js`: generación con Gemini, ensamblado H5P en un worker y guardado mediante diálogo nativo.
 - `frontend/index.html`: estructura de la aplicación y carga de hojas de estilo y módulos de interfaz.
 - `frontend/js/`: módulos del renderer. Los principales son `courses.js` (ramos, biblioteca, proyectos), `studio.js` (flujo de creación), `upload.js` (archivos), `config.js` (preferencias y clave API), `ui.js` (avisos y componentes compartidos), `search.js`, `preview.js` y `menu.js`.
 - `frontend/css/`: estilos globales, del estudio y temas claro/oscuro.
@@ -16,6 +18,8 @@
 
 - Instalar dependencias: `cd backend && npm ci`; `cd frontend && npm ci`.
 - Iniciar Electron: `cd frontend && npm start`.
+- Empaquetar Linux: `npm run package:linux --prefix frontend` desde la raíz; produce `dist/h5p-generator-linux-<arquitectura>` con runtime, frontend y backend, sin ASAR. La lista explícita de archivos está en `scripts/package-linux.cjs`; mantenerla actualizada si se añaden módulos de producción.
+- Integración empaquetada: `npm run test:packaged --prefix frontend`; requiere sesión gráfica Linux, usa una copia y perfil temporales, simula Gemini/diálogo y verifica IPC, workers, interfaz y sockets de escucha. Ver `docs/H5P-19-validacion.md` para alcance y límites.
 - Pruebas existentes: `cd backend && npm test` (`node --test tests/`).
 - `frontend/package.json` conserva un script `test` de marcador que termina con error porque todavía no hay suite del frontend.
 - El README indica la instalación con los lockfiles y los comandos actuales.
@@ -32,19 +36,22 @@
 
 ## Límites funcionales
 
-**Verificados en el código el 2026-11-05.** La generación y exportación H5P todavía no están conectadas a la interfaz. `frontend/js/upload.js` informa esta limitación; la existencia de `backend/llmClient.js` no implica que el recorrido esté completo.
+**Estado 2026-11-06:** el flujo admite cuestionarios de opción múltiple y guarda un `.h5p` con bibliotecas incluidas. El usuario comprobó un paquete anterior en Lumi; queda pendiente repetirlo con la corrección de alternativas y validar Moodle; tampoco hay revisión y edición de preguntas antes de exportar.
 
 ### Contratos IPC H5P
 
-**Estado 2026-11-06:** los siguientes métodos están expuestos pero todavía no inspeccionan, generan ni guardan archivos. Solo aceptan llamadas desde el marco principal local de la ventana. La validación ocurre en el proceso principal antes de invocar servicios. No se admiten propiedades adicionales ni rutas proporcionadas por el renderer.
+**Estado 2026-11-06:** inspección, generación y guardado están conectados al panel. Los canales solo aceptan llamadas desde el marco principal local de la ventana. La validación ocurre en el proceso principal antes de invocar servicios. No se admiten propiedades adicionales ni rutas proporcionadas por el renderer.
 
 - `inspectDocument({ name, bytes })` → `h5p:inspect-document`: nombre de archivo sin separadores de ruta, extensión admitida por `chunker.js` y `Uint8Array` no vacío de hasta 50 MiB.
-- `generateH5P({ documentIds, activityType, questionCount, instructions })` → `h5p:generate`: entre 1 y 20 UUID distintos, identificador de tipo en minúsculas con letras, dígitos y guiones (máximo 64 caracteres, comenzando por letra), cantidad entera de 1 a 100 e instrucciones de hasta 10.000 caracteres. Los identificadores y el tipo deben comprobarse además contra la sesión y los tipos realmente disponibles cuando se conecten los servicios.
-- `saveH5PFile({ packageId, suggestedName })` → `h5p:save-file`: UUID del paquete y nombre sugerido sin separadores de ruta de hasta 200 caracteres. El paquete deberá pertenecer a la sesión al conectar el guardado.
+- `releaseDocument(documentId)` → `h5p:release-document`: elimina un documento inspeccionado de la sesión de la ventana propietaria.
+- `generateH5P({ documentIds, activityType, questionCount, instructions })` → `h5p:generate`: entre 1 y 20 UUID distintos de la ventana, `activityType: 'multiple-choice'`, cantidad entera de 1 a 20 e instrucciones de hasta 10.000 caracteres. El texto conjunto no puede superar 200.000 caracteres. La clave se obtiene en el proceso principal y el texto y las instrucciones se envían a Gemini.
+- `saveH5PFile({ packageId, suggestedName, courseId? })` → `h5p:save-file`: UUID del paquete de la ventana, nombre sugerido sin separadores de ruta de hasta 200 caracteres y ramo opcional. El destino lo determina el diálogo nativo. Tras guardar se intenta registrar el proyecto sin almacenar el texto ni las instrucciones.
 
-Los tres devuelven actualmente `{ status: 'error', code, message }`: `INVALID_SENDER`, `INVALID_ARGUMENT`, `NOT_AVAILABLE` o `INTERNAL_ERROR`. Los mensajes son fijos y no incluyen excepciones, claves ni contenido del documento. No interpretar `NOT_AVAILABLE` como éxito. `verifyApiKey` conserva sus estados existentes y captura también fallos de lectura de la clave.
+Los errores devuelven `{ status: 'error', code, message }`: `INVALID_SENDER`, `INVALID_ARGUMENT`, `INTERNAL_ERROR` y, según el canal, `NOT_AVAILABLE`, `INSPECTION_FAILED`, `TEXT_TOO_LARGE`, `TIMEOUT`, `BUSY`, `LIMIT_REACHED`, `NOT_FOUND`, `DOCUMENT_NOT_FOUND`, `SOURCE_TOO_LARGE`, `MISSING_KEY`, `API_KEY_INVALID`, `QUOTA`, `INVALID_RESPONSE`, `GENERATION_FAILED`, `UNSUPPORTED_TYPE`, `INVALID_COURSE` o `SAVE_FAILED`. Los mensajes son fijos y no incluyen excepciones, claves ni contenido del documento. No interpretar `NOT_AVAILABLE` como éxito. `verifyApiKey` conserva sus estados existentes, valida el marco principal local y captura también fallos de lectura de la clave.
 
-Para las integraciones posteriores, el contrato de resultado será: inspección `{ status: 'ok', documentId, name, size }`; generación `{ status: 'ok', kind: 'questions', questions }` o `{ status: 'ok', kind: 'package', packageId }`, según la etapa alcanzada; guardado `{ status: 'ok', fileName }` o `{ status: 'cancelled' }`. El esquema de `questions` debe acordarse con H5P-14. Los UUID deben ser opacos y estar asociados a la ventana que los obtuvo; el guardado debe comprobar la propiedad del paquete antes de mostrar el diálogo.
+La inspección devuelve `{ status: 'ok', documentId, name, size }` sin enviar el texto al renderer; la liberación devuelve `{ status: 'ok' }`. Se ejecuta un worker a la vez, con límite de 60 segundos, 20 documentos por ventana y 5 MiB de texto extraído por documento. El texto solo reside en memoria y se descarta al quitar el documento, navegar o cerrar la ventana. Al cambiar la selección durante la inspección, el renderer descarta y libera los resultados obsoletos. Los borradores siguen guardando solo metadatos y requieren seleccionar los archivos de nuevo.
+
+La generación devuelve `{ status: 'ok', kind: 'package', packageId, questionCount }`. El guardado devuelve `{ status: 'ok', fileName, projectSaved }` o `{ status: 'cancelled' }`; `projectSaved: false` significa que el archivo se guardó pero falló el registro. El paquete y los UUID pertenecen a la ventana y se liberan al navegar o cerrarla. El cliente valida el JSON y cuatro opciones únicas con una respuesta correcta antes de empaquetar; el esquema todavía debe coordinarse con H5P-14.
 
 ## Mantenimiento de esta memoria
 
