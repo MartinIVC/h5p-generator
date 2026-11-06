@@ -8,7 +8,9 @@
   "main": "index.js",
   "scripts": {
     "start": "electron .",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "package:linux": "node ../scripts/package-linux.cjs",
+    "test:packaged": "node ../scripts/test-packaged.cjs"
   },
   "devDependencies": {
     "electron": "^44.4.5"

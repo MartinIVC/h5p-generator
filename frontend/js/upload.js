@@ -27,7 +27,11 @@
     courseId: null,
     courseName: '',
     draftId: null,
-    restoredFiles: []
+    restoredFiles: [],
+    inspections: new Map(),
+    inspectionVersion: 0,
+    inspecting: false,
+    inspectionError: ''
   };
   let draftSaveTimer = null;
   let draftStatus = null;
@@ -154,7 +158,7 @@
             No se han seleccionado archivos
           </div>
           <button type="button" class="btn-primary" id="btn-next-step" disabled>
-            <span>Elegir tipo de actividad</span>
+            <span>Inspeccionar documentos</span>
             <svg class="icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <line x1="5" y1="12" x2="19" y2="12"></line>
               <polyline points="12 5 19 12 12 19"></polyline>
@@ -344,6 +348,17 @@
       draftSaveTimer = window.setTimeout(saveDraftNow, 350);
     }
 
+    function forgetInspection(file) {
+      const id = state.inspections.get(file);
+      state.inspections.delete(file);
+      if (id) window.academicAPI?.releaseDocument(id).catch(() => {});
+    }
+
+    function invalidateSelection() {
+      state.inspectionVersion++;
+      state.inspectionError = '';
+    }
+
     function applyDraftContext(detail = {}) {
       const nextCourseId = detail.courseId || 'unassigned';
       const draft = detail.draft;
@@ -354,6 +369,8 @@
       if (isDifferentCourse || isDifferentDraft) {
         if (state.draftId && (state.files.length || state.prompt.trim())) saveDraftNow();
         window.clearTimeout(draftSaveTimer);
+        state.files.forEach(forgetInspection);
+        invalidateSelection();
         state.files = [];
         state.prompt = '';
         state.draftId = null;
@@ -411,9 +428,17 @@
       const hasErrors = errorFiles.length > 0;
 
       // El botón solo se habilita si no hay errores y hay al menos un archivo válido
-      btnNextStep.disabled = hasErrors || validFiles.length === 0;
+      btnNextStep.disabled = state.inspecting || hasErrors || validFiles.length === 0 || count > 20;
 
-      if (hasErrors) {
+      if (state.inspecting) {
+        summaryInfo.className = 'upload-summary-info';
+        summaryInfo.setAttribute('role', 'status');
+        summaryInfo.textContent = 'Inspeccionando documentos…';
+      } else if (state.inspectionError || count > 20) {
+        summaryInfo.className = 'upload-summary-info has-error';
+        summaryInfo.setAttribute('role', 'alert');
+        summaryInfo.textContent = state.inspectionError || 'Puedes inspeccionar hasta 20 documentos.';
+      } else if (hasErrors) {
         summaryInfo.className = 'upload-summary-info has-error';
         summaryInfo.setAttribute('role', 'alert');
         const errPlural = errorFiles.length === 1 ? 'archivo con formato no permitido' : 'archivos con formatos no permitidos';
@@ -447,6 +472,7 @@
         }
       });
 
+      if (state.files.length !== previousCount) invalidateSelection();
       updateUI();
       fileListContent.querySelectorAll('.file-item').forEach((item, index) => {
         item.classList.toggle('is-new', index >= previousCount);
@@ -464,6 +490,8 @@
      */
     function removeFile(index) {
       if (index >= 0 && index < state.files.length) {
+        forgetInspection(state.files[index]);
+        invalidateSelection();
         state.files.splice(index, 1);
         if (state.files.length === 0 && window.previewManager && window.previewManager.isOpen()) {
           window.previewManager.close();
@@ -477,6 +505,8 @@
      * Elimina todos los archivos seleccionados.
      */
     function clearAllFiles() {
+      state.files.forEach(forgetInspection);
+      invalidateSelection();
       state.files = [];
       fileInput.value = '';
       if (window.previewManager && window.previewManager.isOpen()) {
@@ -592,50 +622,134 @@
       document.getElementById('btn-next-step')?.focus();
     }
 
-    // El selector H5P real se integra junto con la generación; nunca dejar el paso vacío.
+    // Inspeccionar el material antes de configurar la actividad.
     btnNextStep.addEventListener('click', async () => {
-      if (!window.configManager) {
-        window.uiMessage?.('No se pudo comprobar la configuración de Gemini.', 'error');
+      if (state.inspecting || !state.files.length || state.files.length > 20 || state.files.some(file => !isFormatAllowed(file.name))) return;
+      if (!window.academicAPI?.inspectDocument) {
+        state.inspectionError = 'No se pudo iniciar la inspección. Vuelve a intentarlo.';
+        updateUI();
         return;
       }
-      await window.configManager.refreshStatus();
-      if (!window.configManager.hasApiKey()) {
-        await window.configManager.requireApiKey(() => btnNextStep.click());
+      const version = state.inspectionVersion;
+      const files = [...state.files];
+      state.inspecting = true;
+      state.inspectionError = '';
+      updateUI();
+      try {
+        for (const file of files) {
+          if (version !== state.inspectionVersion) return;
+          if (state.inspections.has(file)) continue;
+          if (!file.size || file.size > 50 * 1024 * 1024) {
+            state.inspectionError = `${file.name}: cada documento debe tener contenido y pesar como máximo 50 MiB.`;
+            return;
+          }
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          if (version !== state.inspectionVersion) return;
+          const result = await window.academicAPI.inspectDocument({ name: file.name, bytes });
+          if (version !== state.inspectionVersion) {
+            if (result?.status === 'ok') await window.academicAPI.releaseDocument(result.documentId).catch(() => {});
+            return;
+          }
+          if (result?.status !== 'ok') {
+            state.inspectionError = `${file.name}: ${result?.message || 'No se pudo inspeccionar el documento. Inténtalo nuevamente.'}`;
+            return;
+          }
+          state.inspections.set(file, result.documentId);
+        }
+      } catch {
+        if (version === state.inspectionVersion) state.inspectionError = 'No se pudo inspeccionar el documento. Inténtalo nuevamente.';
         return;
+      } finally {
+        state.inspecting = false;
+        updateUI();
       }
+      if (version !== state.inspectionVersion) return;
       const panelUpload = document.getElementById('panel-upload');
       const panelSelector = document.getElementById('panel-selector');
       if (!panelUpload || !panelSelector) return;
 
-      const safeList = state.files
-        .filter(file => isFormatAllowed(file.name))
-        .map(file => `<li>${escapeHtml(file.name)}</li>`)
-        .join('');
-
       panelSelector.innerHTML = `
-        <section class="upcoming-step-card" aria-labelledby="selector-pending-title">
-          <div class="upcoming-step-art" aria-hidden="true">
-            <svg viewBox="0 0 96 96" fill="none">
-              <rect x="19" y="17" width="48" height="60" rx="9" transform="rotate(-9 19 17)" class="paper-shape paper-shape-back" />
-              <rect x="28" y="21" width="48" height="60" rx="9" class="paper-shape paper-shape-front" />
-              <path d="M39 39h25M39 48h25M39 57h16" class="paper-lines" />
-              <circle cx="75" cy="25" r="8" class="paper-spark" />
-            </svg>
-          </div>
+        <section class="upcoming-step-card" aria-labelledby="selector-title">
           <span class="home-kicker">Paso 2 · Tipo de actividad</span>
-          <h2 id="selector-pending-title" tabindex="-1">El selector H5P estará disponible aquí</h2>
-          <p>Ya reuniste el material. La generación y exportación H5P aún no están conectadas, así que puedes volver a revisar los documentos sin perderlos.</p>
-          <ul class="upcoming-file-summary">${safeList}</ul>
+          <h2 id="selector-title" tabindex="-1">Prepara tu cuestionario</h2>
+          <p>Se crearán preguntas de opción múltiple a partir de los documentos inspeccionados.</p>
+          <p>Al generar, el texto de los documentos y tus instrucciones se enviarán a Gemini.</p>
+          <div class="generation-fields">
+            <label for="question-count">Cantidad de preguntas</label>
+            <input id="question-count" type="number" min="1" max="20" value="5" inputmode="numeric">
+            <label for="h5p-name">Nombre del archivo</label>
+            <input id="h5p-name" type="text" maxlength="180" value="cuestionario" autocomplete="off">
+          </div>
+          <p id="generation-status" role="status" aria-live="polite"></p>
           <div class="upcoming-step-actions">
             <button type="button" class="btn-secondary" id="btn-back-to-material">Volver al material</button>
+            <button type="button" class="btn-primary" id="btn-generate-h5p">Generar cuestionario</button>
+            <button type="button" class="btn-primary hidden" id="btn-save-h5p">Guardar archivo H5P</button>
           </div>
-        </section>
-      `;
+        </section>`;
       panelUpload.classList.add('hidden');
       panelSelector.classList.remove('hidden');
       updateStepIndicators(2);
       document.getElementById('btn-back-to-material')?.addEventListener('click', returnToMaterial);
-      document.getElementById('selector-pending-title')?.focus();
+      const generateButton = document.getElementById('btn-generate-h5p');
+      const saveButton = document.getElementById('btn-save-h5p');
+      const status = document.getElementById('generation-status');
+      const countInput = document.getElementById('question-count');
+      const nameInput = document.getElementById('h5p-name');
+      let packageId = null;
+      const showStatus = (message, error = false) => {
+        status.setAttribute('role', error ? 'alert' : 'status');
+        status.textContent = message;
+      };
+      generateButton.addEventListener('click', async () => {
+        const count = Number(countInput.value);
+        if (!Number.isInteger(count) || count < 1 || count > 20) {
+          showStatus('Elige entre 1 y 20 preguntas.', true); countInput.focus(); return;
+        }
+        if (state.prompt.length > 10000) { showStatus('Las instrucciones no pueden superar 10.000 caracteres.', true); return; }
+        if (!window.configManager || !window.academicAPI?.generateH5P) { showStatus('No se pudo iniciar la generación.', true); return; }
+        generateButton.disabled = true;
+        try {
+          await window.configManager.refreshStatus();
+          if (!window.configManager.hasApiKey()) {
+            generateButton.disabled = false;
+            await window.configManager.requireApiKey(() => generateButton.click());
+            return;
+          }
+          packageId = null;
+          saveButton.classList.add('hidden');
+          const version = state.inspectionVersion;
+          const documentIds = state.files.map(file => state.inspections.get(file));
+          showStatus('Generando preguntas y preparando el archivo… Los fallos temporales y las respuestas incompletas o inválidas se reintentarán de forma limitada.');
+          const result = await window.academicAPI.generateH5P({ documentIds, activityType: 'multiple-choice', questionCount: count, instructions: state.prompt });
+          if (version !== state.inspectionVersion || !generateButton.isConnected || panelSelector.classList.contains('hidden')) return;
+          if (result?.status !== 'ok' || result.kind !== 'package') {
+            showStatus(result?.message || 'No se pudo generar el cuestionario.', true); return;
+          }
+          packageId = result.packageId;
+          saveButton.classList.remove('hidden');
+          showStatus(`Cuestionario preparado con ${result.questionCount} preguntas. Puedes guardarlo.`);
+          saveButton.focus();
+        } catch { showStatus('No se pudo generar el cuestionario. Inténtalo nuevamente.', true); }
+        finally { generateButton.disabled = false; }
+      });
+      saveButton.addEventListener('click', async () => {
+        const suggestedName = nameInput.value.trim();
+        if (!suggestedName || /[\\/\x00-\x1f\x7f]/.test(suggestedName) || suggestedName === '.' || suggestedName === '..') {
+          showStatus('Escribe un nombre de archivo válido, sin barras.', true); nameInput.focus(); return;
+        }
+        if (!packageId) return;
+        saveButton.disabled = true; generateButton.disabled = true;
+        showStatus('Elige dónde guardar el archivo…');
+        try {
+          const result = await window.academicAPI.saveH5PFile({ packageId, suggestedName, courseId: state.courseId || 'unassigned' });
+          if (result?.status === 'cancelled') { showStatus('Guardado cancelado. Puedes intentarlo nuevamente.'); return; }
+          if (result?.status !== 'ok') { showStatus(result?.message || 'No se pudo guardar el archivo.', true); return; }
+          showStatus(result.projectSaved ? `Archivo ${result.fileName} guardado y añadido a tus proyectos.` : `Archivo ${result.fileName} guardado. No se pudo añadir a tus proyectos.`, !result.projectSaved);
+        } catch { showStatus('No se pudo guardar el archivo. Inténtalo nuevamente.', true); }
+        finally { saveButton.disabled = false; generateButton.disabled = false; }
+      });
+      document.getElementById('selector-title')?.focus();
     });
 
     // Prevenir comportamiento por defecto de arrastrar archivos a nivel de ventana
@@ -652,9 +766,10 @@
     getAllFiles: () => [...state.files],
     hasErrors: () => state.files.some(f => !isFormatAllowed(f.name)),
     getPrompt: () => state.prompt,
+    getDocumentIds: () => state.files.length && state.files.every(file => state.inspections.has(file))
+      ? state.files.map(file => state.inspections.get(file)) : [],
     flushDraft: () => flushDraftHandler(),
     clearFiles: () => {
-      state.files = [];
       const btnClearAll = document.getElementById('btn-clear-all');
       if (btnClearAll) btnClearAll.click();
     }
