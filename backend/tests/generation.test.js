@@ -9,7 +9,7 @@ const JSZip = require('jszip');
 const { createH5PGeneration } = require('../../frontend/ipc/h5pGeneration');
 const { generateQuestionsFromChunk, validateQuestions } = require('../llmClient');
 const documentId = '01234567-89ab-4cde-8fab-0123456789ab';
-const questions = [{ pregunta: '¿Qué es <H5P>?', opciones: ['Una actividad', 'Otra', 'Tercera', 'Cuarta'], respuestaCorrecta: 'Una actividad' }];
+const questions = [{ pregunta: '¿Qué es <H5P>?', opciones: ['Una actividad', 'Otra', 'Tercera', 'Cuarta'], respuestaCorrecta: 'Una actividad', retroalimentacion: 'Una actividad interactiva permite evaluar lo aprendido.' }];
 const request = { documentIds: [documentId], activityType: 'multiple-choice', questionCount: 1, instructions: '' };
 const sender = () => Object.assign(new EventEmitter(), { isDestroyed: () => false });
 function setup(opts = {}) {
@@ -55,22 +55,22 @@ test('elimina etiquetas completas sin cambiar la respuesta correcta', () => {
     ['(a) Primera', '(b) Segunda', '(c) Tercera', '(d) Cuarta'],
     ['C. Primera', 'A. Segunda', 'D. Tercera', 'B. Cuarta']
   ]) {
-    const [result] = validateQuestions([{ pregunta: 'Pregunta', opciones: options, respuestaCorrecta: options[2] }], 1);
+    const [result] = validateQuestions([{ pregunta: 'Pregunta', opciones: options, respuestaCorrecta: options[2], retroalimentacion: 'Explicación de la respuesta.' }], 1);
     assert.deepEqual(result.opciones, ['Primera', 'Segunda', 'Tercera', 'Cuarta']);
     assert.equal(result.respuestaCorrecta, 'Tercera');
   }
 });
 test('conserva iniciales aisladas y rechaza alternativas duplicadas después de limpiar', () => {
   const options = ['A. thaliana', 'Bacillus subtilis', 'Candida albicans', 'Drosophila'];
-  const [result] = validateQuestions([{ pregunta: 'Pregunta', opciones: options, respuestaCorrecta: options[0] }], 1);
+  const [result] = validateQuestions([{ pregunta: 'Pregunta', opciones: options, respuestaCorrecta: options[0], retroalimentacion: 'Explicación de la respuesta.' }], 1);
   assert.deepEqual(result.opciones, options);
-  assert.throws(() => validateQuestions([{ pregunta: 'Pregunta', opciones: ['A) Igual', 'B) Igual', 'C) Otra', 'D) Distinta'], respuestaCorrecta: 'A) Igual' }], 1), /INVALID_RESPONSE/);
+  assert.throws(() => validateQuestions([{ pregunta: 'Pregunta', opciones: ['A) Igual', 'B) Igual', 'C) Otra', 'D) Distinta'], respuestaCorrecta: 'A) Igual', retroalimentacion: 'Explicación de la respuesta.' }], 1), /INVALID_RESPONSE/);
 });
 test('el paquete elimina etiquetas y conserva la opción correcta', async t => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'h5p-labels-test-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const destination = path.join(dir, 'actividad.h5p');
-  const labeled = [{ pregunta: 'Pregunta', opciones: ['A) Uno', 'B) Dos', 'C) Tres', 'D) Cuatro'], respuestaCorrecta: 'C) Tres' }];
+  const labeled = [{ pregunta: 'Pregunta', opciones: ['A) Uno', 'B) Dos', 'C) Tres', 'D) Cuatro'], respuestaCorrecta: 'C) Tres', retroalimentacion: 'Explicación de la respuesta.' }];
   const { generation, owner } = setup({ generate: async () => labeled, dialog: { showSaveDialog: async () => ({ filePath: destination }) } });
   const generated = await generation.generateH5P(request, { sender: owner });
   assert.equal(generated.status, 'ok');
@@ -146,7 +146,7 @@ test('IPC diferencia fallos de red, servicio, timeout y empaquetado sin revelar 
   assert.doesNotMatch(JSON.stringify(result), /privados|conexión/);
 });
 test('IPC expone solo motivos de validación conocidos y nunca detalles del proveedor', async () => {
-  for (const reason of ['COUNT', 'DUPLICATE_OPTIONS', 'CORRECT_ANSWER', 'dato privado']) {
+  for (const reason of ['COUNT', 'DUPLICATE_OPTIONS', 'CORRECT_ANSWER', 'FEEDBACK', 'dato privado']) {
     const { generation, owner } = setup({ generate: async () => { throw Object.assign(new Error('INVALID_RESPONSE'), { reason, raw: 'contenido privado' }); } });
     const result = await generation.generateH5P(request, { sender: owner });
     assert.equal(result.code, 'INVALID_RESPONSE');

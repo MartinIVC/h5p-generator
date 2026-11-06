@@ -16,7 +16,7 @@ let dialogMode = 'cancel';
 let fetchCalls = 0;
 let transientFailures = 0;
 let invalidResponses = 0;
-const questions = [{ pregunta: '¿Qué conserva la integridad?', opciones: ['A) Exactitud', 'B) Publicidad', 'C) Velocidad', 'D) Color'], respuestaCorrecta: 'A) Exactitud' }];
+const questions = [{ pregunta: '¿Qué conserva la integridad?', opciones: ['A) Exactitud', 'B) Publicidad', 'C) Velocidad', 'D) Color'], respuestaCorrecta: 'A) Exactitud', retroalimentacion: 'La integridad protege la exactitud de la información.' }];
 global.fetch = async (url, options) => {
   assert.match(url, /^https:\/\/generativelanguage.googleapis.com\//);
   assert.equal(options.headers['x-goog-api-key'], 'synthetic-test-key');

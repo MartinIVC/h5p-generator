@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { generateQuestionsFromChunk, validateQuestions } = require('../llmClient');
-const one = { pregunta: 'Pregunta sintética', opciones: ['Uno', 'Dos', 'Tres', 'Cuatro'], respuestaCorrecta: 'Dos' };
+const one = { pregunta: 'Pregunta sintética', opciones: ['Uno', 'Dos', 'Tres', 'Cuatro'], respuestaCorrecta: 'Dos', retroalimentacion: 'Explicación de la respuesta.' };
 const twenty = Array.from({ length: 20 }, (_, i) => ({ ...one, pregunta: `Pregunta ${i + 1}` }));
 const response = value => ({ ok: true, json: async () => ({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(value) }] } }] }) });
 const run = options => generateQuestionsFromChunk('fuente sintética', 'clave-sintética', 'Dificultad media', 20, options);
@@ -12,6 +12,10 @@ const invalids = [
   [[{ ...one, respuestaCorrecta: 'no pertenece' }, ...twenty.slice(1)], 'CORRECT_ANSWER'],
   [[{ ...one, opciones: ['Uno', 'Dos'] }, ...twenty.slice(1)], 'OPTIONS'],
   [[{ ...one, pregunta: '' }, ...twenty.slice(1)], 'QUESTION'],
+  [[{ ...one, retroalimentacion: undefined }, ...twenty.slice(1)], 'FEEDBACK'],
+  [[{ ...one, retroalimentacion: '   ' }, ...twenty.slice(1)], 'FEEDBACK'],
+  [[{ ...one, retroalimentacion: 42 }, ...twenty.slice(1)], 'FEEDBACK'],
+  [[{ ...one, retroalimentacion: 'x'.repeat(2001) }, ...twenty.slice(1)], 'FEEDBACK'],
   [{ preguntas: twenty }, 'STRUCTURE']
 ];
 test('exige un esquema de 20 preguntas y conserva las instrucciones al corregir', async () => {
@@ -24,7 +28,8 @@ test('exige un esquema de 20 preguntas y conserva las instrucciones al corregir'
       assert.equal(schema.minItems, 20); assert.equal(schema.maxItems, 20);
       assert.equal(schema.items.properties.opciones.minItems, 4);
       assert.equal(schema.items.properties.opciones.maxItems, 4);
-      assert.deepEqual(schema.items.required, ['pregunta', 'opciones', 'respuestaCorrecta']);
+      assert.deepEqual(schema.items.required, ['pregunta', 'opciones', 'respuestaCorrecta', 'retroalimentacion']);
+      assert.equal(schema.items.properties.retroalimentacion.type, 'string');
       const parts = body.contents[0].parts.map(part => part.text);
       assert.match(parts[1], /Dificultad media/);
       if (calls === 2) assert.match(parts[3], /Corrección de formato:/);
@@ -80,5 +85,16 @@ test('cancelación tras respuesta inválida impide enviar la corrección', async
   assert.equal(calls, 1);
 });
 test('no corrige ni inventa la opción correcta al validar preguntas', () => {
-  assert.throws(() => validateQuestions([{ ...one, respuestaCorrecta: 'B' }], 1), { message: 'INVALID_RESPONSE', reason: 'CORRECT_ANSWER' });
+  assert.throws(() => validateQuestions([{ ...one, respuestaCorrecta: 'B', retroalimentacion: 'Explicación de la respuesta.' }], 1), { message: 'INVALID_RESPONSE', reason: 'CORRECT_ANSWER' });
+});
+test('valida los límites y conserva la retroalimentación sin alterar su contenido', () => {
+  const feedback = 'x'.repeat(2000);
+  assert.equal(validateQuestions([{ ...one, retroalimentacion: feedback }], 1)[0].retroalimentacion, feedback);
+  assert.equal(validateQuestions([{ ...one, retroalimentacion: '  Explicación válida.  ' }], 1)[0].retroalimentacion, 'Explicación válida.');
+});
+test('rechaza JSON envuelto en Markdown sin extraerlo ni reparar la respuesta', async () => {
+  let calls = 0;
+  const wrapped = { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: '```json\n' + JSON.stringify(twenty) + '\n```' }] } }] }) };
+  await assert.rejects(run({ fetch: async () => { calls++; return wrapped; } }), { message: 'INVALID_RESPONSE', reason: 'JSON' });
+  assert.equal(calls, 2);
 });

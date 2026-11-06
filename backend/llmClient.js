@@ -14,6 +14,7 @@ const RESPONSE_REASONS = Object.freeze({
   OPTIONS: 'Cada pregunta debe tener cuatro opciones no vacías de hasta 1000 caracteres.',
   DUPLICATE_OPTIONS: 'Una pregunta tiene opciones repetidas.',
   CORRECT_ANSWER: 'La respuesta correcta no coincide exactamente con una opción.',
+  FEEDBACK: 'Cada pregunta debe incluir una explicación formativa no vacía de hasta 2000 caracteres.',
   INCOMPLETE: 'Gemini interrumpió la respuesta por el límite de salida.',
   BLOCKED: 'Gemini no pudo completar la respuesta por sus restricciones de contenido.',
   EMPTY: 'Gemini devolvió una respuesta vacía.',
@@ -29,11 +30,12 @@ function questionSchema(count) {
     type: 'array', minItems: count, maxItems: count,
     items: {
       type: 'object', additionalProperties: false,
-      required: ['pregunta', 'opciones', 'respuestaCorrecta'],
+      required: ['pregunta', 'opciones', 'respuestaCorrecta', 'retroalimentacion'],
       properties: {
         pregunta: { type: 'string', description: 'Pregunta no vacía de hasta 2000 caracteres.' },
         opciones: { type: 'array', minItems: 4, maxItems: 4, items: { type: 'string' }, description: 'Cuatro textos distintos, sin enumeración, de hasta 1000 caracteres cada uno.' },
-        respuestaCorrecta: { type: 'string', description: 'Copia exacta del texto de una de las cuatro opciones.' }
+        respuestaCorrecta: { type: 'string', description: 'Copia exacta del texto de una de las cuatro opciones.' },
+        retroalimentacion: { type: 'string', description: 'Explicación formativa no vacía, fundamentada en el material, de hasta 2000 caracteres.' }
       }
     }
   };
@@ -43,11 +45,12 @@ function validateQuestions(value, count) {
   if (value.length !== count) throw invalidResponse('COUNT');
   return value.map(item => {
     if (!item || typeof item !== 'object' || Array.isArray(item) ||
-        Object.keys(item).some(key => !['pregunta', 'opciones', 'respuestaCorrecta'].includes(key))) throw invalidResponse('STRUCTURE');
+        Object.keys(item).some(key => !['pregunta', 'opciones', 'respuestaCorrecta', 'retroalimentacion'].includes(key))) throw invalidResponse('STRUCTURE');
     if (typeof item.pregunta !== 'string' || !item.pregunta.trim() || item.pregunta.length > 2000) throw invalidResponse('QUESTION');
     if (!Array.isArray(item.opciones) || item.opciones.length !== 4 ||
         item.opciones.some(option => typeof option !== 'string' || !option.trim() || option.length > 1000)) throw invalidResponse('OPTIONS');
     if (typeof item.respuestaCorrecta !== 'string') throw invalidResponse('CORRECT_ANSWER');
+    if (typeof item.retroalimentacion !== 'string' || !item.retroalimentacion.trim() || item.retroalimentacion.length > 2000) throw invalidResponse('FEEDBACK');
     let options = item.opciones.map(option => option.trim());
     const correctIndex = options.indexOf(item.respuestaCorrecta.trim());
     if (correctIndex < 0) throw invalidResponse('CORRECT_ANSWER');
@@ -57,7 +60,7 @@ function validateQuestions(value, count) {
       options = options.map((option, index) => option.slice(prefixes[index][0].length).trim());
     }
     if (new Set(options.map(option => option.toLocaleLowerCase('es'))).size !== 4) throw invalidResponse('DUPLICATE_OPTIONS');
-    return { pregunta: item.pregunta.trim(), opciones: options, respuestaCorrecta: options[correctIndex] };
+    return { pregunta: item.pregunta.trim(), opciones: options, respuestaCorrecta: options[correctIndex], retroalimentacion: item.retroalimentacion.trim() };
   });
 }
 function parseQuestions(payload, count) {
