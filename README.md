@@ -26,6 +26,8 @@ Selecciona documentos, agrega instrucciones opcionales e inspecciónalos. Despu�
 
 Ante fallos transitorios de red o HTTP 408/500/502/503/504, la generación reintenta automáticamente hasta tres veces, con esperas crecientes y un límite total de 90 segundos. Solicita a Gemini un esquema JSON con la cantidad exacta de preguntas y cuatro opciones. Ante una respuesta inválida permite una regeneración correctiva, compartiendo el máximo de tres solicitudes y los 90 segundos. Mantiene la validación local; no acepta preguntas parciales ni inventa respuestas correctas. No reintenta errores de clave, cuota ni bloqueos de contenido. Los errores distinguen conexión, servicio, solicitud rechazada, tiempo agotado y empaquetado.
 
+La plantilla pedagógica versionada de `backend/prompts.js` solicita preguntas conceptuales y cobertura equilibrada de los temas, respetando las directrices del docente. La retroalimentación formativa todavía no se incluye en el archivo exportado.
+
 Las alternativas se exportan sin mezclar su orden. Si Gemini agrega una enumeración completa de A a D, se eliminan esos prefijos y se conserva la respuesta correcta.
 
 El paquete incluye las bibliotecas de Question Set y Multiple Choice de la plantilla H5P indicada en [backend/templates/README.md](backend/templates/README.md). El usuario confirmó que un cuestionario de 20 preguntas se guardó, apareció en la biblioteca y funcionó en Lumi. La compatibilidad con Moodle requiere validación en esa instalación. La revisión y edición de preguntas antes de exportar aún no está implementada.

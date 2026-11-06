@@ -12,6 +12,7 @@
 - `frontend/css/`: estilos globales, del estudio y temas claro/oscuro.
 - `backend/storage.js`: persistencia JSON de ramos, proyectos, borradores, papelera y configuración bajo `app.getPath('userData')` al correr en Electron; usa `../data/academic_store.json` como ruta fuera de Electron.
 - `backend/chunker.js`: extracción y limpieza de texto desde documentos.
+- `backend/prompts.js`: instrucciones pedagógicas versionadas y separación del material y directrices del docente para la petición Gemini. La generación y exportación de explicaciones formativas están pendientes de H5P-14 entregas 2 y 3.
 - `backend/llmClient.js`: cliente de Google Generative AI para generar preguntas desde texto.
 
 ## Comandos

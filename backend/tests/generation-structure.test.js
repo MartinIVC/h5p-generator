@@ -25,8 +25,9 @@ test('exige un esquema de 20 preguntas y conserva las instrucciones al corregir'
       assert.equal(schema.items.properties.opciones.minItems, 4);
       assert.equal(schema.items.properties.opciones.maxItems, 4);
       assert.deepEqual(schema.items.required, ['pregunta', 'opciones', 'respuestaCorrecta']);
-      assert.match(body.contents[0].parts[0].text, /Dificultad media/);
-      if (calls === 2) assert.match(body.contents[0].parts[0].text, /Corrección de formato:/);
+      const parts = body.contents[0].parts.map(part => part.text);
+      assert.match(parts[1], /Dificultad media/);
+      if (calls === 2) assert.match(parts[3], /Corrección de formato:/);
       return response(calls === 1 ? invalid : twenty);
     } });
     assert.deepEqual(result, twenty); assert.equal(calls, 2, reason);
