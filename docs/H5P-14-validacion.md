@@ -28,13 +28,13 @@ Antes de la versión v4 se observó otro error: una pregunta sobre resúmenes cr
 | CA-1: diseño pedagógico y retroalimentación | Prompt, esquema y exportación implementados. Lumi mostró la explicación del ejemplo sintético; la evaluación real detectó la afirmación imprecisa descrita arriba. |
 | CA-2: distribución temática | Dos preguntas por tema en una muestra real de ocho; requiere evaluar más documentos para generalizar. |
 | CA-3: directrices docentes | Una muestra real de cuatro preguntas respetó el enfoque temático; la dificultad solicitada se cumplió solo parcialmente. |
-| CA-4: SDK y esquema | Se usa REST con `responseMimeType` y `responseJsonSchema`, con validación local. El ticket menciona `@google/generative-ai` y `responseSchema`; aceptar la equivalencia sigue pendiente de acuerdo. |
+| CA-4: REST y esquema | El usuario aprobó conservar REST y se actualizó la descripción en Jira para exigir `responseMimeType`, `responseJsonSchema` estricto y validación local, sin imponer un SDK. La implementación y la evidencia existente corresponden al criterio actualizado. |
 | CA-5: análisis JSON | Se usa `JSON.parse` sin extraer bloques Markdown mediante expresiones regulares. Hay pruebas de rechazo y corrección limitada. |
 
-Antes de cerrar el ticket debe resolverse CA-4 y revisarse la aceptación de la calidad pedagógica observada. La validación de Moodle y la edición manual de preguntas pertenecen a tareas separadas.
+Antes de cerrar el ticket debe revisarse la aceptación de la calidad pedagógica observada. La validación de Moodle y la edición manual de preguntas pertenecen a tareas separadas.
 
 ## Auditoría posterior de las cuatro entregas
 
 Se revisaron el prompt, la validación, el empaquetador y el recorrido preload/IPC/generación/guardado. Se corrigió el límite del validador compartido: ahora rechaza cantidades fuera de 1–20 incluso cuando coinciden con el array recibido. Se ampliaron los casos de retroalimentación inválida y se hizo visible en la interfaz la necesidad de comprobar respuestas y explicaciones en Lumi antes de usarlas con estudiantes.
 
-La suite actual tiene 51 pruebas aprobadas. La distribución `h5p-generator-linux-h5p14-auditoria` incorpora estas correcciones. Los hallazgos de calidad de la evaluación real permanecen documentados: el aviso al docente no demuestra que hayan desaparecido. El cierre del ticket sigue condicionado a resolver CA-4 y la aceptación pedagógica; no se ha declarado que todos los criterios estén satisfechos.
+La suite actual tiene 51 pruebas aprobadas. La distribución `h5p-generator-linux-h5p14-auditoria` incorpora estas correcciones. Los hallazgos de calidad de la evaluación real permanecen documentados: el aviso al docente no demuestra que hayan desaparecido. El cierre del ticket sigue condicionado a la aceptación pedagógica; no se ha declarado que todos los criterios estén satisfechos.

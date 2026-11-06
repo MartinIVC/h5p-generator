@@ -2,7 +2,7 @@
 
 Fecha: 2026-11-06  
 Ticket: [H5P-14 — Diseñar System Prompts y validación de esquema JSON](https://h5p-rag-generator.atlassian.net/browse/H5P-14)  
-Estado: entregas 1 a 4 realizadas y evidencia registrada en [H5P-14-validacion.md](H5P-14-validacion.md). La aceptación de la calidad pedagógica observada y la decisión del CA-4 siguen pendientes para el cierre.
+Estado: entregas 1 a 4 realizadas y evidencia registrada en [H5P-14-validacion.md](H5P-14-validacion.md). La aceptación de la calidad pedagógica observada sigue pendiente para el cierre. CA-4 fue ajustado en Jira con autorización del usuario para conservar REST.
 
 ## Objetivo
 
@@ -16,11 +16,7 @@ La rama `feature/h5p-14-prompts-validacion` parte del commit `45aff4b` de H5P-19
 
 ### Decisión sobre el CA-4
 
-El criterio menciona `@google/generative-ai` y `responseSchema`, mientras el código actual usa REST y `responseJsonSchema`.
-
-Se propone conservar la integración actual y ajustar el criterio para aceptar su equivalente funcional. Ese ajuste debe acordarse antes de considerar satisfecho el CA-4. Si se exige utilizar un SDK, la alternativa recomendada actualmente por Google es `@google/genai`; no se propone introducir el SDK antiguo.
-
-Referencia: [Bibliotecas de Gemini — documentación de Google](https://ai.google.dev/gemini-api/docs/libraries).
+El usuario aprobó conservar la integración REST y se actualizó la descripción de H5P-14 en Jira. CA-4 exige `responseMimeType: "application/json"`, `responseJsonSchema` estricto y validación local de estructura y valores antes del empaquetado, sin exigir un SDK específico. La checklist técnica también usa `responseJsonSchema`.
 
 ## Entrega 1 — Prompt pedagógico y contrato de preguntas
 
@@ -55,7 +51,7 @@ El prompt conserva las instrucciones del docente, incluye el material completo a
 
 ### Resultado verificable
 
-Se rechazan respuestas incompletas o inconsistentes sin inventar contenido ni filtrar documentos o claves. El campo `retroalimentacion` es obligatorio, se valida como texto no vacío de hasta 2000 caracteres y se conserva en el resultado interno. La decisión del CA-4 sigue pendiente de acuerdo; la implementación conserva REST con `responseJsonSchema`.
+Se rechazan respuestas incompletas o inconsistentes sin inventar contenido ni filtrar documentos o claves. El campo `retroalimentacion` es obligatorio, se valida como texto no vacío de hasta 2000 caracteres y se conserva en el resultado interno. CA-4 acepta la implementación REST con `responseJsonSchema` y validación local, según el cambio aprobado y guardado en Jira.
 
 ## Entrega 3 — Conservar la retroalimentación hasta el H5P
 
