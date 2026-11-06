@@ -36,7 +36,7 @@
 
 ## Límites funcionales
 
-**Estado 2026-11-06:** el flujo admite cuestionarios de opción múltiple y guarda un `.h5p` con bibliotecas incluidas. El usuario comprobó un paquete anterior en Lumi; queda pendiente repetirlo con la corrección de alternativas y validar Moodle; tampoco hay revisión y edición de preguntas antes de exportar.
+**Estado 2026-11-06:** el flujo admite cuestionarios de opción múltiple y guarda un `.h5p` con bibliotecas incluidas. El usuario confirmó guardado, registro y ejecución en Lumi de un cuestionario de 20 preguntas; queda pendiente validar Moodle; tampoco hay revisión y edición de preguntas antes de exportar.
 
 ### Contratos IPC H5P
 
@@ -51,7 +51,7 @@ Los errores devuelven `{ status: 'error', code, message }`: `INVALID_SENDER`, `I
 
 La inspección devuelve `{ status: 'ok', documentId, name, size }` sin enviar el texto al renderer; la liberación devuelve `{ status: 'ok' }`. Se ejecuta un worker a la vez, con límite de 60 segundos, 20 documentos por ventana y 5 MiB de texto extraído por documento. El texto solo reside en memoria y se descarta al quitar el documento, navegar o cerrar la ventana. Al cambiar la selección durante la inspección, el renderer descarta y libera los resultados obsoletos. Los borradores siguen guardando solo metadatos y requieren seleccionar los archivos de nuevo.
 
-El cliente reintenta hasta tres intentos totales ante fallos de transporte o HTTP 408/500/502/503/504, con esperas de 1 y 2 segundos más variación aleatoria. Solicitudes y esperas comparten un presupuesto de 90 segundos y la señal de cancelación de la ventana. No reintenta cuota, autenticación ni contenido inválido. No se registran cuerpos de error del proveedor.
+El cliente reintenta hasta tres intentos totales ante fallos de transporte o HTTP 408/500/502/503/504, con esperas de 1 y 2 segundos más variación aleatoria. Solicitudes y esperas comparten un presupuesto de 90 segundos y la señal de cancelación de la ventana. Solicita `responseJsonSchema` con cantidad exacta de preguntas y cuatro opciones. Una respuesta inválida puede producir una única regeneración correctiva dentro del mismo máximo global de tres solicitudes y 90 segundos. No reintenta cuota, autenticación ni bloqueos de contenido. No se registran cuerpos de error del proveedor. `INVALID_RESPONSE` puede incluir `reason` de una lista fija (`COUNT`, `OPTIONS`, `DUPLICATE_OPTIONS`, `CORRECT_ANSWER`, `JSON`, `STRUCTURE`, `QUESTION`, `INCOMPLETE`, `BLOCKED`, `EMPTY`, `TOO_LARGE`) y un mensaje fijo; nunca contiene preguntas ni respuestas del modelo.
 
 La generación devuelve `{ status: 'ok', kind: 'package', packageId, questionCount }`. El guardado devuelve `{ status: 'ok', fileName, projectSaved }` o `{ status: 'cancelled' }`; `projectSaved: false` significa que el archivo se guardó pero falló el registro. El paquete y los UUID pertenecen a la ventana y se liberan al navegar o cerrarla. El cliente valida el JSON y cuatro opciones únicas con una respuesta correcta antes de empaquetar; el esquema todavía debe coordinarse con H5P-14.
 

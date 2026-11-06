@@ -15,6 +15,7 @@ let networkMode = 'ok';
 let dialogMode = 'cancel';
 let fetchCalls = 0;
 let transientFailures = 0;
+let invalidResponses = 0;
 const questions = [{ pregunta: '¿Qué conserva la integridad?', opciones: ['A) Exactitud', 'B) Publicidad', 'C) Velocidad', 'D) Color'], respuestaCorrecta: 'A) Exactitud' }];
 global.fetch = async (url, options) => {
   assert.match(url, /^https:\/\/generativelanguage.googleapis.com\//);
@@ -23,7 +24,10 @@ global.fetch = async (url, options) => {
   if (networkMode === 'transient' && transientFailures++ < 2) return { ok: false, status: 503 };
   if (networkMode === 'offline') throw new Error('private network error');
   if (networkMode === 'quota') return { ok: false, status: 429 };
-  return { ok: true, json: async () => ({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(questions) }] } }] }) };
+  const schema = JSON.parse(options.body).generationConfig.responseJsonSchema;
+  const count = schema?.minItems || 1;
+  const values = Array.from({ length: networkMode === 'invalid' && invalidResponses++ === 0 ? count - 1 : count }, (_, i) => ({ ...questions[0], pregunta: `Pregunta ${i + 1}` }));
+  return { ok: true, json: async () => ({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(values) }] } }] }) };
 };
 dialog.showSaveDialog = async () => dialogMode === 'cancel' ? { canceled: true } :
   { filePath: path.join(directory, dialogMode === 'failure' ? 'missing/output.h5p' : 'output.h5p') };
@@ -99,6 +103,20 @@ async function run() {
   assert.equal(content.questions[0].params.answers[0].text, '<div>Exactitud</div>');
   assert.equal(content.questions[0].params.answers[0].correct, true);
   assert.equal((await invoke('getProjects', 'unassigned')).length, 1);
+  networkMode = 'invalid';
+  const beforeCorrection = fetchCalls;
+  const twenty = await invoke('generateH5P', { ...request, questionCount: 20 });
+  assert.equal(twenty.status, 'ok'); assert.equal(twenty.questionCount, 20);
+  assert.equal(fetchCalls - beforeCorrection, 2);
+  assert.equal((await invoke('saveH5PFile', { packageId: twenty.packageId, suggestedName: 'veinte' })).status, 'ok');
+  const recoveredZip = await JSZip.loadAsync(fs.readFileSync(path.join(directory, 'output.h5p')));
+  const recoveredContent = JSON.parse(await recoveredZip.file('content/content.json').async('string'));
+  assert.equal(recoveredContent.questions.length, 20);
+  for (const question of recoveredContent.questions) {
+    assert.equal(question.params.answers.length, 4);
+    assert.equal(question.params.answers.filter(answer => answer.correct).length, 1);
+  }
+  networkMode = 'ok';
   assert.equal((await invoke('releaseDocument', inspected.documentId)).status, 'ok');
   assert.equal((await invoke('generateH5P', request)).code, 'DOCUMENT_NOT_FOUND');
   // Segundo renderer local: los UUID de otro propietario no son utilizables.

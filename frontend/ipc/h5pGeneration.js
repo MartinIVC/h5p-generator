@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { Worker } = require('node:worker_threads');
-const { generateQuestionsFromChunk, MAX_SOURCE_CHARS } = require('../../backend/llmClient');
+const { generateQuestionsFromChunk, MAX_SOURCE_CHARS, RESPONSE_REASONS } = require('../../backend/llmClient');
 
 const messages = {
   DOCUMENT_NOT_FOUND: 'Los documentos ya no están disponibles. Vuelve a seleccionarlos.',
@@ -83,6 +83,9 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
       return { status: 'ok', kind: 'package', packageId, questionCount: questions.length };
     } catch (error) {
       const code = ['API_KEY_INVALID', 'QUOTA', 'INVALID_RESPONSE', 'NETWORK_ERROR', 'SERVICE_UNAVAILABLE', 'API_REQUEST_FAILED', 'GENERATION_TIMEOUT', 'GENERATION_CANCELLED'].includes(error?.message) ? error.message : 'GENERATION_FAILED';
+      if (code === 'INVALID_RESPONSE' && Object.hasOwn(RESPONSE_REASONS, error.reason)) {
+        return { ...fail(code), reason: error.reason, message: `No se pudo validar el cuestionario. ${RESPONSE_REASONS[error.reason]}` };
+      }
       return fail(code);
     } finally { session.busy = false; }
   }

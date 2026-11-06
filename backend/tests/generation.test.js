@@ -145,3 +145,12 @@ test('IPC diferencia fallos de red, servicio, timeout y empaquetado sin revelar 
   assert.equal(result.code, 'PACKAGE_FAILED');
   assert.doesNotMatch(JSON.stringify(result), /privados|conexión/);
 });
+test('IPC expone solo motivos de validación conocidos y nunca detalles del proveedor', async () => {
+  for (const reason of ['COUNT', 'DUPLICATE_OPTIONS', 'CORRECT_ANSWER', 'dato privado']) {
+    const { generation, owner } = setup({ generate: async () => { throw Object.assign(new Error('INVALID_RESPONSE'), { reason, raw: 'contenido privado' }); } });
+    const result = await generation.generateH5P(request, { sender: owner });
+    assert.equal(result.code, 'INVALID_RESPONSE');
+    assert.equal(result.reason, reason === 'dato privado' ? undefined : reason);
+    assert.doesNotMatch(JSON.stringify(result), /dato privado|contenido privado/);
+  }
+});

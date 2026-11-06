@@ -24,11 +24,11 @@ La selección de documentos, la vista previa, el guardado y las copias de seguri
 
 Selecciona documentos, agrega instrucciones opcionales e inspecciónalos. Después indica entre 1 y 20 preguntas y genera un cuestionario de opción múltiple. El texto extraído y las instrucciones se envían a Gemini; se requiere una clave configurada. El material conjunto admite hasta 200.000 caracteres. El archivo `.h5p` se guarda mediante el diálogo del sistema y se registra en el ramo seleccionado. Si falla el registro, la aplicación indica que el archivo ya fue guardado.
 
-Ante fallos transitorios de red o HTTP 408/500/502/503/504, la generación reintenta automáticamente hasta tres veces, con esperas crecientes y un límite total de 90 segundos. No reintenta errores de clave, cuota ni respuestas inválidas. Los errores distinguen conexión, servicio, solicitud rechazada, tiempo agotado y empaquetado.
+Ante fallos transitorios de red o HTTP 408/500/502/503/504, la generación reintenta automáticamente hasta tres veces, con esperas crecientes y un límite total de 90 segundos. Solicita a Gemini un esquema JSON con la cantidad exacta de preguntas y cuatro opciones. Ante una respuesta inválida permite una regeneración correctiva, compartiendo el máximo de tres solicitudes y los 90 segundos. Mantiene la validación local; no acepta preguntas parciales ni inventa respuestas correctas. No reintenta errores de clave, cuota ni bloqueos de contenido. Los errores distinguen conexión, servicio, solicitud rechazada, tiempo agotado y empaquetado.
 
 Las alternativas se exportan sin mezclar su orden. Si Gemini agrega una enumeración completa de A a D, se eliminan esos prefijos y se conserva la respuesta correcta.
 
-El paquete incluye las bibliotecas de Question Set y Multiple Choice de la plantilla H5P indicada en [backend/templates/README.md](backend/templates/README.md). Un paquete anterior fue comprobado manualmente en Lumi por el usuario. La versión actual y su compatibilidad con Moodle requieren validación en cada instalación. La revisión y edición de preguntas antes de exportar aún no está implementada.
+El paquete incluye las bibliotecas de Question Set y Multiple Choice de la plantilla H5P indicada en [backend/templates/README.md](backend/templates/README.md). El usuario confirmó que un cuestionario de 20 preguntas se guardó, apareció en la biblioteca y funcionó en Lumi. La compatibilidad con Moodle requiere validación en esa instalación. La revisión y edición de preguntas antes de exportar aún no está implementada.
 
 
 ## Distribución Linux y validación de H5P-19

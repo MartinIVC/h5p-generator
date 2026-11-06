@@ -23,7 +23,7 @@ test('limita los reintentos y no filtra errores de transporte', async () => {
     assert.equal(calls, 3);
   }
 });
-test('no reintenta errores permanentes, cuota ni respuestas inválidas', async () => {
+test('no reintenta errores permanentes ni cuota', async () => {
   for (const [status, message] of [[400, 'API_REQUEST_FAILED'], [401, 'API_KEY_INVALID'], [403, 'API_KEY_INVALID'], [404, 'API_REQUEST_FAILED'], [429, 'QUOTA']]) {
     let calls = 0;
     await assert.rejects(generate({ fetch: async () => { calls++; return { ok: false, status }; }, wait: async () => assert.fail('no debe esperar') }), { message });

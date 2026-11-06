@@ -720,7 +720,7 @@
           saveButton.classList.add('hidden');
           const version = state.inspectionVersion;
           const documentIds = state.files.map(file => state.inspections.get(file));
-          showStatus('Generando preguntas y preparando el archivo… Si hay un fallo temporal de conexión o del servicio, se reintentará automáticamente.');
+          showStatus('Generando preguntas y preparando el archivo… Los fallos temporales y las respuestas incompletas o inválidas se reintentarán de forma limitada.');
           const result = await window.academicAPI.generateH5P({ documentIds, activityType: 'multiple-choice', questionCount: count, instructions: state.prompt });
           if (version !== state.inspectionVersion || !generateButton.isConnected || panelSelector.classList.contains('hidden')) return;
           if (result?.status !== 'ok' || result.kind !== 'package') {
