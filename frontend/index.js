@@ -2,6 +2,8 @@ const { app, BrowserWindow, ipcMain, shell, Notification, dialog } = require('el
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
+const { pathToFileURL } = require('node:url');
+const { registerH5PIpcHandlers } = require(path.join(__dirname, 'ipc', 'h5pHandlers.js'));
 // Chromium no detecta automáticamente Libsecret en sesiones Hyprland.
 if (process.platform === 'linux' && (process.env.XDG_CURRENT_DESKTOP || '').toLowerCase().split(':').includes('hyprland')) {
   app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
@@ -54,6 +56,13 @@ function notifyWhenInBackground(event, body) {
 function registerIpcHandlers() {
   if (ipcRegistered) return;
   ipcRegistered = true;
+  registerH5PIpcHandlers(ipcMain, (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const frame = event.senderFrame;
+    return Boolean(win && !win.isDestroyed() && win.webContents === event.sender &&
+      frame && frame === event.sender.mainFrame &&
+      frame.url === pathToFileURL(path.join(__dirname, 'index.html')).href);
+  });
   // Ramos (Courses)
   ipcMain.handle('academic:getCourses', async () => {
     return academicStorage.getAllCourses();
@@ -185,9 +194,9 @@ function registerIpcHandlers() {
     if (candidate != null && (typeof candidate !== 'string' || candidate.length > 1024)) {
       return { status: 'error' };
     }
-    const key = candidate == null ? academicStorage.getApiKey() : candidate.trim();
-    if (!key) return { status: 'missing' };
     try {
+      const key = candidate == null ? academicStorage.getApiKey() : candidate.trim();
+      if (!key) return { status: 'missing' };
       const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
