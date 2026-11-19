@@ -1,0 +1,58 @@
+{
+  "media": {
+    "disableImageZooming": false
+  },
+  "question": "",
+  "answers": [],
+  "overallFeedback": [
+    {
+      "from": 0,
+      "to": 100,
+      "feedback": ""
+    }
+  ],
+  "behaviour": {
+    "enableRetry": true,
+    "enableSolutionsButton": true,
+    "enableCheckButton": true,
+    "type": "auto",
+    "singlePoint": false,
+    "randomAnswers": false,
+    "showSolutionsRequiresInput": true,
+    "confirmCheckDialog": false,
+    "confirmRetryDialog": false,
+    "autoCheck": false,
+    "passPercentage": 100,
+    "showScorePoints": true
+  },
+  "UI": {
+    "checkAnswerButton": "Comprobar",
+    "showSolutionButton": "Mostrar solución",
+    "tryAgainButton": "Reintentar",
+    "tipsLabel": "Mostrar pista",
+    "scoreBarLabel": "Obtuviste :num de :total puntos",
+    "tipAvailable": "Pista disponible",
+    "feedbackAvailable": "Comentarios disponibles",
+    "readFeedback": "Leer comentarios",
+    "wrongAnswer": "Respuesta incorrecta",
+    "correctAnswer": "Respuesta correcta",
+    "shouldCheck": "Debía seleccionarse",
+    "shouldNotCheck": "No debía seleccionarse",
+    "noInput": "Responde antes de ver la solución",
+    "a11yCheck": "Comprobar las respuestas. Las selecciones se marcarán como correctas, incorrectas o sin responder.",
+    "a11yShowSolution": "Mostrar la solución. La actividad mostrará la respuesta correcta.",
+    "a11yRetry": "Reintentar la actividad. Se reinician todas las respuestas y comienza de nuevo."
+  },
+  "confirmCheck": {
+    "header": "¿Finalizar?",
+    "body": "¿Seguro que deseas comprobar tu respuesta?",
+    "cancelLabel": "Cancelar",
+    "confirmLabel": "Finalizar"
+  },
+  "confirmRetry": {
+    "header": "¿Reintentar?",
+    "body": "¿Seguro que deseas volver a intentarlo?",
+    "cancelLabel": "Cancelar",
+    "confirmLabel": "Confirmar"
+  }
+}

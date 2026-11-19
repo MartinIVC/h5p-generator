@@ -1,0 +1,44 @@
+{
+  "media": {
+    "disableImageZooming": false
+  },
+  "question": "",
+  "correct": "true",
+  "l10n": {
+    "trueText": "Verdadero",
+    "falseText": "Falso",
+    "score": "Obtuviste @score de @total puntos",
+    "checkAnswer": "Comprobar",
+    "submitAnswer": "Enviar",
+    "showSolutionButton": "Mostrar solución",
+    "tryAgain": "Reintentar",
+    "wrongAnswerMessage": "Respuesta incorrecta",
+    "correctAnswerMessage": "Respuesta correcta",
+    "scoreBarLabel": "Obtuviste :num de :total puntos",
+    "a11yCheck": "Comprobar las respuestas. Las respuestas se marcarán como correctas, incorrectas o sin respuesta.",
+    "a11yShowSolution": "Mostrar la solución. La tarea se marcará con su solución correcta.",
+    "a11yRetry": "Reintentar la tarea. Se reinician todas las respuestas y comienza de nuevo."
+  },
+  "behaviour": {
+    "enableRetry": true,
+    "enableSolutionsButton": true,
+    "enableCheckButton": true,
+    "confirmCheckDialog": false,
+    "confirmRetryDialog": false,
+    "autoCheck": false,
+    "feedbackOnCorrect": "",
+    "feedbackOnWrong": ""
+  },
+  "confirmCheck": {
+    "header": "¿Finalizar?",
+    "body": "¿Seguro que deseas comprobar tu respuesta?",
+    "cancelLabel": "Cancelar",
+    "confirmLabel": "Finalizar"
+  },
+  "confirmRetry": {
+    "header": "¿Reintentar?",
+    "body": "¿Seguro que deseas volver a intentarlo?",
+    "cancelLabel": "Cancelar",
+    "confirmLabel": "Confirmar"
+  }
+}

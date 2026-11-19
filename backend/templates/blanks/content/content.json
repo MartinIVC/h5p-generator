@@ -1,0 +1,56 @@
+{
+  "media": {
+    "disableImageZooming": false
+  },
+  "text": "<p>Completa los espacios con las palabras que faltan.</p>",
+  "questions": [],
+  "overallFeedback": [
+    {
+      "from": 0,
+      "to": 100,
+      "feedback": "Obtuviste @score de @total puntos."
+    }
+  ],
+  "showSolutions": "Mostrar solución",
+  "tryAgain": "Reintentar",
+  "checkAnswer": "Comprobar",
+  "submitAnswer": "Enviar",
+  "notFilledOut": "Por favor, completa todos los espacios antes de ver la solución",
+  "answerIsCorrect": "':ans' es correcta",
+  "answerIsWrong": "':ans' es incorrecta",
+  "answeredCorrectly": "Respondido correctamente",
+  "answeredIncorrectly": "Respondido incorrectamente",
+  "solutionLabel": "Respuesta correcta:",
+  "inputLabel": "Espacio @num de @total",
+  "inputHasTipLabel": "Pista disponible",
+  "tipLabel": "Pista",
+  "behaviour": {
+    "enableRetry": true,
+    "enableSolutionsButton": true,
+    "enableCheckButton": true,
+    "autoCheck": false,
+    "caseSensitive": false,
+    "showSolutionsRequiresInput": true,
+    "separateLines": false,
+    "confirmCheckDialog": false,
+    "confirmRetryDialog": false,
+    "acceptSpellingErrors": false
+  },
+  "confirmCheck": {
+    "header": "¿Finalizar?",
+    "body": "¿Seguro que deseas comprobar tus respuestas?",
+    "cancelLabel": "Cancelar",
+    "confirmLabel": "Finalizar"
+  },
+  "confirmRetry": {
+    "header": "¿Reintentar?",
+    "body": "¿Seguro que deseas volver a intentarlo?",
+    "cancelLabel": "Cancelar",
+    "confirmLabel": "Confirmar"
+  },
+  "scoreBarLabel": "Obtuviste :num de :total puntos",
+  "a11yCheck": "Comprobar las respuestas. Las respuestas se marcarán como correctas, incorrectas o sin contestar.",
+  "a11yShowSolution": "Mostrar la solución. La tarea se marcará con su solución correcta.",
+  "a11yRetry": "Reintentar la tarea. Se reinician todas las respuestas y comienza de nuevo.",
+  "a11yCheckingModeHeader": "Modo de comprobación"
+}

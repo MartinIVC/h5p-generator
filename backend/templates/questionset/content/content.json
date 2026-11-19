@@ -1,0 +1,49 @@
+{
+  "introPage": {
+    "showIntroPage": false,
+    "startButtonText": "Comenzar",
+    "introduction": ""
+  },
+  "progressType": "dots",
+  "passPercentage": 50,
+  "questions": [],
+  "disableBackwardsNavigation": false,
+  "randomQuestions": false,
+  "endGame": {
+    "showResultPage": true,
+    "showSolutionButton": true,
+    "showRetryButton": true,
+    "noResultMessage": "Finalizado",
+    "message": "Tu resultado:",
+    "overallFeedback": [
+      {
+        "from": 0,
+        "to": 100,
+        "feedback": "Obtuviste @score de @total puntos."
+      }
+    ],
+    "solutionButtonText": "Mostrar solución",
+    "retryButtonText": "Reintentar",
+    "finishButtonText": "Finalizar",
+    "showAnimations": false,
+    "skippable": false,
+    "skipButtonText": "Omitir video"
+  },
+  "override": {
+    "checkButton": true,
+    "showSolutionButton": "off",
+    "retryButton": "off"
+  },
+  "texts": {
+    "prevButton": "Anterior",
+    "nextButton": "Siguiente",
+    "finishButton": "Finalizar",
+    "textualProgress": "Pregunta @current de @total",
+    "questionLabel": "Pregunta",
+    "jumpToQuestion": "Ir a la pregunta %d",
+    "readSpeakerProgress": "Pregunta @current de @total",
+    "unansweredText": "Sin responder",
+    "answeredText": "Respondida",
+    "currentQuestionText": "Pregunta actual"
+  }
+}

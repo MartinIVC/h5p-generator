@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "adrs": [
+    "docs/adr/ADR-001-plantillas-estaticas-h5p.md",
+    "docs/adr/ADR-002-ampliacion-catalogo-plantillas-h5p.md"
+  ],
+  "maxCoreApi": "1.24",
+  "librariesBundle": {
+    "path": "libraries-bundle.zip",
+    "sha256": "ab5139687c100f6a54e8228f8e4380e4a53f735dc11659fbf42b4d15bd811d44",
+    "provenance": "Curado de forma determinista con scripts/sync-h5p-templates.cjs combinando la base local (question-set-616_2.h5p) y paquetes oficiales de https://api.h5p.org/v1/content-types/ compatibles con coreApi <= 1.24, sin archivos de ejemplo ni bibliotecas huérfanas."
+  },
+  "templates": {
+    "multichoice": {
+      "label": "Opción múltiple (pregunta individual)",
+      "category": "evaluation",
+      "h5pJson": "multichoice/h5p.json",
+      "contentJson": "multichoice/content/content.json",
+      "mainLibrary": { "machineName": "H5P.MultiChoice", "majorVersion": 1, "minorVersion": 14, "patchVersion": 7 },
+      "coreApi": { "runtime": "1.19", "editor": "1.14" },
+      "rootLibraries": ["H5P.MultiChoice 1.14"],
+      "provenance": "https://h5p.org/sites/default/files/question-set-616_2.h5p"
+    },
+    "questionset": {
+      "label": "Cuestionario (Question Set)",
+      "category": "evaluation",
+      "h5pJson": "questionset/h5p.json",
+      "contentJson": "questionset/content/content.json",
+      "mainLibrary": { "machineName": "H5P.QuestionSet", "majorVersion": 1, "minorVersion": 17, "patchVersion": 6 },
+      "subQuestionLibrary": { "machineName": "H5P.MultiChoice", "majorVersion": 1, "minorVersion": 14, "patchVersion": 7 },
+      "coreApi": { "runtime": "1.19", "editor": "1.24" },
+      "rootLibraries": ["H5P.QuestionSet 1.17", "H5P.MultiChoice 1.14"],
+      "provenance": "https://h5p.org/sites/default/files/question-set-616_2.h5p"
+    },
+    "truefalse": {
+      "label": "Verdadero o Falso",
+      "category": "evaluation",
+      "h5pJson": "truefalse/h5p.json",
+      "contentJson": "truefalse/content/content.json",
+      "mainLibrary": { "machineName": "H5P.TrueFalse", "majorVersion": 1, "minorVersion": 8, "patchVersion": 11 },
+      "coreApi": { "runtime": "1.19", "editor": "1.12" },
+      "rootLibraries": ["H5P.TrueFalse 1.8"],
+      "provenance": "https://api.h5p.org/v1/content-types/H5P.TrueFalse"
+    },
+    "blanks": {
+      "label": "Rellenar los espacios",
+      "category": "practice",
+      "h5pJson": "blanks/h5p.json",
+      "contentJson": "blanks/content/content.json",
+      "mainLibrary": { "machineName": "H5P.Blanks", "majorVersion": 1, "minorVersion": 14, "patchVersion": 13 },
+      "coreApi": { "runtime": "1.19", "editor": "1.14" },
+      "rootLibraries": ["H5P.Blanks 1.14"],
+      "provenance": "https://api.h5p.org/v1/content-types/H5P.Blanks"
+    },
+    "dragtext": {
+      "label": "Arrastrar las palabras",
+      "category": "practice",
+      "h5pJson": "dragtext/h5p.json",
+      "contentJson": "dragtext/content/content.json",
+      "mainLibrary": { "machineName": "H5P.DragText", "majorVersion": 1, "minorVersion": 10, "patchVersion": 17 },
+      "coreApi": { "runtime": "1.19", "editor": "1.14" },
+      "rootLibraries": ["H5P.DragText 1.10"],
+      "provenance": "https://api.h5p.org/v1/content-types/H5P.DragText"
+    },
+    "singlechoiceset": {
+      "label": "Conjunto de selección única",
+      "category": "evaluation",
+      "h5pJson": "singlechoiceset/h5p.json",
+      "contentJson": "singlechoiceset/content/content.json",
+      "mainLibrary": { "machineName": "H5P.SingleChoiceSet", "majorVersion": 1, "minorVersion": 11, "patchVersion": 44 },
+      "coreApi": { "runtime": "1.19", "editor": "1.24" },
+      "rootLibraries": ["H5P.SingleChoiceSet 1.11"],
+      "provenance": "https://api.h5p.org/v1/content-types/H5P.SingleChoiceSet"
+    },
+    "summary": {
+      "label": "Resumen interactivo",
+      "category": "practice",
+      "h5pJson": "summary/h5p.json",
+      "contentJson": "summary/content/content.json",
+      "mainLibrary": { "machineName": "H5P.Summary", "majorVersion": 1, "minorVersion": 10, "patchVersion": 22 },
+      "coreApi": { "runtime": "1.19", "editor": "1.24" },
+      "rootLibraries": ["H5P.Summary 1.10"],
+      "provenance": "https://api.h5p.org/v1/content-types/H5P.Summary"
+    },
+    "sortparagraphs": {
+      "label": "Ordenar los párrafos",
+      "category": "practice",
+      "h5pJson": "sortparagraphs/h5p.json",
+      "contentJson": "sortparagraphs/content/content.json",
+      "mainLibrary": { "machineName": "H5P.SortParagraphs", "majorVersion": 0, "minorVersion": 11, "patchVersion": 9 },
+      "coreApi": { "runtime": "1.7", "editor": "1.14" },
+      "rootLibraries": ["H5P.SortParagraphs 0.11"],
+      "provenance": "https://api.h5p.org/v1/content-types/H5P.SortParagraphs"
+    },
+    "crossword": {
+      "label": "Crucigrama",
+      "category": "practice",
+      "h5pJson": "crossword/h5p.json",
+      "contentJson": "crossword/content/content.json",
+      "mainLibrary": { "machineName": "H5P.Crossword", "majorVersion": 0, "minorVersion": 5, "patchVersion": 13 },
+      "coreApi": { "runtime": "1.19", "editor": "1.24" },
+      "rootLibraries": ["H5P.Crossword 0.5"],
+      "provenance": "https://api.h5p.org/v1/content-types/H5P.Crossword"
+    },
+    "findthewords": {
+      "label": "Sopa de letras",
+      "category": "practice",
+      "h5pJson": "findthewords/h5p.json",
+      "contentJson": "findthewords/content/content.json",
+      "mainLibrary": { "machineName": "H5P.FindTheWords", "majorVersion": 1, "minorVersion": 4, "patchVersion": 4 },
+      "coreApi": { "runtime": "1.3", "editor": null },
+      "rootLibraries": ["H5P.FindTheWords 1.4"],
+      "provenance": "https://api.h5p.org/v1/content-types/H5P.FindTheWords"
+    },
+    "accordion": {
+      "label": "Acordeón de conceptos",
+      "category": "study",
+      "h5pJson": "accordion/h5p.json",
+      "contentJson": "accordion/content/content.json",
+      "mainLibrary": { "machineName": "H5P.Accordion", "majorVersion": 1, "minorVersion": 0, "patchVersion": 33 },
+      "subContentLibrary": { "machineName": "H5P.AdvancedText", "majorVersion": 1, "minorVersion": 1, "patchVersion": 14 },
+      "coreApi": { "runtime": "1.5", "editor": null },
+      "rootLibraries": ["H5P.Accordion 1.0", "H5P.AdvancedText 1.1"],
+      "provenance": "https://api.h5p.org/v1/content-types/H5P.Accordion"
+    },
+    "flashcards": {
+      "label": "Tarjetas didácticas",
+      "category": "study",
+      "h5pJson": "flashcards/h5p.json",
+      "contentJson": "flashcards/content/content.json",
+      "mainLibrary": { "machineName": "H5P.Flashcards", "majorVersion": 1, "minorVersion": 7, "patchVersion": 10 },
+      "coreApi": { "runtime": "1.4", "editor": "1.24" },
+      "rootLibraries": ["H5P.Flashcards 1.7"],
+      "provenance": "https://api.h5p.org/v1/content-types/H5P.Flashcards"
+    }
+  },
+  "libraries": [
+    { "dir": "EmbeddedJS-1.0", "machineName": "EmbeddedJS", "version": "1.0.4", "coreApi": null, "license": "MIT", "author": "Jupiter" },
+    { "dir": "FontAwesome-4.5", "machineName": "FontAwesome", "version": "4.5.4", "coreApi": null, "license": "MIT", "author": "Dave Gandy" },
+    { "dir": "H5P.Accordion-1.0", "machineName": "H5P.Accordion", "version": "1.0.33", "coreApi": "1.5", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5P.AdvancedText-1.1", "machineName": "H5P.AdvancedText", "version": "1.1.14", "coreApi": null, "license": "Ver library.json", "author": "Joubel" },
+    { "dir": "H5P.Blanks-1.14", "machineName": "H5P.Blanks", "version": "1.14.13", "coreApi": "1.19", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5P.Crossword-0.5", "machineName": "H5P.Crossword", "version": "0.5.13", "coreApi": null, "license": "MIT", "author": "Language Training Center GmbH, Oliver Tacke" },
+    { "dir": "H5P.DragText-1.10", "machineName": "H5P.DragText", "version": "1.10.17", "coreApi": "1.19", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5P.FindTheWords-1.4", "machineName": "H5P.FindTheWords", "version": "1.4.4", "coreApi": null, "license": "MIT", "author": "JithinSpace" },
+    { "dir": "H5P.Flashcards-1.7", "machineName": "H5P.Flashcards", "version": "1.7.10", "coreApi": "1.4", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5P.FontIcons-1.0", "machineName": "H5P.FontIcons", "version": "1.0.6", "coreApi": null, "license": "Ver library.json", "author": "Joubel" },
+    { "dir": "H5P.Image-1.1", "machineName": "H5P.Image", "version": "1.1.22", "coreApi": "1.19", "license": "Ver library.json", "author": "Joubel" },
+    { "dir": "H5P.JoubelUI-1.3", "machineName": "H5P.JoubelUI", "version": "1.3.19", "coreApi": "1.3", "license": "Ver library.json", "author": "Joubel" },
+    { "dir": "H5P.MaterialDesignIcons-1.0", "machineName": "H5P.MaterialDesignIcons", "version": "1.0.0", "coreApi": null, "license": "GPL3", "author": "Joubel" },
+    { "dir": "H5P.MultiChoice-1.14", "machineName": "H5P.MultiChoice", "version": "1.14.7", "coreApi": "1.19", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5P.Question-1.4", "machineName": "H5P.Question", "version": "1.4.8", "coreApi": "1.7", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5P.Question-1.5", "machineName": "H5P.Question", "version": "1.5.15", "coreApi": "1.7", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5P.QuestionSet-1.17", "machineName": "H5P.QuestionSet", "version": "1.17.6", "coreApi": "1.19", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5P.SingleChoiceSet-1.11", "machineName": "H5P.SingleChoiceSet", "version": "1.11.44", "coreApi": "1.19", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5P.SortParagraphs-0.11", "machineName": "H5P.SortParagraphs", "version": "0.11.9", "coreApi": null, "license": "MIT", "author": "Oliver Tacke" },
+    { "dir": "H5P.Summary-1.10", "machineName": "H5P.Summary", "version": "1.10.22", "coreApi": "1.19", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5P.TextUtilities-1.3", "machineName": "H5P.TextUtilities", "version": "1.3.0", "coreApi": null, "license": "pd", "author": "Oliver Tacke" },
+    { "dir": "H5P.Timer-0.4", "machineName": "H5P.Timer", "version": "0.4.2", "coreApi": null, "license": "pd", "author": "Oliver Tacke" },
+    { "dir": "H5P.Transition-1.0", "machineName": "H5P.Transition", "version": "1.0.4", "coreApi": null, "license": "MIT", "author": "Joubel" },
+    { "dir": "H5P.TrueFalse-1.8", "machineName": "H5P.TrueFalse", "version": "1.8.11", "coreApi": "1.19", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5P.Video-1.5", "machineName": "H5P.Video", "version": "1.5.22", "coreApi": "1.19", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5PEditor.ColorSelector-1.3", "machineName": "H5PEditor.ColorSelector", "version": "1.3.1", "coreApi": "1.24", "license": "Ver library.json", "author": "Joubel" },
+    { "dir": "H5PEditor.QuestionSetTextualEditor-1.3", "machineName": "H5PEditor.QuestionSetTextualEditor", "version": "1.3.11", "coreApi": "1.24", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5PEditor.RadioGroup-1.1", "machineName": "H5PEditor.RadioGroup", "version": "1.1.4", "coreApi": "1.12", "license": "Ver library.json", "author": "Joubel" },
+    { "dir": "H5PEditor.RangeList-1.0", "machineName": "H5PEditor.RangeList", "version": "1.0.13", "coreApi": "1.14", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5PEditor.ShowWhen-1.0", "machineName": "H5PEditor.ShowWhen", "version": "1.0.9", "coreApi": null, "license": "MIT", "author": "fnoks" },
+    { "dir": "H5PEditor.SingleChoiceSetTextualEditor-1.0", "machineName": "H5PEditor.SingleChoiceSetTextualEditor", "version": "1.0.10", "coreApi": "1.24", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5PEditor.SummaryTextualEditor-1.1", "machineName": "H5PEditor.SummaryTextualEditor", "version": "1.1.12", "coreApi": "1.24", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5PEditor.TableList-1.0", "machineName": "H5PEditor.TableList", "version": "1.0.4", "coreApi": "1.14", "license": "MIT", "author": "Joubel" },
+    { "dir": "H5PEditor.VerticalTabs-1.3", "machineName": "H5PEditor.VerticalTabs", "version": "1.3.14", "coreApi": "1.24", "license": "MIT", "author": "Joubel" },
+    { "dir": "flowplayer-1.0", "machineName": "flowplayer", "version": "1.0.5", "coreApi": null, "license": "Ver library.json", "author": "Ver library.json" },
+    { "dir": "jQuery.ui-1.10", "machineName": "jQuery.ui", "version": "1.10.22", "coreApi": null, "license": "MIT", "author": "Jupiter" }
+  ]
+}

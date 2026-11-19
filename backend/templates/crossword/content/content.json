@@ -1,0 +1,63 @@
+{
+  "taskDescription": "<p>Resuelve el crucigrama a partir de las pistas.</p>",
+  "words": [],
+  "solutionWord": "",
+  "overallFeedback": [
+    {
+      "from": 0,
+      "to": 100,
+      "feedback": "Obtuviste @score de @total puntos."
+    }
+  ],
+  "theme": {
+    "backgroundColor": "#173354",
+    "gridColor": "#000000",
+    "cellBackgroundColor": "#ffffff",
+    "cellColor": "#000000",
+    "clueIdColor": "#606060",
+    "cellBackgroundColorHighlight": "#3e8de8",
+    "cellColorHighlight": "#ffffff",
+    "clueIdColorHighlight": "#e0e0e0"
+  },
+  "behaviour": {
+    "enableInstantFeedback": false,
+    "scoreWords": true,
+    "applyPenalties": false,
+    "enableRetry": true,
+    "enableSolutionsButton": true,
+    "keepCorrectAnswers": false
+  },
+  "l10n": {
+    "across": "Horizontal",
+    "down": "Vertical",
+    "checkAnswer": "Comprobar",
+    "submitAnswer": "Enviar",
+    "tryAgain": "Reintentar",
+    "showSolution": "Mostrar solución",
+    "couldNotGenerateCrossword": "No se pudo generar un crucigrama con las palabras dadas. Inténtalo nuevamente con menos palabras o palabras que compartan más letras.",
+    "couldNotGenerateCrosswordTooFewWords": "No se pudo generar un crucigrama. Se necesitan al menos dos palabras.",
+    "probematicWords": "Algunas palabras no pudieron colocarse en la cuadrícula. Palabras problemáticas: @words",
+    "extraClue": "Pista extra",
+    "closeWindow": "Cerrar ventana"
+  },
+  "a11y": {
+    "crosswordGrid": "Cuadrícula de crucigrama. Usa las teclas de flecha para navegar y el teclado para ingresar letras. También puedes usar Tab para responder en la lista de pistas.",
+    "column": "Columna",
+    "row": "Fila",
+    "across": "Horizontal",
+    "down": "Vertical",
+    "empty": "Vacío",
+    "resultFor": "Resultado para: @clue",
+    "correct": "Correcto",
+    "wrong": "Incorrecto",
+    "point": "punto",
+    "solutionFor": "Para @clue la solución es: @solution",
+    "extraClueFor": "Abrir pista extra para @clue",
+    "letterSevenOfNine": "Letra @position de @length",
+    "lettersWord": "palabra de @length letras",
+    "check": "Comprobar los caracteres. Las respuestas se marcarán como correctas, incorrectas o sin contestar.",
+    "showSolution": "Mostrar la solución. El crucigrama se completará con su solución correcta.",
+    "retry": "Reintentar la tarea. Se reinician todas las respuestas y comienza de nuevo.",
+    "yourResult": "Obtuviste @score de @total puntos."
+  }
+}
