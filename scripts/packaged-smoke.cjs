@@ -150,6 +150,29 @@ async function run() {
   })()`);
   await waitFor('Boolean(document.getElementById("question-count"))');
   assert.equal(await evaluate('document.activeElement.id'), 'selector-title');
+  assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true);
+  // CA-4: botón Generar Evaluación deshabilitado antes de elegir formato
+  assert.equal(await evaluate('document.getElementById("btn-generate-h5p").disabled'), true);
+  assert.equal(await evaluate('document.querySelectorAll(".activity-type-card.is-upcoming").length'), 10);
+  // D1 + CA-1/CA-2: Opción Múltiple fija cantidad en 1, bloquea botones rápidos y habilita generación
+  await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="multichoice"]\').click()');
+  assert.equal(await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="multichoice"]\').classList.contains("selected")'), true);
+  assert.equal(await evaluate('document.getElementById("question-count").value'), '1');
+  assert.equal(await evaluate('document.getElementById("question-count").disabled'), true);
+  assert.equal(await evaluate('document.querySelector(\'.btn-quick-count[data-count="3"]\').disabled'), true);
+  assert.equal(await evaluate('document.getElementById("btn-generate-h5p").disabled'), false);
+  assert.equal(await evaluate('window.uploadManager.getActivityType()'), 'multichoice');
+  // CA-4: deseleccionar tarjeta vuelve a deshabilitar Generar Evaluación
+  await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="multichoice"]\').click()');
+  assert.equal(await evaluate('document.getElementById("btn-generate-h5p").disabled'), true);
+  assert.equal(await evaluate('window.uploadManager.getActivityType()'), null);
+  // CA-1/CA-2/CA-3: Cuestionario habilita botones rápidos 3/5/10 y selector 1..20
+  await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="questionset"]\').click()');
+  assert.equal(await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="questionset"]\').classList.contains("selected")'), true);
+  assert.equal(await evaluate('document.getElementById("question-count").disabled'), false);
+  await evaluate('document.querySelector(\'.btn-quick-count[data-count="3"]\').click()');
+  assert.equal(await evaluate('document.getElementById("question-count").value'), '3');
+  assert.equal(await evaluate('window.uploadManager.getQuestionCount()'), 3);
   await evaluate('document.getElementById("question-count").focus()');
   window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
   window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
