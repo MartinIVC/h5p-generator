@@ -14,6 +14,7 @@
 - `backend/chunker.js`: extracción y limpieza de texto desde documentos.
 - `backend/prompts.js`: instrucciones pedagógicas versionadas y separación del material y directrices del docente para la petición Gemini. La explicación formativa se solicita y valida antes de exportarse al H5P.
 - `backend/llmClient.js`: cliente de Google Generative AI para generar preguntas desde texto.
+- `backend/h5pTemplates.js` y `backend/templates/`: catálogo declarativo de **12 plantillas estáticas H5P** en español (`multichoice`, `questionset`, `truefalse`, `blanks`, `dragtext`, `singlechoiceset`, `summary`, `sortparagraphs`, `crossword`, `findthewords`, `accordion`, `flashcards`), manifiesto `manifest.json` con verificación SHA-256 y compuerta `maxCoreApi <= 1.24`, y `libraries-bundle.zip` curado (36 bibliotecas activas, ~2.32 MB, sin medios de ejemplo). `scripts/sync-h5p-templates.cjs` regenera el bundle (solo desarrollo, excluido de `package-linux.cjs`). Ver `docs/adr/ADR-001-plantillas-estaticas-h5p.md`, `docs/adr/ADR-002-ampliacion-catalogo-plantillas-h5p.md` y `docs/H5P-15-estructura-plantillas.md`. La interfaz y el worker actualmente solo exponen `H5P.QuestionSet` hasta completar `H5P-7` y `H5P-16`.
 
 ## Comandos
 

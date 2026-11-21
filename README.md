@@ -30,7 +30,7 @@ La plantilla pedagógica versionada de `backend/prompts.js` solicita preguntas c
 
 Las alternativas se exportan sin mezclar su orden. Si Gemini agrega una enumeración completa de A a D, se eliminan esos prefijos y se conserva la respuesta correcta.
 
-El paquete incluye las bibliotecas de Question Set y Multiple Choice de la plantilla H5P indicada en [backend/templates/README.md](backend/templates/README.md). El usuario confirmó que un cuestionario de 20 preguntas se guardó, apareció en la biblioteca y funcionó en Lumi. La compatibilidad con Moodle requiere validación en esa instalación. La revisión y edición de preguntas antes de exportar aún no está implementada.
+El backend cuenta con un catálogo estático de 12 plantillas H5P compatibles con `coreApi <= 1.24` (`MultiChoice`, `QuestionSet`, `TrueFalse`, `Blanks`, `DragText`, `SingleChoiceSet`, `Summary`, `SortParagraphs`, `Crossword`, `FindTheWords`, `Accordion` y `Flashcards`) descrito en [backend/templates/README.md](backend/templates/README.md) y [docs/H5P-15-estructura-plantillas.md](docs/H5P-15-estructura-plantillas.md) (decisiones arquitectónicas en [ADR-001](docs/adr/ADR-001-plantillas-estaticas-h5p.md) y [ADR-002](docs/adr/ADR-002-ampliacion-catalogo-plantillas-h5p.md)). Actualmente la interfaz expone el cuestionario de opción múltiple (`H5P.QuestionSet 1.17` con preguntas `H5P.MultiChoice 1.14`); el selector de formatos y el empaquetado multi-formato corresponden a `H5P-7` y `H5P-16`. El usuario confirmó que un cuestionario de 20 preguntas se guardó, apareció en la biblioteca y funcionó en Lumi. La compatibilidad con Moodle requiere validación en esa instalación. La revisión y edición de preguntas antes de exportar aún no está implementada.
 
 
 ## Distribución Linux y validación de H5P-19
