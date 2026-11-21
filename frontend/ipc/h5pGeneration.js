@@ -27,6 +27,13 @@ const messages = {
 };
 const fail = code => ({ status: 'error', code, message: messages[code] });
 
+const ACTIVE_ACTIVITY_TYPES = new Map([
+  ['multichoice', { workerType: 'multichoice', projectLabel: 'Opción múltiple (H5P.MultiChoice)' }],
+  ['questionset', { workerType: 'questionset', projectLabel: 'Cuestionario (H5P.QuestionSet)' }],
+  ['question-set', { workerType: 'questionset', projectLabel: 'Cuestionario (H5P.QuestionSet)' }],
+  ['multiple-choice', { workerType: 'questionset', projectLabel: 'Cuestionario de opción múltiple' }]
+]);
+
 function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, generate = generateQuestionsFromChunk, WorkerClass = Worker, fileSystem = fs }) {
   const sessions = new WeakMap();
   function sessionFor(sender) {
@@ -44,8 +51,8 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
     sender.once('destroyed', close); sender.on('did-start-navigation', navigation);
     return session;
   }
-  async function buildPackage(questions, session) {
-    const worker = new WorkerClass(path.join(__dirname, '../../backend/h5pPackageWorker.js'), { workerData: { questions } });
+  async function buildPackage(questions, session, activityType = 'questionset') {
+    const worker = new WorkerClass(path.join(__dirname, '../../backend/h5pPackageWorker.js'), { workerData: { questions, activityType } });
     session.worker = worker;
     try {
       return await new Promise((resolve, reject) => {
@@ -62,7 +69,10 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
     const sender = event.sender;
     const session = sessionFor(sender);
     if (session.busy) return fail('BUSY');
-    if (request.activityType !== 'multiple-choice' || request.questionCount > 20) return fail('UNSUPPORTED_TYPE');
+    const activityConfig = ACTIVE_ACTIVITY_TYPES.get(request.activityType);
+    if (!activityConfig || request.questionCount > 20 || (activityConfig.workerType === 'multichoice' && request.questionCount !== 1)) {
+      return fail('UNSUPPORTED_TYPE');
+    }
     const documents = request.documentIds.map(id => inspection.getDocument(sender, id));
     if (documents.some(doc => !doc)) return fail('DOCUMENT_NOT_FOUND');
     const source = documents.map(doc => doc.text).join('\n\n');
@@ -75,11 +85,11 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
       const questions = await generate(source, key, request.instructions, request.questionCount, { signal: AbortSignal.any([session.abort.signal, AbortSignal.timeout(90000)]) });
       if (session.closed || sender.isDestroyed() || request.documentIds.some((id, i) => inspection.getDocument(sender, id) !== documents[i])) return fail('DOCUMENT_NOT_FOUND');
       let bytes;
-      try { bytes = await buildPackage(questions, session); }
+      try { bytes = await buildPackage(questions, session, activityConfig.workerType); }
       catch { return fail('PACKAGE_FAILED'); }
       if (session.closed || sender.isDestroyed() || request.documentIds.some((id, i) => inspection.getDocument(sender, id) !== documents[i])) return fail('DOCUMENT_NOT_FOUND');
       const packageId = randomUUID();
-      session.package = { id: packageId, bytes };
+      session.package = { id: packageId, bytes, h5pType: activityConfig.projectLabel };
       return { status: 'ok', kind: 'package', packageId, questionCount: questions.length };
     } catch (error) {
       const code = ['API_KEY_INVALID', 'QUOTA', 'INVALID_RESPONSE', 'NETWORK_ERROR', 'SERVICE_UNAVAILABLE', 'API_REQUEST_FAILED', 'GENERATION_TIMEOUT', 'GENERATION_CANCELLED'].includes(error?.message) ? error.message : 'GENERATION_FAILED';
@@ -114,7 +124,7 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
       await fileSystem.rename(temporaryPath, filePath);
       temporaryPath = null;
       let projectSaved = true;
-      try { storage.saveProject({ title: path.basename(filePath, path.extname(filePath)), courseId, h5pType: 'Cuestionario de opción múltiple', filePath, fileSizeBytes: pkg.bytes.length }); } catch { projectSaved = false; }
+      try { storage.saveProject({ title: path.basename(filePath, path.extname(filePath)), courseId, h5pType: pkg.h5pType || 'Cuestionario de opción múltiple', filePath, fileSizeBytes: pkg.bytes.length }); } catch { projectSaved = false; }
       return { status: 'ok', fileName: path.basename(filePath), projectSaved };
     } catch { return fail('SAVE_FAILED'); }
     finally {

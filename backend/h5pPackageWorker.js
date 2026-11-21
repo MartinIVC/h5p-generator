@@ -15,7 +15,38 @@ function feedbackHtml(value) {
 
 (async () => {
   try {
-    const questions = validateQuestions(workerData.questions, workerData.questions.length);
+    const activityType = workerData.activityType === TEMPLATE_TYPES.MULTICHOICE
+      ? TEMPLATE_TYPES.MULTICHOICE
+      : TEMPLATE_TYPES.QUESTIONSET;
+    const expectedCount = activityType === TEMPLATE_TYPES.MULTICHOICE ? 1 : workerData.questions.length;
+    const questions = validateQuestions(workerData.questions, expectedCount);
+
+    if (activityType === TEMPLATE_TYPES.MULTICHOICE) {
+      const mcTemplate = await loadTemplate(TEMPLATE_TYPES.MULTICHOICE);
+      const zip = await createBasePackageZip(TEMPLATE_TYPES.MULTICHOICE);
+      const first = questions[0];
+      const metadata = {
+        ...mcTemplate.metadata,
+        title: first.pregunta.slice(0, 120) || mcTemplate.metadata.title
+      };
+      const content = {
+        ...mcTemplate.content,
+        question: `<p>${html(first.pregunta)}</p>`,
+        overallFeedback: [{ from: 0, to: 100, feedback: feedbackHtml(first.retroalimentacion) }],
+        answers: first.opciones.map(option => ({
+          text: `<div>${html(option)}</div>`,
+          correct: option === first.respuestaCorrecta,
+          tipsAndFeedback: { tip: '', chosenFeedback: '', notChosenFeedback: '' }
+        }))
+      };
+
+      zip.file('h5p.json', JSON.stringify(metadata));
+      zip.file('content/content.json', JSON.stringify(content));
+      const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+      parentPort.postMessage({ bytes });
+      return;
+    }
+
     const qsTemplate = await loadTemplate(TEMPLATE_TYPES.QUESTIONSET);
     const mcTemplate = await loadTemplate(TEMPLATE_TYPES.MULTICHOICE);
     const zip = await createBasePackageZip(TEMPLATE_TYPES.QUESTIONSET);
