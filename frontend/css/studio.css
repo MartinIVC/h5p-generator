@@ -380,17 +380,210 @@ button { -webkit-tap-highlight-color: transparent; }
 
 .generation-fields {
   display: grid;
-  gap: 0.5rem;
-  width: min(100%, 28rem);
-  margin: 1rem auto;
+  gap: 0.45rem;
+  width: min(100%, 34rem);
+  margin: 0.75rem auto;
   text-align: left;
 }
 .generation-fields input {
   width: 100%;
-  min-height: 44px;
-  padding: 0.6rem 0.75rem;
+  min-height: 40px;
+  padding: 0.5rem 0.75rem;
   border: 1px solid var(--md-sys-color-outline);
   border-radius: 8px;
   color: var(--md-sys-color-on-surface);
   background: var(--md-sys-color-surface);
+}
+.generation-fields input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  background: var(--md-sys-color-surface-container);
+}
+.activity-selector-card {
+  width: min(100%, 54rem);
+  text-align: left;
+}
+.activity-selector-card .selector-intro {
+  margin: 0.35rem 0 0.75rem;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.activity-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0 1rem;
+}
+.activity-type-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  border: 1.5px solid var(--md-sys-color-outline-variant);
+  border-radius: 10px;
+  background: var(--studio-paper);
+  color: var(--md-sys-color-on-surface);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.activity-type-card:hover:not(:disabled) {
+  border-color: var(--md-sys-color-primary);
+  box-shadow: var(--ui-shadow-card);
+  transform: translateY(-1px);
+}
+.activity-type-card.selected {
+  border-color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary-container) 42%, var(--md-sys-color-surface-container-lowest));
+  box-shadow: 0 0 0 1px var(--md-sys-color-primary);
+}
+.activity-type-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+.activity-card-top {
+  display: flex;
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.35rem;
+}
+.activity-card-library {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary-container) 65%, transparent);
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+.activity-card-scope,
+.activity-card-category {
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.activity-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+.activity-card-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.activity-card-check {
+  display: none;
+  margin-top: 0.25rem;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.activity-type-card.selected .activity-card-check {
+  display: inline-block;
+}
+.question-count-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.quick-count-group {
+  display: inline-flex;
+  gap: 0.4rem;
+}
+.btn-quick-count {
+  min-width: 38px;
+  min-height: 30px;
+  padding: 0 0.65rem;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 6px;
+  background: var(--studio-paper);
+  color: var(--md-sys-color-on-surface);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+.btn-quick-count:hover:not(:disabled) {
+  border-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-primary);
+}
+.btn-quick-count.selected {
+  border-color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+.btn-quick-count:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.generation-field-hint {
+  margin: 0 0 0.35rem;
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.generation-progress-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: min(100%, 34rem);
+  margin: 0.75rem auto 0.25rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 35%, var(--md-sys-color-outline-variant));
+  background: color-mix(in srgb, var(--md-sys-color-primary-container) 35%, var(--studio-paper));
+  color: var(--md-sys-color-on-surface);
+  font-size: 13px;
+  font-weight: 500;
+}
+.generation-spinner {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--md-sys-color-primary) 25%, transparent);
+  border-top-color: var(--md-sys-color-primary);
+  animation: h5p-spin 0.8s linear infinite;
+}
+@keyframes h5p-spin {
+  to { transform: rotate(360deg); }
+}
+.activity-selector-card .upcoming-step-actions {
+  justify-content: flex-start;
+  margin-top: 0.75rem;
+}
+.upcoming-formats-disclosure {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+.upcoming-formats-disclosure > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface-variant);
+  padding: 0.25rem 0;
+}
+.upcoming-formats-disclosure > summary:hover {
+  color: var(--md-sys-color-primary);
+}
+.upcoming-formats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 195px), 1fr));
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+.activity-type-card.is-upcoming {
+  padding: 0.7rem 0.8rem;
+  background: var(--md-sys-color-surface-container-low);
+}
+.activity-card-upcoming-badge {
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
 }

@@ -20,6 +20,44 @@
   // String para el atributo accept del input file
   const ACCEPT_ATTR = ALLOWED_EXTENSIONS.map(ext => `.${ext}`).join(',');
 
+  // Catálogo alineado con backend/templates/manifest.json (H5P-15).
+  const ACTIVE_ACTIVITY_CARDS = [
+    {
+      type: 'questionset',
+      label: 'Cuestionario',
+      library: 'H5P.QuestionSet 1.17',
+      category: 'Evaluación',
+      scopeBadge: '1 a 20 preguntas',
+      defaultFileName: 'cuestionario',
+      description: 'Secuencia evaluativa con navegación, barra de progreso y puntaje final.'
+    },
+    {
+      type: 'multichoice',
+      label: 'Opción Múltiple',
+      library: 'H5P.MultiChoice 1.14',
+      category: 'Evaluación',
+      scopeBadge: '1 pregunta individual',
+      defaultFileName: 'opcion-multiple',
+      description: 'Reactivo individual autónomo con cuatro alternativas y retroalimentación formativa.'
+    }
+  ];
+
+  const UPCOMING_ACTIVITY_CARDS = [
+    { type: 'truefalse', label: 'Verdadero o Falso', library: 'H5P.TrueFalse 1.8', category: 'Evaluación' },
+    { type: 'singlechoiceset', label: 'Conjunto de selección única', library: 'H5P.SingleChoiceSet 1.11', category: 'Evaluación' },
+    { type: 'blanks', label: 'Rellenar los espacios', library: 'H5P.Blanks 1.14', category: 'Práctica' },
+    { type: 'dragtext', label: 'Arrastrar las palabras', library: 'H5P.DragText 1.10', category: 'Práctica' },
+    { type: 'summary', label: 'Resumen interactivo', library: 'H5P.Summary 1.10', category: 'Práctica' },
+    { type: 'sortparagraphs', label: 'Ordenar los párrafos', library: 'H5P.SortParagraphs 0.11', category: 'Práctica' },
+    { type: 'crossword', label: 'Crucigrama', library: 'H5P.Crossword 0.5', category: 'Práctica' },
+    { type: 'findthewords', label: 'Sopa de letras', library: 'H5P.FindTheWords 1.4', category: 'Práctica' },
+    { type: 'accordion', label: 'Acordeón de conceptos', library: 'H5P.Accordion 1.0', category: 'Estudio' },
+    { type: 'flashcards', label: 'Tarjetas didácticas', library: 'H5P.Flashcards 1.7', category: 'Estudio' }
+  ];
+
+  const QUICK_COUNTS = [3, 5, 10];
+  const VALID_ACTIVE_TYPES = new Set(ACTIVE_ACTIVITY_CARDS.map(card => card.type));
+
   // Estado interno del módulo
   const state = {
     files: [],
@@ -31,7 +69,10 @@
     inspections: new Map(),
     inspectionVersion: 0,
     inspecting: false,
-    inspectionError: ''
+    inspectionError: '',
+    activityType: null,
+    questionCount: 5,
+    lastQuestionSetCount: 5
   };
   let draftSaveTimer = null;
   let draftStatus = null;
@@ -308,7 +349,7 @@
 
     async function saveDraftNow() {
       window.clearTimeout(draftSaveTimer);
-      if (!state.courseId || (!state.draftId && state.files.length === 0 && !state.prompt.trim())) return;
+      if (!state.courseId || (!state.draftId && state.files.length === 0 && !state.prompt.trim() && !state.activityType)) return;
       if (!window.coursesManager?.saveDraft) return;
 
       const courseId = state.courseId;
@@ -323,6 +364,8 @@
           courseId,
           courseName: state.courseName || getCourseName(),
           prompt: state.prompt,
+          activityType: state.activityType,
+          questionCount: state.questionCount,
           files: state.files.map(file => ({
             name: file.name,
             size: file.size,
@@ -367,13 +410,16 @@
       const isSameLiveDraft = Boolean(draft && draft.id === state.draftId && !isDifferentCourse);
 
       if (isDifferentCourse || isDifferentDraft) {
-        if (state.draftId && (state.files.length || state.prompt.trim())) saveDraftNow();
+        if (state.draftId && (state.files.length || state.prompt.trim() || state.activityType)) saveDraftNow();
         window.clearTimeout(draftSaveTimer);
         state.files.forEach(forgetInspection);
         invalidateSelection();
         state.files = [];
         state.prompt = '';
         state.draftId = null;
+        state.activityType = null;
+        state.questionCount = 5;
+        state.lastQuestionSetCount = 5;
       }
       state.courseId = nextCourseId;
       state.courseName = draft?.courseName || getCourseName();
@@ -381,6 +427,13 @@
       if (draft) {
         state.draftId = draft.id;
         state.prompt = draft.prompt || '';
+        const restoredType = VALID_ACTIVE_TYPES.has(draft.activityType) ? draft.activityType : null;
+        const restoredCount = restoredType === 'multichoice'
+          ? 1
+          : (Number.isInteger(draft.questionCount) && draft.questionCount >= 1 && draft.questionCount <= 20 ? draft.questionCount : 5);
+        state.activityType = restoredType;
+        state.questionCount = restoredCount;
+        state.lastQuestionSetCount = restoredType === 'multichoice' ? 5 : restoredCount;
         state.restoredFiles = isSameLiveDraft && state.files.length
           ? []
           : (Array.isArray(draft.files) ? draft.files : []);
@@ -392,6 +445,9 @@
         resumeNotice.classList.toggle('hidden', isSameLiveDraft && state.files.length > 0);
         if (draftStatus) draftStatus.textContent = `Borrador de ${draft.courseName || getCourseName()} · guardado ${new Date(draft.updatedAt).toLocaleString('es-CL')}.`;
       } else {
+        state.activityType = null;
+        state.questionCount = 5;
+        state.lastQuestionSetCount = 5;
         state.restoredFiles = [];
         resumeNotice.classList.add('hidden');
         if (draftStatus) draftStatus.textContent = 'Los borradores se guardan en este equipo; los documentos no se copian.';
@@ -668,70 +724,258 @@
       const panelSelector = document.getElementById('panel-selector');
       if (!panelUpload || !panelSelector) return;
 
+      const activeCardsHtml = ACTIVE_ACTIVITY_CARDS.map(card => `
+        <button type="button" class="activity-type-card" data-activity-type="${card.type}" aria-pressed="false">
+          <div class="activity-card-top">
+            <span class="activity-card-library">${escapeHtml(card.library)}</span>
+            <span class="activity-card-scope">${escapeHtml(card.scopeBadge)}</span>
+          </div>
+          <strong class="activity-card-title">${escapeHtml(card.label)}</strong>
+          <span class="activity-card-desc">${escapeHtml(card.description)}</span>
+          <span class="activity-card-check" aria-hidden="true">Seleccionado</span>
+        </button>`).join('');
+
+      const upcomingCardsHtml = UPCOMING_ACTIVITY_CARDS.map(card => `
+        <button type="button" class="activity-type-card is-upcoming" data-activity-type="${card.type}" disabled aria-disabled="true">
+          <div class="activity-card-top">
+            <span class="activity-card-library">${escapeHtml(card.library)}</span>
+            <span class="activity-card-category">${escapeHtml(card.category)}</span>
+          </div>
+          <strong class="activity-card-title">${escapeHtml(card.label)}</strong>
+          <span class="activity-card-upcoming-badge">Plantilla lista · Próximamente en H5P-16</span>
+        </button>`).join('');
+
+      const quickButtonsHtml = QUICK_COUNTS.map(num => `
+        <button type="button" class="btn-quick-count" data-count="${num}" aria-pressed="false">${num}</button>`).join('');
+
+      const initialFileName = state.activityType === 'multichoice' ? 'opcion-multiple' : 'cuestionario';
+
       panelSelector.innerHTML = `
-        <section class="upcoming-step-card" aria-labelledby="selector-title">
-          <span class="home-kicker">Paso 2 · Tipo de actividad</span>
-          <h2 id="selector-title" tabindex="-1">Prepara tu cuestionario</h2>
-          <p>Se crearán preguntas de opción múltiple a partir de los documentos inspeccionados.</p>
-          <p>Al generar, el texto de los documentos y tus instrucciones se enviarán a Gemini.</p>
+        <section class="upcoming-step-card activity-selector-card" id="activity-selector-card" aria-labelledby="selector-title">
+          <span class="home-kicker">Paso 2 · Configuración de actividad</span>
+          <h2 id="selector-title" tabindex="-1">Configura tu evaluación H5P</h2>
+          <p class="selector-intro">Elige el formato y la extensión. Al generar, el texto de los documentos y tus instrucciones se enviarán a Gemini.</p>
+
+          <div class="activity-selector-grid" role="group" aria-label="Formatos H5P disponibles">
+            ${activeCardsHtml}
+          </div>
+
           <div class="generation-fields">
-            <label for="question-count">Cantidad de preguntas</label>
-            <input id="question-count" type="number" min="1" max="20" value="5" inputmode="numeric">
+            <div class="question-count-header">
+              <label for="question-count">Cantidad de preguntas</label>
+              <div class="quick-count-group" role="group" aria-label="Selección rápida de cantidad">
+                ${quickButtonsHtml}
+              </div>
+            </div>
+            <input id="question-count" type="number" min="1" max="20" value="${state.questionCount}" inputmode="numeric">
+            <p id="question-count-hint" class="generation-field-hint">Elige entre 1 y 20 preguntas o usa un botón rápido.</p>
             <label for="h5p-name">Nombre del archivo</label>
-            <input id="h5p-name" type="text" maxlength="180" value="cuestionario" autocomplete="off">
+            <input id="h5p-name" type="text" maxlength="180" value="${initialFileName}" autocomplete="off">
+          </div>
+
+          <div id="generation-progress" class="generation-progress-banner hidden" aria-hidden="true">
+            <span class="generation-spinner" aria-hidden="true"></span>
+            <span id="generation-progress-step"></span>
           </div>
           <p id="generation-status" role="status" aria-live="polite"></p>
+
           <div class="upcoming-step-actions">
             <button type="button" class="btn-secondary" id="btn-back-to-material">Volver al material</button>
-            <button type="button" class="btn-primary" id="btn-generate-h5p">Generar cuestionario</button>
+            <button type="button" class="btn-primary" id="btn-generate-h5p" disabled>Generar Evaluación</button>
             <button type="button" class="btn-primary hidden" id="btn-save-h5p">Guardar archivo H5P</button>
           </div>
+
+          <details class="upcoming-formats-disclosure">
+            <summary>Explorar los 10 formatos adicionales con plantilla lista en H5P-15 (Próximamente en H5P-16)</summary>
+            <div class="upcoming-formats-grid" aria-label="Formatos H5P con plantilla preparada">
+              ${upcomingCardsHtml}
+            </div>
+          </details>
         </section>`;
       panelUpload.classList.add('hidden');
       panelSelector.classList.remove('hidden');
       updateStepIndicators(2);
-      document.getElementById('btn-back-to-material')?.addEventListener('click', returnToMaterial);
+
+      const selectorCard = document.getElementById('activity-selector-card');
+      const backButton = document.getElementById('btn-back-to-material');
       const generateButton = document.getElementById('btn-generate-h5p');
       const saveButton = document.getElementById('btn-save-h5p');
       const status = document.getElementById('generation-status');
+      const progressBanner = document.getElementById('generation-progress');
+      const progressStep = document.getElementById('generation-progress-step');
       const countInput = document.getElementById('question-count');
+      const countHint = document.getElementById('question-count-hint');
       const nameInput = document.getElementById('h5p-name');
+      const activeCardButtons = Array.from(panelSelector.querySelectorAll('.activity-type-card:not(.is-upcoming)'));
+      const quickCountButtons = Array.from(panelSelector.querySelectorAll('.btn-quick-count'));
+
       let packageId = null;
+      let isGenerating = false;
+      let stageTimer = null;
+
+      backButton?.addEventListener('click', () => {
+        if (isGenerating) return;
+        returnToMaterial();
+      });
+
       const showStatus = (message, error = false) => {
         status.setAttribute('role', error ? 'alert' : 'status');
         status.textContent = message;
       };
+
+      const invalidatePreparedPackage = () => {
+        packageId = null;
+        saveButton.classList.add('hidden');
+      };
+
+      const syncSelectorUI = () => {
+        const isMultiChoice = state.activityType === 'multichoice';
+        activeCardButtons.forEach(card => {
+          const isSelected = card.dataset.activityType === state.activityType;
+          card.classList.toggle('selected', isSelected);
+          card.setAttribute('aria-pressed', String(isSelected));
+          card.disabled = isGenerating;
+        });
+
+        if (isMultiChoice) {
+          state.questionCount = 1;
+          countInput.value = '1';
+          countInput.disabled = true;
+          countHint.textContent = 'H5P.MultiChoice exporta un reactivo individual (1 pregunta). Para varias preguntas usa Cuestionario.';
+        } else {
+          countInput.disabled = isGenerating;
+          countHint.textContent = 'Elige entre 1 y 20 preguntas o usa un botón rápido.';
+        }
+
+        const parsedCount = isMultiChoice ? 1 : Number(countInput.value);
+        const countValid = Number.isInteger(parsedCount) && parsedCount >= 1 && parsedCount <= 20;
+
+        quickCountButtons.forEach(btn => {
+          const value = Number(btn.dataset.count);
+          const isActive = !isMultiChoice && countValid && parsedCount === value;
+          btn.classList.toggle('selected', isActive);
+          btn.setAttribute('aria-pressed', String(isActive));
+          btn.disabled = isGenerating || isMultiChoice;
+        });
+
+        nameInput.disabled = isGenerating;
+        if (backButton) backButton.disabled = isGenerating;
+        generateButton.disabled = isGenerating || !state.activityType || !countValid;
+      };
+
+      const setGeneratingState = (active, stageMessage = '') => {
+        isGenerating = active;
+        window.clearTimeout(stageTimer);
+        selectorCard?.classList.toggle('is-generating', active);
+        if (selectorCard) selectorCard.setAttribute('aria-busy', String(active));
+        progressBanner.classList.toggle('hidden', !active);
+        progressBanner.setAttribute('aria-hidden', String(!active));
+        progressStep.textContent = active ? stageMessage : '';
+        syncSelectorUI();
+      };
+
+      activeCardButtons.forEach(card => {
+        card.addEventListener('click', () => {
+          if (isGenerating) return;
+          const clickedType = card.dataset.activityType;
+          if (!VALID_ACTIVE_TYPES.has(clickedType)) return;
+          const nextType = state.activityType === clickedType ? null : clickedType;
+          state.activityType = nextType;
+          if (nextType === 'multichoice') {
+            state.questionCount = 1;
+            if (nameInput.value.trim() === 'cuestionario') nameInput.value = 'opcion-multiple';
+          } else {
+            state.questionCount = state.lastQuestionSetCount;
+            countInput.value = String(state.questionCount);
+            if (nameInput.value.trim() === 'opcion-multiple') nameInput.value = 'cuestionario';
+          }
+          invalidatePreparedPackage();
+          showStatus('');
+          syncSelectorUI();
+          scheduleDraftSave();
+        });
+      });
+
+      quickCountButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (isGenerating || state.activityType === 'multichoice') return;
+          const value = Number(btn.dataset.count);
+          if (!Number.isInteger(value) || value < 1 || value > 20) return;
+          state.questionCount = value;
+          state.lastQuestionSetCount = value;
+          countInput.value = String(value);
+          invalidatePreparedPackage();
+          showStatus('');
+          syncSelectorUI();
+          scheduleDraftSave();
+        });
+      });
+
+      countInput.addEventListener('input', () => {
+        if (isGenerating || state.activityType === 'multichoice') return;
+        const value = Number(countInput.value);
+        if (Number.isInteger(value) && value >= 1 && value <= 20) {
+          state.questionCount = value;
+          state.lastQuestionSetCount = value;
+          showStatus('');
+          scheduleDraftSave();
+        } else {
+          showStatus('Elige entre 1 y 20 preguntas.', true);
+        }
+        invalidatePreparedPackage();
+        syncSelectorUI();
+      });
+
+      syncSelectorUI();
+
       generateButton.addEventListener('click', async () => {
-        const count = Number(countInput.value);
+        if (!state.activityType) {
+          showStatus('Selecciona un tipo de actividad antes de generar.', true);
+          activeCardButtons[0]?.focus();
+          return;
+        }
+        const count = state.activityType === 'multichoice' ? 1 : Number(countInput.value);
         if (!Number.isInteger(count) || count < 1 || count > 20) {
           showStatus('Elige entre 1 y 20 preguntas.', true); countInput.focus(); return;
         }
+        state.questionCount = count;
+        if (state.activityType === 'questionset') state.lastQuestionSetCount = count;
         if (state.prompt.length > 10000) { showStatus('Las instrucciones no pueden superar 10.000 caracteres.', true); return; }
         if (!window.configManager || !window.academicAPI?.generateH5P) { showStatus('No se pudo iniciar la generación.', true); return; }
-        generateButton.disabled = true;
+        setGeneratingState(true, 'Analizando documentos y solicitando preguntas a Gemini…');
         try {
           await window.configManager.refreshStatus();
           if (!window.configManager.hasApiKey()) {
-            generateButton.disabled = false;
+            setGeneratingState(false);
             await window.configManager.requireApiKey(() => generateButton.click());
             return;
           }
-          packageId = null;
-          saveButton.classList.add('hidden');
+          invalidatePreparedPackage();
           const version = state.inspectionVersion;
           const documentIds = state.files.map(file => state.inspections.get(file));
           showStatus('Generando preguntas y preparando el archivo… Los fallos temporales y las respuestas incompletas o inválidas se reintentarán de forma limitada.');
-          const result = await window.academicAPI.generateH5P({ documentIds, activityType: 'multiple-choice', questionCount: count, instructions: state.prompt });
+          stageTimer = window.setTimeout(() => {
+            if (isGenerating) progressStep.textContent = 'Validando estructura y empaquetando el archivo H5P…';
+          }, 1200);
+          const result = await window.academicAPI.generateH5P({
+            documentIds,
+            activityType: state.activityType,
+            questionCount: count,
+            instructions: state.prompt
+          });
           if (version !== state.inspectionVersion || !generateButton.isConnected || panelSelector.classList.contains('hidden')) return;
           if (result?.status !== 'ok' || result.kind !== 'package') {
-            showStatus(result?.message || 'No se pudo generar el cuestionario.', true); return;
+            showStatus(result?.message || 'No se pudo generar la evaluación.', true); return;
           }
           packageId = result.packageId;
           saveButton.classList.remove('hidden');
-          showStatus(`Cuestionario preparado con ${result.questionCount} preguntas. Puedes guardarlo y revisarlo en Lumi. Comprueba las respuestas y explicaciones antes de usarlo con estudiantes.`);
+          const label = state.activityType === 'multichoice'
+            ? 'Actividad de opción múltiple preparada con 1 pregunta.'
+            : `Cuestionario preparado con ${result.questionCount} ${result.questionCount === 1 ? 'pregunta' : 'preguntas'}.`;
+          showStatus(`${label} Puedes guardarlo y revisarlo en Lumi. Comprueba las respuestas y explicaciones antes de usarlo con estudiantes.`);
           saveButton.focus();
-        } catch { showStatus('No se pudo generar el cuestionario. Inténtalo nuevamente.', true); }
-        finally { generateButton.disabled = false; }
+        } catch { showStatus('No se pudo generar la evaluación. Inténtalo nuevamente.', true); }
+        finally { setGeneratingState(false); }
       });
       saveButton.addEventListener('click', async () => {
         const suggestedName = nameInput.value.trim();
@@ -747,7 +991,7 @@
           if (result?.status !== 'ok') { showStatus(result?.message || 'No se pudo guardar el archivo.', true); return; }
           showStatus(result.projectSaved ? `Archivo ${result.fileName} guardado y añadido a tus proyectos.` : `Archivo ${result.fileName} guardado. No se pudo añadir a tus proyectos.`, !result.projectSaved);
         } catch { showStatus('No se pudo guardar el archivo. Inténtalo nuevamente.', true); }
-        finally { saveButton.disabled = false; generateButton.disabled = false; }
+        finally { saveButton.disabled = false; syncSelectorUI(); }
       });
       document.getElementById('selector-title')?.focus();
     });
@@ -766,6 +1010,9 @@
     getAllFiles: () => [...state.files],
     hasErrors: () => state.files.some(f => !isFormatAllowed(f.name)),
     getPrompt: () => state.prompt,
+    getActivityType: () => state.activityType,
+    getQuestionCount: () => state.questionCount,
+    getActivityConfig: () => ({ activityType: state.activityType, questionCount: state.questionCount }),
     getDocumentIds: () => state.files.length && state.files.every(file => state.inspections.has(file))
       ? state.files.map(file => state.inspections.get(file)) : [],
     flushDraft: () => flushDraftHandler(),
