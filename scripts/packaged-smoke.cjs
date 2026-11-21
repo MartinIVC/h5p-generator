@@ -26,7 +26,19 @@ global.fetch = async (url, options) => {
   if (networkMode === 'quota') return { ok: false, status: 429 };
   const schema = JSON.parse(options.body).generationConfig.responseJsonSchema;
   const count = schema?.minItems || 1;
-  const values = Array.from({ length: networkMode === 'invalid' && invalidResponses++ === 0 ? count - 1 : count }, (_, i) => ({ ...questions[0], pregunta: `Pregunta ${i + 1}`, retroalimentacion: `${questions[0].retroalimentacion} Pregunta ${i + 1}.` }));
+  const required = schema?.items?.required || [];
+  const effectiveCount = networkMode === 'invalid' && invalidResponses++ === 0 ? count - 1 : count;
+  const values = required.includes('respuesta') && required.includes('pista')
+    ? Array.from({ length: effectiveCount }, (_, i) => ({
+      pregunta: `¿Qué garantiza la integridad ${i + 1}?`,
+      respuesta: `Exactitud ${i + 1}`,
+      pista: `Pista ${i + 1}`
+    }))
+    : Array.from({ length: effectiveCount }, (_, i) => ({
+      ...questions[0],
+      pregunta: `Pregunta ${i + 1}`,
+      retroalimentacion: `${questions[0].retroalimentacion} Pregunta ${i + 1}.`
+    }));
   return { ok: true, json: async () => ({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(values) }] } }] }) };
 };
 dialog.showSaveDialog = async () => dialogMode === 'cancel' ? { canceled: true } :
@@ -151,9 +163,19 @@ async function run() {
   await waitFor('Boolean(document.getElementById("question-count"))');
   assert.equal(await evaluate('document.activeElement.id'), 'selector-title');
   assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true);
-  // CA-4: botón Generar Evaluación deshabilitado antes de elegir formato
+  // CA-4 + H5P-16: botón Generar Evaluación deshabilitado antes de elegir formato y 12 formatos activos con filtros por categoría
   assert.equal(await evaluate('document.getElementById("btn-generate-h5p").disabled'), true);
-  assert.equal(await evaluate('document.querySelectorAll(".activity-type-card.is-upcoming").length'), 10);
+  assert.equal(await evaluate('document.querySelectorAll(".activity-type-card").length'), 12);
+  assert.equal(await evaluate('document.querySelectorAll(".activity-type-card.is-upcoming").length'), 0);
+  await evaluate('document.querySelector(\'.activity-category-tab[data-category-filter="study"]\').click()');
+  assert.equal(await evaluate('document.querySelectorAll(".activity-type-card:not(.hidden)").length'), 2);
+  await evaluate('document.querySelector(\'.activity-category-tab[data-category-filter="practice"]\').click()');
+  assert.equal(await evaluate('document.querySelectorAll(".activity-type-card:not(.hidden)").length'), 6);
+  await evaluate('document.querySelector(\'.activity-category-tab[data-category-filter="evaluation"]\').click()');
+  assert.equal(await evaluate('document.querySelectorAll(".activity-type-card:not(.hidden)").length'), 4);
+  await evaluate('document.querySelector(\'.activity-category-tab[data-category-filter="all"]\').click()');
+  assert.equal(await evaluate('document.querySelectorAll(".activity-type-card:not(.hidden)").length'), 12);
+  assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true);
   // D1 + CA-1/CA-2: Opción Múltiple fija cantidad en 1, bloquea botones rápidos y habilita generación
   await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="multichoice"]\').click()');
   assert.equal(await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="multichoice"]\').classList.contains("selected")'), true);
@@ -166,6 +188,23 @@ async function run() {
   await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="multichoice"]\').click()');
   assert.equal(await evaluate('document.getElementById("btn-generate-h5p").disabled'), true);
   assert.equal(await evaluate('window.uploadManager.getActivityType()'), null);
+  // H5P-16: probar generación y guardado de un formato del catálogo ampliado (Tarjetas didácticas) con título en h5p.json
+  await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="flashcards"]\').click()');
+  assert.equal(await evaluate('window.uploadManager.getActivityType()'), 'flashcards');
+  await evaluate('document.querySelector(\'.btn-quick-count[data-count="3"]\').click()');
+  await evaluate('document.getElementById("h5p-name").value = "Tarjetas INF-421"');
+  await evaluate('document.getElementById("btn-generate-h5p").click()');
+  await waitFor('!document.getElementById("btn-save-h5p").classList.contains("hidden")');
+  dialogMode = 'ok';
+  await evaluate('document.getElementById("btn-save-h5p").click()');
+  await waitFor('document.getElementById("generation-status").textContent.includes("guardado y añadido")');
+  const flashcardsZip = await JSZip.loadAsync(fs.readFileSync(path.join(directory, 'output.h5p')));
+  const flashcardsMeta = JSON.parse(await flashcardsZip.file('h5p.json').async('string'));
+  const flashcardsContent = JSON.parse(await flashcardsZip.file('content/content.json').async('string'));
+  assert.equal(flashcardsMeta.mainLibrary, 'H5P.Flashcards');
+  assert.equal(flashcardsMeta.title, 'Tarjetas INF-421');
+  assert.equal(flashcardsContent.cards.length, 3);
+  assert.equal(fs.readdirSync(directory).some(name => name.startsWith('.h5p-work-')), false);
   // CA-1/CA-2/CA-3: Cuestionario habilita botones rápidos 3/5/10 y selector 1..20
   await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="questionset"]\').click()');
   assert.equal(await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="questionset"]\').classList.contains("selected")'), true);
