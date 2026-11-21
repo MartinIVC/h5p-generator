@@ -10,6 +10,16 @@ const crypto = require('node:crypto');
 
 const BACKUP_FORMAT = 'h5p-generator-backup';
 const BACKUP_VERSION = 1;
+const VALID_DRAFT_ACTIVITY_TYPES = new Set(['multichoice', 'questionset']);
+
+function normalizeDraftActivityType(value) {
+  return typeof value === 'string' && VALID_DRAFT_ACTIVITY_TYPES.has(value) ? value : null;
+}
+
+function normalizeDraftQuestionCount(value, activityType) {
+  if (activityType === 'multichoice') return 1;
+  return Number.isInteger(value) && value >= 1 && value <= 20 ? value : 5;
+}
 
 function backupCourse(course) {
   return {
@@ -356,7 +366,16 @@ class AcademicStorage {
 
   getDrafts() {
     const data = this._readData();
-    return data.drafts.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    return data.drafts
+      .map(draft => {
+        const activityType = normalizeDraftActivityType(draft.activityType);
+        return {
+          ...draft,
+          activityType,
+          questionCount: normalizeDraftQuestionCount(draft.questionCount, activityType)
+        };
+      })
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   }
 
   saveDraft(draftInput) {
@@ -369,11 +388,15 @@ class AcademicStorage {
 
     const data = this._readData();
     const now = new Date().toISOString();
+    const activityType = normalizeDraftActivityType(draftInput.activityType);
+    const questionCount = normalizeDraftQuestionCount(draftInput.questionCount, activityType);
     const draft = {
       id: typeof draftInput.id === 'string' && draftInput.id ? draftInput.id : crypto.randomUUID(),
       courseId: draftInput.courseId,
       courseName: typeof draftInput.courseName === 'string' ? draftInput.courseName.slice(0, 240) : '',
       prompt: typeof draftInput.prompt === 'string' ? draftInput.prompt.slice(0, 12000) : '',
+      activityType,
+      questionCount,
       files: Array.isArray(draftInput.files)
         ? draftInput.files.slice(0, 50).map(file => ({
           name: typeof file?.name === 'string' ? file.name.slice(0, 255) : '',
@@ -464,21 +487,26 @@ class AcademicStorage {
     const incoming = {
       courses: payload.data.courses.map(cleanBackupCourse),
       projects: payload.data.projects.map(cleanBackupProject),
-      drafts: (Array.isArray(payload.data.drafts) ? payload.data.drafts : []).map(draft => ({
-        id: draft.id.slice(0, 120),
-        courseId: draft.courseId.slice(0, 120),
-        previousCourseId: typeof draft.previousCourseId === 'string' ? draft.previousCourseId.slice(0, 120) : undefined,
-        courseName: typeof draft.courseName === 'string' ? draft.courseName.slice(0, 240) : '',
-        prompt: typeof draft.prompt === 'string' ? draft.prompt.slice(0, 12000) : '',
-        files: Array.isArray(draft.files)
-          ? draft.files.slice(0, 50).map(file => ({
-            name: typeof file?.name === 'string' ? file.name.slice(0, 255) : '',
-            size: Number.isFinite(file?.size) && file.size > 0 ? file.size : 0,
-            lastModified: Number.isFinite(file?.lastModified) ? file.lastModified : 0
-          })).filter(file => file.name)
-          : [],
-        updatedAt: typeof draft.updatedAt === 'string' ? draft.updatedAt : new Date().toISOString()
-      })),
+      drafts: (Array.isArray(payload.data.drafts) ? payload.data.drafts : []).map(draft => {
+        const activityType = normalizeDraftActivityType(draft.activityType);
+        return {
+          id: draft.id.slice(0, 120),
+          courseId: draft.courseId.slice(0, 120),
+          previousCourseId: typeof draft.previousCourseId === 'string' ? draft.previousCourseId.slice(0, 120) : undefined,
+          courseName: typeof draft.courseName === 'string' ? draft.courseName.slice(0, 240) : '',
+          prompt: typeof draft.prompt === 'string' ? draft.prompt.slice(0, 12000) : '',
+          activityType,
+          questionCount: normalizeDraftQuestionCount(draft.questionCount, activityType),
+          files: Array.isArray(draft.files)
+            ? draft.files.slice(0, 50).map(file => ({
+              name: typeof file?.name === 'string' ? file.name.slice(0, 255) : '',
+              size: Number.isFinite(file?.size) && file.size > 0 ? file.size : 0,
+              lastModified: Number.isFinite(file?.lastModified) ? file.lastModified : 0
+            })).filter(file => file.name)
+            : [],
+          updatedAt: typeof draft.updatedAt === 'string' ? draft.updatedAt : new Date().toISOString()
+        };
+      }),
       trash: (Array.isArray(payload.data.trash) ? payload.data.trash : []).map(cleanBackupTrashItem)
     };
 
