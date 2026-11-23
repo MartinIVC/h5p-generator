@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#1B2B57" />
   <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-src 'self' blob:; object-src 'self' blob:; connect-src 'self' ws: http://localhost:*;" />
+    content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; frame-src 'self'; object-src 'none'; connect-src 'self';" />
   <title>Generador H5P · Taller docente</title>
   <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
 
@@ -181,7 +181,7 @@
       </header>
 
       <div class="preview-body" id="preview-body">
-        <!-- Contenido dinámico (iframe para PDF, pre para texto, tarjeta para binarios) -->
+        <!-- Contenido dinámico (canvas PDF.js para PDF, pre para texto, tarjeta para binarios) -->
       </div>
 
       <footer class="preview-footer">

@@ -294,6 +294,13 @@
     `;
   }
 
+  function escapeHtml(value) {
+    if (window.uiEscapeHtml) return window.uiEscapeHtml(value);
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[ch]);
+  }
+
   /**
    * Genera el HTML de la sección de Google Gemini API Key
    */
@@ -321,7 +328,7 @@
               </svg>
               <span>Clave guardada</span>
             </div>
-            <code class="api-key-masked">${state.maskedKey}</code>
+            <code class="api-key-masked">${escapeHtml(state.maskedKey)}</code>
           </div>
           <div class="api-key-card-actions">
             <button type="button" class="btn-secondary" id="btn-verify-api-key">Probar clave</button>
@@ -489,23 +496,26 @@
       </div>
     `;
 
-    window.uiDialog?.open(modal, {
-      focus: state.isConfirmingRemoveKey ? '#btn-cancel-remove-api-key' : '#input-gemini-key',
-      onEscape: () => {
-        window.uiDialog?.close(modal);
-        state.isEditingKey = false;
-        state.isConfirmingRemoveKey = false;
-        state.onSuccessCallback = null;
-      }
-    });
-
-    const closeModal = () => {
-      if (window.uiDialog) window.uiDialog.close(modal);
-      else modal.classList.add('hidden');
+    const resetModalState = () => {
       state.isEditingKey = false;
       state.isConfirmingRemoveKey = false;
       state.onSuccessCallback = null;
+      pendingBackupId = null;
     };
+
+    const closeModal = () => {
+      if (window.uiDialog) window.uiDialog.close(modal);
+      else {
+        modal.classList.add('hidden');
+        resetModalState();
+      }
+    };
+
+    window.uiDialog?.open(modal, {
+      focus: state.isConfirmingRemoveKey ? '#btn-cancel-remove-api-key' : '#input-gemini-key',
+      onEscape: closeModal,
+      onClose: resetModalState
+    });
 
     const btnClose = document.getElementById('btn-close-settings-modal');
     if (btnClose) btnClose.addEventListener('click', closeModal);

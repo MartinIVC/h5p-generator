@@ -17,6 +17,20 @@
   let activeModal = null;
   let returnFocus = null;
   let modalCloseHandler = null;
+  let activeOnClose = null;
+
+  const HTML_ENTITIES = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  };
+
+  function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value).replace(/[&<>"']/g, ch => HTML_ENTITIES[ch]);
+  }
 
   function getFocusableElements(container) {
     return Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR))
@@ -30,8 +44,18 @@
 
     if (modal !== activeModal) return;
     document.removeEventListener('keydown', modalCloseHandler);
+    const onClose = activeOnClose;
     activeModal = null;
     modalCloseHandler = null;
+    activeOnClose = null;
+
+    if (typeof onClose === 'function') {
+      try {
+        onClose();
+      } catch {
+        // Evita que un error de limpieza impida restaurar el foco.
+      }
+    }
 
     const previousFocus = returnFocus;
     returnFocus = null;
@@ -47,6 +71,7 @@
     const wasActive = activeModal === modal;
     if (wasActive && modalCloseHandler) document.removeEventListener('keydown', modalCloseHandler);
     activeModal = modal;
+    activeOnClose = typeof options.onClose === 'function' ? options.onClose : null;
     if (!wasActive) returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
     const dialog = modal.querySelector('.modal-dialog-content, .preview-dialog') || modal;
@@ -131,7 +156,11 @@
         resolve(accepted);
       };
 
-      openModal(modal, { focus: '#ui-confirm-cancel', onEscape: () => finish(false) });
+      openModal(modal, {
+        focus: '#ui-confirm-cancel',
+        onEscape: () => finish(false),
+        onClose: () => finish(false)
+      });
       modal.querySelector('#ui-confirm-cancel').addEventListener('click', () => finish(false));
       modal.querySelector('#ui-confirm-close').addEventListener('click', () => finish(false));
       modal.querySelector('#ui-confirm-accept').addEventListener('click', () => finish(true));
@@ -152,6 +181,8 @@
   const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   if (motionQuery.addEventListener) motionQuery.addEventListener('change', applyMotionPreference);
   else if (motionQuery.addListener) motionQuery.addListener(applyMotionPreference);
+
+  window.uiEscapeHtml = escapeHtml;
 
   window.uiDialog = {
     open: openModal,
