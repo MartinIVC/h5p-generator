@@ -17,6 +17,13 @@
     })[char]);
   }
 
+  function formatShortDate(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('es-CL');
+  }
+
   function projectCourseName(project) {
     if (project.courseId === 'unassigned') return 'Sin asignar';
     return courses.find(course => course.id === project.courseId)?.name || 'Ramo eliminado';
@@ -38,7 +45,7 @@
     }));
     const projectItems = projects.map(project => ({
       kind: 'project', id: project.id, title: project.title,
-      subtitle: [projectCourseName(project), project.h5pType || 'H5P', project.exportedAt ? new Date(project.exportedAt).toLocaleDateString('es-CL') : ''].filter(Boolean).join(' · '),
+      subtitle: [projectCourseName(project), project.h5pType || 'H5P', formatShortDate(project.exportedAt)].filter(Boolean).join(' · '),
       courseId: project.courseId || 'unassigned', recentAt: project.exportedAt || ''
     }));
 
@@ -151,7 +158,7 @@
       courses = [];
       projects = [];
       drafts = [];
-      window.uiMessage?.(`No se pudo cargar la búsqueda: ${error.message}`, 'error');
+      window.uiMessage?.('No se pudo cargar la búsqueda. Inténtalo de nuevo.', 'error');
     }
     activeIndex = -1;
     renderModal();
