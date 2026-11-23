@@ -237,7 +237,7 @@ test('H5P-16: los 12 formatos recorren Gemini -> validador -> h5pBuilder -> h5pP
     } else if (type === 'flashcards') {
       assert.equal(content.cards.length, 2);
       assert.equal(content.cards[0].text, '¿Qué elemento de &lt;Electron&gt; aísla los contextos?');
-      assert.equal(content.cards[0].answer, 'contextIsolation & preload');
+      assert.equal(content.cards[0].answer, 'contextIsolation &amp; preload');
       assert.equal(content.cards[0].tip, 'Revisa webPreferences');
     }
   }
@@ -437,4 +437,27 @@ test('H5P-16: flujo IPC h5pGeneration soporta nuevos formatos, propaga title a h
   const meta = JSON.parse(await zip.file('h5p.json').async('string'));
   assert.equal(meta.mainLibrary, 'H5P.Crossword');
   assert.equal(meta.title, 'Crucigrama Unidad 2');
+});
+
+test('H5P-32 (BUG-01): Flashcards escapa HTML y barras "/" en card.answer para evitar XSS y división de alternativas', async () => {
+  const prepared = await buildH5PContent('flashcards', [{
+    pregunta: '¿Qué relación cumple <O(n)> & "TCP/IP"?',
+    respuesta: 'TCP/IP < OSI & "RFC"',
+    pista: 'Compara <b>capas</b> y barra /'
+  }], { title: 'Tarjetas seguras' });
+
+  assert.equal(prepared.content.cards.length, 1);
+  assert.equal(prepared.content.cards[0].text, '¿Qué relación cumple &lt;O(n)&gt; &amp; &quot;TCP/IP&quot;?');
+  assert.equal(prepared.content.cards[0].answer, 'TCP\\/IP &lt; OSI &amp; &quot;RFC&quot;');
+  assert.equal(prepared.content.cards[0].tip, 'Compara &lt;b&gt;capas&lt;/b&gt; y barra /');
+
+  const packed = await packH5PPackage('flashcards', [{
+    pregunta: 'Protocolo web',
+    respuesta: 'HTTP/2 <script>alert(1)</script>',
+    pista: ''
+  }]);
+  assert.equal(packed.validation.valid, true);
+  const zip = await JSZip.loadAsync(packed.bytes);
+  const content = JSON.parse(await zip.file('content/content.json').async('string'));
+  assert.equal(content.cards[0].answer, 'HTTP\\/2 &lt;script&gt;alert(1)&lt;\\/script&gt;');
 });

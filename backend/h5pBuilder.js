@@ -340,10 +340,11 @@ async function buildH5PContent(activityType, items, options = {}) {
       };
       content = {
         ...fcTemplate.content,
-        // H5P.Flashcards concatena card.text como HTML y compara card.answer en texto plano contra el input.
+        // H5P.Flashcards parsea card.answer como HTML ($converter.html().text()), lo inyecta en resultados
+        // y divide alternativas por '/'. Se escapa HTML y '/' para evitar XSS y falsos errores de calificación.
         cards: validated.map(item => ({
           text: escapeHtml(item.pregunta),
-          answer: item.respuesta,
+          answer: escapeHtml(item.respuesta).replace(/\//g, '\\/'),
           tip: item.pista ? escapeHtml(item.pista) : ''
         }))
       };
