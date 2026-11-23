@@ -19,7 +19,7 @@ function setup(opts = {}) {
     inspection: { getDocument: (s, id) => s === owner && id === documentId ? doc : undefined },
     WorkerClass: opts.WorkerClass,
     storage: { ...storage, ...opts.storage }, dialog: opts.dialog || {}, BrowserWindow: { fromWebContents: () => ({}) },
-    app: { getPath: () => os.tmpdir() }, generate: opts.generate || (async () => questions)
+    app: opts.app || { getPath: () => os.tmpdir() }, generate: opts.generate || (async () => questions)
   });
   return { generation, owner, projects };
 }
@@ -154,4 +154,29 @@ test('IPC expone solo motivos de validación conocidos y nunca detalles del prov
     assert.equal(result.reason, reason === 'dato privado' ? undefined : reason);
     assert.doesNotMatch(JSON.stringify(result), /dato privado|contenido privado/);
   }
+});
+test('H5P-34 (BUG-14): distingue fallo de safeStorage, exige extensión .h5p con mensaje claro y tolera fallo de getPath("documents")', async t => {
+  const failingKey = setup({ storage: { getApiKey: () => { throw new Error('llavero bloqueado'); } } });
+  const keyResult = await failingKey.generation.generateH5P(request, { sender: failingKey.owner });
+  assert.equal(keyResult.code, 'SECURE_STORAGE_UNAVAILABLE');
+  assert.doesNotMatch(keyResult.message, /llavero bloqueado/);
+
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'h5p-bug14-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  let capturedDefaultPath = '';
+  const { generation, owner } = setup({
+    app: { getPath: name => { if (name === 'documents') throw new Error('no documents'); return dir; } },
+    dialog: {
+      showSaveDialog: async (_win, opts) => {
+        capturedDefaultPath = opts.defaultPath;
+        return { filePath: path.join(dir, 'sin-extension') };
+      }
+    }
+  });
+  const generated = await generation.generateH5P(request, { sender: owner });
+  assert.equal(generated.status, 'ok');
+  const saveResult = await generation.saveH5PFile({ packageId: generated.packageId, suggestedName: 'actividad' }, { sender: owner });
+  assert.equal(saveResult.code, 'SAVE_FAILED');
+  assert.match(saveResult.message, /\.h5p/);
+  assert.equal(path.dirname(capturedDefaultPath), dir);
 });

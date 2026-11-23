@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell, Notification, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { registerH5PIpcHandlers } = require(path.join(__dirname, 'ipc', 'h5pHandlers.js'));
@@ -102,10 +103,20 @@ function registerIpcHandlers() {
     return academicStorage.deleteDraft(draftId);
   });
 
+  function resolveDocumentsDir() {
+    for (const key of ['documents', 'home']) {
+      try {
+        const dir = app?.getPath?.(key);
+        if (typeof dir === 'string' && dir) return dir;
+      } catch {}
+    }
+    return os.homedir();
+  }
+
   ipcMain.handle('academic:exportBackup', async (event) => {
     const { canceled, filePath } = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
       title: 'Crear copia de seguridad',
-      defaultPath: path.join(app.getPath('documents'), `generador-h5p-${new Date().toISOString().slice(0, 10)}.json`),
+      defaultPath: path.join(resolveDocumentsDir(), `generador-h5p-${new Date().toISOString().slice(0, 10)}.json`),
       filters: [{ name: 'Copia del Generador H5P', extensions: ['json'] }]
     });
     if (canceled || !filePath) return { canceled: true };
