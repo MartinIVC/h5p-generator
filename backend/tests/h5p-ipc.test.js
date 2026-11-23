@@ -49,8 +49,11 @@ test('rechaza emisores y argumentos inválidos antes de acceder a servicios', as
   const generate = handlers.get('h5p:generate');
   for (const value of [
     { ...requests['h5p:generate'], documentIds: [id, id] }, { ...requests['h5p:generate'], documentIds: ['ruta'] },
-    { ...requests['h5p:generate'], questionCount: 0 }, { ...requests['h5p:generate'], instructions: 'x'.repeat(10001) }
+    { ...requests['h5p:generate'], questionCount: 0 }, { ...requests['h5p:generate'], instructions: 'x'.repeat(10001) },
+    { ...requests['h5p:generate'], title: 'x'.repeat(181) }, { ...requests['h5p:generate'], title: 'malo\nlinea' },
+    { ...requests['h5p:generate'], title: 42 }
   ]) assert.equal((await generate({ trusted: true }, value)).code, 'INVALID_ARGUMENT');
+  assert.equal((await generate({ trusted: true }, { ...requests['h5p:generate'], title: 'Evaluación Unidad 1' })).code, 'NOT_AVAILABLE');
   assert.equal((await handlers.get('h5p:save-file')({ trusted: true }, { packageId: id, suggestedName: '../secret' })).code, 'INVALID_ARGUMENT');
 });
 test('captura errores sin revelar excepciones ni datos privados', async () => {

@@ -8,16 +8,22 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
+const { ACTIVITY_SPECS } = require('./prompts');
+
 const BACKUP_FORMAT = 'h5p-generator-backup';
 const BACKUP_VERSION = 1;
-const VALID_DRAFT_ACTIVITY_TYPES = new Set(['multichoice', 'questionset']);
+const VALID_DRAFT_ACTIVITY_TYPES = new Set(Object.keys(ACTIVITY_SPECS));
 
 function normalizeDraftActivityType(value) {
   return typeof value === 'string' && VALID_DRAFT_ACTIVITY_TYPES.has(value) ? value : null;
 }
 
 function normalizeDraftQuestionCount(value, activityType) {
-  if (activityType === 'multichoice') return 1;
+  const spec = activityType && Object.hasOwn(ACTIVITY_SPECS, activityType) ? ACTIVITY_SPECS[activityType] : null;
+  if (spec) {
+    if (spec.fixedCount !== null) return spec.fixedCount;
+    return Number.isInteger(value) && value >= spec.minCount && value <= spec.maxCount ? value : spec.defaultCount;
+  }
   return Number.isInteger(value) && value >= 1 && value <= 20 ? value : 5;
 }
 

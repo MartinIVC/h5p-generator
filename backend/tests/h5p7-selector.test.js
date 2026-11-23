@@ -71,10 +71,29 @@ test('H5P-7 D3: saveDraft, getDrafts y restoreBackupPayload persisten y normaliz
   assert.equal(mcDraft.activityType, 'multichoice');
   assert.equal(mcDraft.questionCount, 1);
 
+  // Formatos habilitados en H5P-16 respetan sus límites propios (truefalse fijo 1, sortparagraphs min 3)
+  const tfDraft = storage.saveDraft({
+    courseId: 'unassigned',
+    activityType: 'truefalse',
+    questionCount: 8,
+    files: []
+  });
+  assert.equal(tfDraft.activityType, 'truefalse');
+  assert.equal(tfDraft.questionCount, 1);
+
+  const sortDraft = storage.saveDraft({
+    courseId: 'unassigned',
+    activityType: 'sortparagraphs',
+    questionCount: 1,
+    files: []
+  });
+  assert.equal(sortDraft.activityType, 'sortparagraphs');
+  assert.equal(sortDraft.questionCount, 5);
+
   // Valores inválidos se normalizan con seguridad
   const invalidDraft = storage.saveDraft({
     courseId: 'unassigned',
-    activityType: 'crossword',
+    activityType: 'formato-invalido',
     questionCount: 99,
     files: []
   });
@@ -111,14 +130,14 @@ test('H5P-7 CA-1/CA-5: genera y guarda H5P.MultiChoice 1.14 standalone con 1 pre
   assert.equal(rejected.status, 'error');
   assert.equal(rejected.code, 'UNSUPPORTED_TYPE');
 
-  // Formatos pendientes de H5P-16 siguen rechazados en el proceso principal
-  const upcomingRejected = await generation.generateH5P({
+  // Formatos desconocidos siguen rechazados en el proceso principal
+  const unknownRejected = await generation.generateH5P({
     documentIds: [documentId],
-    activityType: 'crossword',
+    activityType: 'formato-invalido',
     questionCount: 5,
     instructions: ''
   }, { sender: owner });
-  assert.equal(upcomingRejected.code, 'UNSUPPORTED_TYPE');
+  assert.equal(unknownRejected.code, 'UNSUPPORTED_TYPE');
 
   const generated = await generation.generateH5P({
     documentIds: [documentId],
