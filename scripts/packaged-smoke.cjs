@@ -23,6 +23,7 @@ global.fetch = async (url, options) => {
   fetchCalls++;
   if (networkMode === 'fallback' && url.includes('/gemini-3.5-flash-lite:')) return { ok: false, status: 404 };
   if (networkMode === 'unavailable') return { ok: false, status: 404 };
+  if (networkMode === 'service503') return { ok: false, status: 503 };
   if (networkMode === 'transient' && transientFailures++ < 2) return { ok: false, status: 503 };
   if (networkMode === 'offline') throw new Error('private network error');
   if (networkMode === 'quota') return { ok: false, status: 429 };
@@ -89,6 +90,14 @@ async function run() {
   };
   assert.deepEqual(await evaluate('[typeof require, typeof process, typeof window.academicAPI.ipcRenderer]'), ['undefined', 'undefined', 'undefined']);
   assert.equal((await invoke('verifyApiKey', 'synthetic-test-key')).status, 'valid');
+  // H5P-34 (BUG-22): clave malformada -> invalid sin red; doble 503 -> error (no unavailable)
+  const beforeMalformed = fetchCalls;
+  assert.equal((await invoke('verifyApiKey', 'AIza con espacio')).status, 'invalid');
+  assert.equal(fetchCalls, beforeMalformed);
+  networkMode = 'service503';
+  const beforeDouble503 = fetchCalls;
+  assert.equal((await invoke('verifyApiKey', 'synthetic-test-key')).status, 'error');
+  assert.equal(fetchCalls - beforeDouble503, 2);
   networkMode = 'fallback';
   const beforeVerify = fetchCalls;
   await evaluate('window.configManager.openSettingsModal()');
@@ -124,6 +133,8 @@ async function run() {
   assert.equal(fetchCalls - beforeFallback, 2);
   networkMode = 'ok';
   const save = { packageId: generated.packageId, suggestedName: 'actividad' };
+  assert.equal((await invoke('saveH5PFile', { packageId: generated.packageId, suggestedName: '.h5p' })).code, 'INVALID_ARGUMENT');
+  assert.equal((await invoke('saveH5PFile', { packageId: generated.packageId, suggestedName: 'actividad:1' })).code, 'INVALID_ARGUMENT');
   assert.equal((await invoke('saveH5PFile', save)).status, 'cancelled');
   assert.equal(fs.existsSync(path.join(directory, 'output.h5p')), false);
   dialogMode = 'failure';
@@ -165,10 +176,49 @@ async function run() {
   assert.equal((await other.webContents.executeJavaScript('window.academicAPI.verifyApiKey("synthetic-test-key")')).status, 'error');
   assert.equal((await other.webContents.executeJavaScript(`window.academicAPI.saveH5PFile(${JSON.stringify(save)})`)).code, 'INVALID_SENDER');
   other.destroy();
-  // Recorre también la interfaz real con un archivo sintético.
+  // Recorre también la interfaz real con un archivo sintético y valida H5P-35 (z-index, IME, vista previa parcial, WCAG AA).
   window.setSize(840, 600);
+  // H5P-35 (BUG-16): .ui-message-region por encima de modales (.preview-modal-overlay)
+  await evaluate(`window.uiMessage('Aviso visible sobre modales', 'info')`);
+  assert.equal(await evaluate(`(() => {
+    const region = document.querySelector('.ui-message-region');
+    const modal = document.getElementById('preview-modal');
+    return Number(getComputedStyle(region).zIndex) > Number(getComputedStyle(modal).zIndex);
+  })()`), true);
+  // H5P-35 (BUG-19): buscador de Home preserva el nodo <input> al escribir (IME-safe)
+  await invoke('saveCourse', { name: 'Arquitectura de Computadores', code: 'INF-245', term: '2026-1', section: '1' });
+  await evaluate('window.coursesManager.navigateToHome()');
+  await waitFor('Boolean(document.getElementById("search-courses-input"))');
+  assert.equal(await evaluate(`(() => {
+    const input = document.getElementById('search-courses-input');
+    input.value = 'Arqui';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return document.getElementById('search-courses-input') === input;
+  })()`), true);
   await evaluate(`window.coursesManager.startProjectCreation('unassigned')`);
   assert.equal(await evaluate('document.getElementById("btn-next-step").disabled'), true);
+  // H5P-35 (BUG-20): maxlength=10000 y contador de instrucciones
+  assert.equal(await evaluate('document.getElementById("upload-prompt-input").maxLength'), 10000);
+  await evaluate(`(() => {
+    const prompt = document.getElementById('upload-prompt-input');
+    prompt.value = 'Enfoca las preguntas en arquitectura.';
+    prompt.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  assert.match(await evaluate('document.getElementById("upload-prompt-counter").textContent'), /37 \/ 10\.000/);
+  // H5P-35 (BUG-18): vista previa parcial a 512 KiB y exclusión de archivos rechazados en el visor
+  await evaluate(`(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(['A'.repeat(600 * 1024)], 'extenso.txt', { type: 'text/plain' }));
+    transfer.items.add(new File(['bin'], 'rechazado.exe', { type: 'application/octet-stream' }));
+    const input = document.getElementById('upload-file-input');
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    document.querySelector('[data-action="preview"]').click();
+  })()`);
+  await waitFor('Boolean(document.querySelector(".preview-text-notice"))');
+  assert.equal(await evaluate('document.getElementById("preview-counter").textContent'), '1 / 1');
+  assert.equal(await evaluate('document.querySelector(".preview-text-content code").textContent.length <= 512 * 1024'), true);
+  await evaluate('window.previewManager.close(); window.uploadManager.clearFiles();');
   await evaluate(`(() => {
     const transfer = new DataTransfer();
     transfer.items.add(new File(['Material sintético sobre integridad.'], 'ui.txt', {type:'text/plain'}));
@@ -208,6 +258,55 @@ async function run() {
   // H5P-16: probar generación y guardado de un formato del catálogo ampliado (Tarjetas didácticas) con título en h5p.json
   await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="flashcards"]\').click()');
   assert.equal(await evaluate('window.uploadManager.getActivityType()'), 'flashcards');
+  // H5P-35 (BUG-17): verificar contraste WCAG AA (>= 4.5:1) en modo claro y oscuro en Paso 2
+  const contrastCheck = await evaluate(`(() => {
+    const parseRgb = str => {
+      const nums = str.match(/\\d+(\\.\\d+)?/g).slice(0, 3).map(Number);
+      return str.startsWith('color(srgb') ? nums.map(n => n * 255) : nums;
+    };
+    const lum = rgb => {
+      const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+      return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+    };
+    const ratio = (a, b) => {
+      const l1 = lum(a), l2 = lum(b);
+      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    };
+    const measure = mode => {
+      document.documentElement.classList.remove('light', 'dark');
+      document.documentElement.classList.add(mode);
+      const card = document.querySelector('.activity-type-card.selected');
+      const lib = card.querySelector('.activity-card-library');
+      const desc = card.querySelector('.activity-card-desc');
+      return {
+        libRatio: ratio(parseRgb(getComputedStyle(lib).color), parseRgb(getComputedStyle(lib).backgroundColor)),
+        descRatio: ratio(parseRgb(getComputedStyle(desc).color), parseRgb(getComputedStyle(card).backgroundColor))
+      };
+    };
+    document.documentElement.classList.add('motion-reduced');
+    const dark = measure('dark');
+    const light = measure('light');
+    document.documentElement.classList.remove('motion-reduced');
+    return { light, dark };
+  })()`);
+  assert.ok(contrastCheck.light.libRatio >= 4.5, `Contraste insuficiente en .activity-card-library (light): ${contrastCheck.light.libRatio}`);
+  assert.ok(contrastCheck.light.descRatio >= 4.5, `Contraste insuficiente en .activity-card-desc seleccionada (light): ${contrastCheck.light.descRatio}`);
+  assert.ok(contrastCheck.dark.libRatio >= 4.5, `Contraste insuficiente en .activity-card-library (dark): ${contrastCheck.dark.libRatio}`);
+  assert.ok(contrastCheck.dark.descRatio >= 4.5, `Contraste insuficiente en .activity-card-desc seleccionada (dark): ${contrastCheck.dark.descRatio}`);
+  // H5P-35 (BUG-20): aviso visible cuando el formato seleccionado queda oculto bajo otra pestaña
+  await evaluate('document.querySelector(\'.activity-category-tab[data-category-filter="evaluation"]\').click()');
+  assert.equal(await evaluate('document.getElementById("selected-format-hidden-notice").classList.contains("hidden")'), false);
+  await evaluate('document.getElementById("btn-show-selected-format").click()');
+  assert.equal(await evaluate('document.querySelector(\'.activity-category-tab[data-category-filter="study"]\').classList.contains("selected")'), true);
+  await evaluate('document.querySelector(\'.activity-category-tab[data-category-filter="all"]\').click()');
+  // H5P-35 (BUG-20): vaciar #question-count deshabilita botón sin disparar alert inmediato
+  await evaluate(`(() => {
+    const el = document.getElementById('question-count');
+    el.value = '';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  assert.equal(await evaluate('document.getElementById("btn-generate-h5p").disabled'), true);
+  assert.notEqual(await evaluate('document.getElementById("generation-status").getAttribute("role")'), 'alert');
   await evaluate('document.querySelector(\'.btn-quick-count[data-count="3"]\').click()');
   await evaluate('document.getElementById("h5p-name").value = "Tarjetas INF-421"');
   await evaluate('document.getElementById("btn-generate-h5p").click()');
