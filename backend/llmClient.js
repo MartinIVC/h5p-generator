@@ -2,7 +2,7 @@
 
 const MAX_SOURCE_CHARS = 200000;
 const { setTimeout: delay } = require('node:timers/promises');
-const MODEL = 'gemini-2.5-flash';
+const { MODELS, CAPACITY_UNAVAILABLE, canSwitchModel, requestGemini } = require('./gemini');
 const { buildQuestionPrompt } = require('./prompts');
 
 // Solo códigos y mensajes fijos: nunca se adjunta la respuesta del proveedor.
@@ -88,45 +88,43 @@ async function generateQuestionsFromChunk(text, apiKey, instructions = '', count
   const wait = options.wait || ((ms, signal) => delay(ms, undefined, { signal }));
   let correction = '';
   let correctionsUsed = 0;
+  let modelIndex = 0;
+  const retryable = ['NETWORK_ERROR', 'SERVICE_UNAVAILABLE', CAPACITY_UNAVAILABLE, 'GENERATION_TIMEOUT'];
   for (let attempt = 0; attempt < 3; attempt++) {
+    const lastAttempt = attempt === 2;
+    const attemptSignal = AbortSignal.any([signal, AbortSignal.timeout(45000)]);
     try {
-      signal.throwIfAborted();
-      let response;
-      try {
-        response = await (options.fetch || fetch)(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-          body: JSON.stringify({ ...prompt, contents: [{ ...prompt.contents[0], parts: [...prompt.contents[0].parts, ...(correction ? [{ text: correction }] : [])] }], generationConfig: { responseMimeType: 'application/json', responseJsonSchema: questionSchema(count) } }),
-          signal
-        });
-      } catch { signal.throwIfAborted(); throw new Error('NETWORK_ERROR'); }
-      if (!response.ok) {
-        // No conservar ni mostrar cuerpos de error del proveedor.
-        await response.body?.cancel().catch(() => {});
-        if ([401, 403].includes(response.status)) throw new Error('API_KEY_INVALID');
-        if (response.status === 429) throw new Error('QUOTA');
-        if ([408, 500, 502, 503, 504].includes(response.status)) throw new Error('SERVICE_UNAVAILABLE');
-        throw new Error('API_REQUEST_FAILED');
-      }
+      const response = await requestGemini(MODELS[modelIndex], apiKey, {
+        ...prompt,
+        contents: [{ ...prompt.contents[0], parts: [...prompt.contents[0].parts, ...(correction ? [{ text: correction }] : [])] }],
+        generationConfig: { responseMimeType: 'application/json', responseJsonSchema: questionSchema(count) }
+      }, attemptSignal, options.fetch);
       let payload;
       try { payload = await response.json(); }
       catch (error) {
-        signal.throwIfAborted();
         throw error instanceof SyntaxError ? invalidResponse('JSON') : new Error('NETWORK_ERROR');
       }
-      signal.throwIfAborted();
+      attemptSignal.throwIfAborted();
       return parseQuestions(payload, count);
     } catch (error) {
       if (signal.aborted) throw new Error(signal.reason?.name === 'TimeoutError' ? 'GENERATION_TIMEOUT' : 'GENERATION_CANCELLED');
+      if (attemptSignal.aborted) error = new Error('GENERATION_TIMEOUT');
       if (error.message === 'INVALID_RESPONSE') {
-        if (error.reason === 'BLOCKED' || correctionsUsed >= 1 || attempt === 2) throw error;
+        if (error.reason === 'BLOCKED' || correctionsUsed >= 1 || lastAttempt) throw error;
         correctionsUsed++;
         // Regenera desde la fuente original y un diagnóstico fijo, sin reenviar
         // contenido defectuoso ni adivinar/cambiar respuestas correctas.
         correction = `\nCorrección de formato: ${RESPONSE_REASONS[error.reason]} Genera de nuevo exactamente ${count} preguntas completas y concisas siguiendo el esquema. Verifica opciones distintas y copia exactamente la opción correcta.`;
         continue;
       }
-      if (!['NETWORK_ERROR', 'SERVICE_UNAVAILABLE'].includes(error.message) || attempt === 2) throw error;
+      if (canSwitchModel(error) && !lastAttempt && modelIndex + 1 < MODELS.length) {
+        modelIndex++;
+        if (error.message === 'MODEL_UNAVAILABLE') continue;
+      }
+      if (lastAttempt || !retryable.includes(error.message)) {
+        if (error.message === CAPACITY_UNAVAILABLE) throw new Error('SERVICE_UNAVAILABLE');
+        throw error;
+      }
       try { await wait(1000 * 2 ** attempt + Math.floor(Math.random() * 250), signal); }
       catch { throw new Error(signal.reason?.name === 'TimeoutError' ? 'GENERATION_TIMEOUT' : 'GENERATION_CANCELLED'); }
     }
