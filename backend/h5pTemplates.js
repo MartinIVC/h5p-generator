@@ -253,8 +253,8 @@ const CONTENT_VALIDATORS = Object.freeze({
     },
     validatePackage(content) {
       if (!isNonEmptyString(content.taskDescription) || !Array.isArray(content.paragraphs) ||
-          content.paragraphs.length < 2 || !content.paragraphs.every(isNonEmptyString)) {
-        throw templateError('INVALID_CONTENT_JSON', 'H5P.SortParagraphs requiere taskDescription y al menos 2 paragraphs no vacíos.');
+          content.paragraphs.length < 3 || !content.paragraphs.every(isNonEmptyString)) {
+        throw templateError('INVALID_CONTENT_JSON', 'H5P.SortParagraphs requiere taskDescription y al menos 3 paragraphs no vacíos.');
       }
     },
     extractSubLibraries: extractMediaLibrary

@@ -59,6 +59,35 @@ describe('Módulo Chunker - Extracción y Normalización de Texto', () => {
             assert.match(result, /id,pregunta,respuesta/);
             assert.match(result, /¿Qué es H5P\?,Interactivo/);
         });
+
+        it('H5P-34 (BUG-15): decodifica UTF-8 BOM, UTF-16LE/BE BOM y Windows-1252 en español', async () => {
+            const utf8BomPath = path.join(tmpDir, 'utf8-bom.txt');
+            fs.writeFileSync(utf8BomPath, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('Evaluación inicial', 'utf8')]));
+            assert.strictEqual(await extractTextFromFile(utf8BomPath), 'Evaluación inicial');
+
+            const utf16LePath = path.join(tmpDir, 'utf16le.txt');
+            fs.writeFileSync(utf16LePath, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('Diseño ágil', 'utf16le')]));
+            assert.strictEqual(await extractTextFromFile(utf16LePath), 'Diseño ágil');
+
+            const utf16BePath = path.join(tmpDir, 'utf16be.txt');
+            const lePayload = Buffer.from('Año 2026', 'utf16le');
+            const bePayload = Buffer.alloc(lePayload.length);
+            for (let i = 0; i < lePayload.length; i += 2) {
+                bePayload[i] = lePayload[i + 1];
+                bePayload[i + 1] = lePayload[i];
+            }
+            fs.writeFileSync(utf16BePath, Buffer.concat([Buffer.from([0xfe, 0xff]), bePayload]));
+            assert.strictEqual(await extractTextFromFile(utf16BePath), 'Año 2026');
+
+            // Windows-1252: "Año,Sección,Evaluación" (ñ=0xF1, ó=0xF3)
+            const win1252Path = path.join(tmpDir, 'excel-es.csv');
+            const win1252Bytes = Buffer.from([
+                0x41, 0xf1, 0x6f, 0x2c, 0x53, 0x65, 0x63, 0x63, 0x69, 0xf3, 0x6e, 0x2c,
+                0x45, 0x76, 0x61, 0x6c, 0x75, 0x61, 0x63, 0x69, 0xf3, 0x6e
+            ]);
+            fs.writeFileSync(win1252Path, win1252Bytes);
+            assert.strictEqual(await extractTextFromFile(win1252Path), 'Año,Sección,Evaluación');
+        });
     });
 
     describe('extractTextFromFile - Hojas de cálculo (.xlsx, .xls)', () => {

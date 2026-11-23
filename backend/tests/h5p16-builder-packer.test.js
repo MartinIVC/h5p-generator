@@ -438,3 +438,29 @@ test('H5P-16: flujo IPC h5pGeneration soporta nuevos formatos, propaga title a h
   assert.equal(meta.mainLibrary, 'H5P.Crossword');
   assert.equal(meta.title, 'Crucigrama Unidad 2');
 });
+
+test('H5P-34 (BUG-12, BUG-15): Blanks/DragText preservan espaciado con comillas y Crossword rechaza cruces imposibles en 2D', async () => {
+  const blanksBuilt = await buildH5PContent('blanks', [
+    { textoAntes: 'El término "', respuesta: 'HTTP', textoDespues: '" regula peticiones.', pista: '' },
+    { textoAntes: 'La sigla «', respuesta: 'TCP', textoDespues: '» garantiza entrega.', pista: '' },
+    { textoAntes: "El prefijo '", respuesta: 'TLS', textoDespues: "' cifra el canal.", pista: '' }
+  ]);
+  assert.equal(blanksBuilt.content.questions[0], '<p>El término &quot;*HTTP*&quot; regula peticiones.</p>');
+  assert.equal(blanksBuilt.content.questions[1], '<p>La sigla «*TCP*» garantiza entrega.</p>');
+  assert.equal(blanksBuilt.content.questions[2], '<p>El prefijo &#39;*TLS*&#39; cifra el canal.</p>');
+
+  const dragBuilt = await buildH5PContent('dragtext', [
+    { textoAntes: 'La capa “', palabra: 'RED', textoDespues: '” enruta paquetes.', pista: '' }
+  ]);
+  assert.equal(dragBuilt.content.textField, 'La capa “*RED*” enruta paquetes.');
+
+  // AXX, AYY y AZZ comparten 'A' solo en el índice 0: pasan BFS pero son imposibles en una cuadrícula 2D
+  assert.throws(
+    () => validateActivityItems('crossword', [
+      { pista: 'Primera palabra', palabra: 'AXX' },
+      { pista: 'Segunda palabra', palabra: 'AYY' },
+      { pista: 'Tercera palabra', palabra: 'AZZ' }
+    ], 3),
+    { message: 'INVALID_RESPONSE', reason: 'DISCONNECTED_WORDS' }
+  );
+});

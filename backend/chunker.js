@@ -53,6 +53,23 @@ async function extractTextFromFile(filePath, options = {}) {
     return extractTextFromBuffer(fs.readFileSync(filePath), path.basename(filePath));
 }
 
+function decodeTextBuffer(dataBuffer) {
+    if (dataBuffer.length >= 3 && dataBuffer[0] === 0xef && dataBuffer[1] === 0xbb && dataBuffer[2] === 0xbf) {
+        return new TextDecoder('utf-8').decode(dataBuffer.subarray(3));
+    }
+    if (dataBuffer.length >= 2 && dataBuffer[0] === 0xff && dataBuffer[1] === 0xfe) {
+        return new TextDecoder('utf-16le').decode(dataBuffer.subarray(2));
+    }
+    if (dataBuffer.length >= 2 && dataBuffer[0] === 0xfe && dataBuffer[1] === 0xff) {
+        return new TextDecoder('utf-16be').decode(dataBuffer.subarray(2));
+    }
+    try {
+        return new TextDecoder('utf-8', { fatal: true }).decode(dataBuffer);
+    } catch {
+        return new TextDecoder('windows-1252').decode(dataBuffer);
+    }
+}
+
 async function extractTextFromBuffer(bytes, filename) {
     const ext = path.extname(filename).toLowerCase();
     const dataBuffer = Buffer.from(bytes);
@@ -64,7 +81,7 @@ async function extractTextFromBuffer(bytes, filename) {
         case '.txt':
         case '.md':
         case '.csv': {
-            rawText = dataBuffer.toString('utf-8');
+            rawText = decodeTextBuffer(dataBuffer);
             break;
         }
 

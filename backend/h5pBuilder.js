@@ -44,16 +44,18 @@ function sanitizeTitle(rawTitle, fallback) {
   return safeFallback || 'Actividad H5P';
 }
 
-function assembleInlineBlank(before, marker, after) {
+function assembleInlineBlank(rawBefore, marker, rawAfter) {
+  const before = typeof rawBefore === 'string' ? rawBefore.trim() : '';
+  const after = typeof rawAfter === 'string' ? rawAfter.trim() : '';
   let result = '';
   if (before) {
-    result += before;
-    if (!/[(\[¿¡"']$/.test(before)) result += ' ';
+    result += escapeHtml(before);
+    if (!/[(\[¿¡"'«“‘]$/.test(before)) result += ' ';
   }
   result += marker;
   if (after) {
-    if (!/^[,.;:?!)\]"']/.test(after)) result += ' ';
-    result += after;
+    if (!/^[,.;:?!)\]"'»”’]/.test(after)) result += ' ';
+    result += escapeHtml(after);
   }
   return result;
 }
@@ -205,9 +207,9 @@ async function buildH5PContent(activityType, items, options = {}) {
           const tipSuffix = item.pista ? `:${escapeHtml(item.pista)}` : '';
           const marker = `*${escapeHtml(item.respuesta)}${tipSuffix}*`;
           const sentence = assembleInlineBlank(
-            escapeHtml(item.textoAntes),
+            item.textoAntes,
             marker,
-            escapeHtml(item.textoDespues)
+            item.textoDespues
           );
           return `<p>${sentence}</p>`;
         })
@@ -225,9 +227,9 @@ async function buildH5PContent(activityType, items, options = {}) {
         const tipSuffix = item.pista ? `:${escapeHtml(item.pista)}` : '';
         const marker = `*${escapeHtml(item.palabra)}${tipSuffix}*`;
         return assembleInlineBlank(
-          escapeHtml(item.textoAntes),
+          item.textoAntes,
           marker,
-          escapeHtml(item.textoDespues)
+          item.textoDespues
         );
       });
       content = {
