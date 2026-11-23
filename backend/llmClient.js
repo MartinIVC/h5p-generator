@@ -2,7 +2,12 @@
 
 const MAX_SOURCE_CHARS = 200000;
 const { setTimeout: delay } = require('node:timers/promises');
-const MODEL = 'gemini-2.5-flash';
+const MODELS = [
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.8-flash'
+];
 const { buildQuestionPrompt } = require('./prompts');
 
 // Solo códigos y mensajes fijos: nunca se adjunta la respuesta del proveedor.
@@ -84,20 +89,34 @@ async function generateQuestionsFromChunk(text, apiKey, instructions = '', count
       !Number.isInteger(count) || count < 1 || count > 20 || typeof instructions !== 'string' || instructions.length > 10000) throw new Error('INVALID_ARGUMENT');
   const prompt = buildQuestionPrompt({ text, instructions, count });
   // Un presupuesto total para solicitudes y esperas; navegar/cerrar cancela todo.
-  const signal = AbortSignal.any([options.signal || new AbortController().signal, AbortSignal.timeout(90000)]);
+  const signal = AbortSignal.any([options.signal || new AbortController().signal, AbortSignal.timeout(180000)]);
   const wait = options.wait || ((ms, signal) => delay(ms, undefined, { signal }));
   let correction = '';
   let correctionsUsed = 0;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  const MAX_ATTEMPTS = 5;
+  let modelIndex = 0;
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const currentModel = MODELS[modelIndex];
     try {
-      signal.throwIfAborted();
       let response;
       try {
-        response = await (options.fetch || fetch)(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+        const attemptSignal = AbortSignal.any([signal, AbortSignal.timeout(45000)]);
+        response = await (options.fetch || fetch)(`https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-          body: JSON.stringify({ ...prompt, contents: [{ ...prompt.contents[0], parts: [...prompt.contents[0].parts, ...(correction ? [{ text: correction }] : [])] }], generationConfig: { responseMimeType: 'application/json', responseJsonSchema: questionSchema(count) } }),
-          signal
+          body: JSON.stringify({
+            ...prompt,
+            contents: [{
+              ...prompt.contents[0],
+              parts: [...prompt.contents[0].parts, ...(correction ? [{ text: correction }] : [])]
+            }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              responseJsonSchema: questionSchema(count)
+            }
+          }),
+          signal: attemptSignal
         });
       } catch { signal.throwIfAborted(); throw new Error('NETWORK_ERROR'); }
       if (!response.ok) {
@@ -105,7 +124,11 @@ async function generateQuestionsFromChunk(text, apiKey, instructions = '', count
         await response.body?.cancel().catch(() => {});
         if ([401, 403].includes(response.status)) throw new Error('API_KEY_INVALID');
         if (response.status === 429) throw new Error('QUOTA');
-        if ([408, 500, 502, 503, 504].includes(response.status)) throw new Error('SERVICE_UNAVAILABLE');
+        if ([408, 500, 502, 503, 504].includes(response.status)) {
+          const err = new Error('SERVICE_UNAVAILABLE');
+          err.retryAfter = response.headers?.get?.('retry-after');
+          throw err;
+        }
         throw new Error('API_REQUEST_FAILED');
       }
       let payload;
@@ -119,15 +142,17 @@ async function generateQuestionsFromChunk(text, apiKey, instructions = '', count
     } catch (error) {
       if (signal.aborted) throw new Error(signal.reason?.name === 'TimeoutError' ? 'GENERATION_TIMEOUT' : 'GENERATION_CANCELLED');
       if (error.message === 'INVALID_RESPONSE') {
-        if (error.reason === 'BLOCKED' || correctionsUsed >= 1 || attempt === 2) throw error;
+        if (error.reason === 'BLOCKED' || correctionsUsed >= 1 || attempt === MAX_ATTEMPTS - 1) throw error;
         correctionsUsed++;
         // Regenera desde la fuente original y un diagnóstico fijo, sin reenviar
         // contenido defectuoso ni adivinar/cambiar respuestas correctas.
         correction = `\nCorrección de formato: ${RESPONSE_REASONS[error.reason]} Genera de nuevo exactamente ${count} preguntas completas y concisas siguiendo el esquema. Verifica opciones distintas y copia exactamente la opción correcta.`;
         continue;
       }
-      if (!['NETWORK_ERROR', 'SERVICE_UNAVAILABLE'].includes(error.message) || attempt === 2) throw error;
-      try { await wait(1000 * 2 ** attempt + Math.floor(Math.random() * 250), signal); }
+      if (!['NETWORK_ERROR', 'SERVICE_UNAVAILABLE', 'QUOTA'].includes(error.message) || attempt === MAX_ATTEMPTS - 1) throw error;
+      modelIndex = (modelIndex + 1) % MODELS.length;
+      const backoffMs = 1500 * (attempt + 1) + Math.floor(Math.random() * 500);
+      try { await wait(backoffMs, signal); }
       catch { throw new Error(signal.reason?.name === 'TimeoutError' ? 'GENERATION_TIMEOUT' : 'GENERATION_CANCELLED'); }
     }
   }

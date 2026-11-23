@@ -203,7 +203,7 @@ function registerIpcHandlers() {
     try {
       const key = candidate == null ? academicStorage.getApiKey() : candidate.trim();
       if (!key) return { status: 'missing' };
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
         body: JSON.stringify({ contents: [{ parts: [{ text: 'Responde OK.' }] }], generationConfig: { maxOutputTokens: 8 } }),

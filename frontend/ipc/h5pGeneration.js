@@ -13,10 +13,10 @@ const messages = {
   QUOTA: 'Gemini ha alcanzado el límite de solicitudes. Inténtalo más tarde.',
   INVALID_RESPONSE: 'Gemini no devolvió preguntas válidas. Inténtalo nuevamente.',
   GENERATION_FAILED: 'No se pudo completar la generación. Inténtalo nuevamente.',
-  NETWORK_ERROR: 'No se pudo conectar con Gemini después de tres intentos. Comprueba tu conexión.',
-  SERVICE_UNAVAILABLE: 'Gemini sigue temporalmente no disponible después de tres intentos. Inténtalo más tarde.',
+  NETWORK_ERROR: 'No se pudo conectar con Gemini después de varios intentos. Comprueba tu conexión.',
+  SERVICE_UNAVAILABLE: 'Gemini sigue temporalmente no disponible después de varios intentos. Inténtalo más tarde.',
   API_REQUEST_FAILED: 'Gemini rechazó la solicitud. Revisa la configuración y el acceso al modelo.',
-  GENERATION_TIMEOUT: 'Gemini superó el tiempo de espera de 90 segundos. Inténtalo más tarde.',
+  GENERATION_TIMEOUT: 'Gemini superó el tiempo de espera de 180 segundos. Inténtalo más tarde.',
   GENERATION_CANCELLED: 'La generación se canceló al salir de la actividad.',
   PACKAGE_FAILED: 'Se generaron las preguntas, pero no se pudo preparar el archivo H5P.',
   NOT_FOUND: 'El cuestionario ya no está disponible. Vuelve a generarlo.',
@@ -72,7 +72,7 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
       let key;
       try { key = storage.getApiKey(); } catch { return fail('MISSING_KEY'); }
       if (!key) return fail('MISSING_KEY');
-      const questions = await generate(source, key, request.instructions, request.questionCount, { signal: AbortSignal.any([session.abort.signal, AbortSignal.timeout(90000)]) });
+      const questions = await generate(source, key, request.instructions, request.questionCount, { signal: AbortSignal.any([session.abort.signal, AbortSignal.timeout(180000)]) });
       if (session.closed || sender.isDestroyed() || request.documentIds.some((id, i) => inspection.getDocument(sender, id) !== documents[i])) return fail('DOCUMENT_NOT_FOUND');
       let bytes;
       try { bytes = await buildPackage(questions, session); }
