@@ -3,6 +3,11 @@
 const MODELS = Object.freeze(['gemini-3.5-flash-lite', 'gemini-3.8-flash']);
 const CAPACITY_UNAVAILABLE = 'CAPACITY_UNAVAILABLE';
 
+function isValidHeaderApiKey(apiKey) {
+  // Rechaza espacios, saltos de línea, caracteres de control o símbolos fuera de ISO-8859-1 (ByteString HTTP).
+  return typeof apiKey === 'string' && apiKey.length > 0 && !/[\s\x00-\x1f\x7f]|[^\x00-\xff]/.test(apiKey);
+}
+
 function canSwitchModel(error) {
   return error.message === 'MODEL_UNAVAILABLE' || error.message === CAPACITY_UNAVAILABLE;
 }
@@ -41,6 +46,7 @@ async function getFailureCode(response, model) {
 
 async function requestGemini(model, apiKey, body, signal, fetchRequest = fetch) {
   signal.throwIfAborted();
+  if (!isValidHeaderApiKey(apiKey)) throw new Error('API_KEY_INVALID');
   let response;
   try {
     response = await fetchRequest(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
@@ -62,10 +68,12 @@ async function requestGemini(model, apiKey, body, signal, fetchRequest = fetch) 
 }
 
 async function verifyGeminiKey(apiKey, { fetch: fetchRequest, signal = AbortSignal.timeout(15000) } = {}) {
+  if (!isValidHeaderApiKey(apiKey)) return 'invalid';
   const body = {
     contents: [{ parts: [{ text: 'Responde OK.' }] }],
     generationConfig: { maxOutputTokens: 64, thinkingConfig: { thinkingLevel: 'LOW' } }
   };
+  let allModelUnavailable = true;
   for (const model of MODELS) {
     // Reserva parte del presupuesto para el segundo modelo si el primero no responde.
     const attemptSignal = AbortSignal.any([signal, AbortSignal.timeout(7500)]);
@@ -76,14 +84,18 @@ async function verifyGeminiKey(apiKey, { fetch: fetchRequest, signal = AbortSign
       return 'valid';
     } catch (error) {
       if (signal.aborted) return 'error';
-      if (canSwitchModel(error) || attemptSignal.aborted) continue;
+      if (error.message === 'MODEL_UNAVAILABLE') continue;
+      if (canSwitchModel(error) || attemptSignal.aborted) {
+        allModelUnavailable = false;
+        continue;
+      }
       if (error.message === 'API_KEY_INVALID') return 'invalid';
       if (error.message === 'API_ACCESS_DENIED') return 'denied';
       if (error.message === 'QUOTA') return 'quota';
       return 'error';
     }
   }
-  return 'unavailable';
+  return allModelUnavailable ? 'unavailable' : 'error';
 }
 
-module.exports = { MODELS, CAPACITY_UNAVAILABLE, canSwitchModel, requestGemini, verifyGeminiKey };
+module.exports = { MODELS, CAPACITY_UNAVAILABLE, isValidHeaderApiKey, canSwitchModel, requestGemini, verifyGeminiKey };
