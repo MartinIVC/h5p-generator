@@ -72,3 +72,16 @@ test('inspección supera el tiempo sin filtrar datos', async () => {
   const service = createDocumentInspection({ WorkerClass: SlowWorker, timeoutMs: 5 });
   assert.equal((await service.inspect(request('a.txt', 'texto privado'), { sender: sender() })).code, 'TIMEOUT');
 });
+
+test('H5P-33 (BUG-09): navegación inPlace (skip-link #main-content) conserva los documentos inspeccionados', async () => {
+  const service = createDocumentInspection();
+  const owner = sender();
+  const result = await service.inspect(request('apunte.txt', 'Contenido docente válido para prueba.'), { sender: owner });
+  assert.equal(result.status, 'ok');
+  // Navegación inPlace dentro de index.html (ej. #main-content) no debe borrar la sesión.
+  owner.emit('did-start-navigation', {}, 'file:///index.html#main-content', true, true);
+  assert.equal(service.getDocument(owner, result.documentId)?.text, 'Contenido docente válido para prueba.');
+  // Navegación real de documento (!inPlace) sí libera todos los documentos.
+  owner.emit('did-start-navigation', {}, 'file:///otra.html', false, true);
+  assert.equal(service.getDocument(owner, result.documentId), undefined);
+});

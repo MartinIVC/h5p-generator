@@ -19,13 +19,13 @@ function createDocumentInspection({ WorkerClass = Worker, timeoutMs = TIMEOUT_MS
     const cleanup = () => {
       session.closed = true;
       session.documents.clear();
-      if (session.worker) session.worker.terminate();
+      if (session.worker) Promise.resolve(session.worker.terminate()).catch(() => {});
       if (sessions.get(sender) === session) sessions.delete(sender);
       sender.removeListener('destroyed', cleanup);
       sender.removeListener('did-start-navigation', onNavigation);
     };
-    const onNavigation = (_event, _url, _inPlace, isMainFrame) => {
-      if (isMainFrame) cleanup();
+    const onNavigation = (_event, _url, inPlace, isMainFrame) => {
+      if (isMainFrame && !inPlace) cleanup();
     };
     sender.once('destroyed', cleanup);
     sender.on('did-start-navigation', onNavigation);

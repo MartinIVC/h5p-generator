@@ -1,19 +1,25 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const vm = require('node:vm');
 
 function mainWithMocks({ focused = false, supported = true, writeFails = false } = {}) {
   const handlers = new Map();
   const notifications = [];
-  const window = { isDestroyed: () => false, isFocused: () => focused };
+  const filename = path.join(__dirname, '../../frontend/index.js');
+  const frame = { url: pathToFileURL(path.join(path.dirname(filename), 'index.html')).href };
+  const sender = Object.assign(new EventEmitter(), { mainFrame: frame, isDestroyed: () => false });
+  const window = { webContents: sender, isDestroyed: () => false, isFocused: () => focused };
+  const trustedEvent = { sender, senderFrame: frame };
   const electron = {
     app: {
       commandLine: { appendSwitch() {} }, setName() {}, on() {},
       getPath: () => '/tmp', whenReady: () => new Promise(() => {})
     },
-    BrowserWindow: { fromWebContents: () => window },
+    BrowserWindow: { fromWebContents: candidate => candidate === sender ? window : null },
     ipcMain: { handle: (channel, handler) => handlers.set(channel, handler) },
     shell: {},
     Notification: class {
@@ -31,7 +37,6 @@ function mainWithMocks({ focused = false, supported = true, writeFails = false }
     inspectBackupPayload: () => ({ counts: { courses: 0 } }),
     restoreBackupPayload: () => ({ counts: { courses: 0 } })
   };
-  const filename = path.join(__dirname, '../../frontend/index.js');
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
     module, __dirname: path.dirname(filename), process, Buffer, AbortSignal, console,
@@ -39,6 +44,8 @@ function mainWithMocks({ focused = false, supported = true, writeFails = false }
       if (name === 'electron') return electron;
       if (name === 'node:fs') return {
         writeFileSync() { if (writeFails) throw new Error('write failed'); },
+        renameSync() {},
+        rmSync() {},
         statSync: () => ({ size: 30 }),
         readFileSync: () => '{"sample":"private document text"}'
       };
@@ -47,13 +54,13 @@ function mainWithMocks({ focused = false, supported = true, writeFails = false }
     }
   }, { filename });
   module.exports.registerIpcHandlers();
-  return { handlers, notifications };
+  return { handlers, notifications, trustedEvent, sender };
 }
 
 describe('Avisos nativos de operaciones completadas', () => {
   it('muestra un texto fijo al terminar una copia con la ventana en segundo plano', async () => {
-    const { handlers, notifications } = mainWithMocks();
-    await handlers.get('academic:exportBackup')({ sender: {} });
+    const { handlers, notifications, trustedEvent } = mainWithMocks();
+    await handlers.get('academic:exportBackup')(trustedEvent);
     assert.equal(notifications.length, 1);
     assert.equal(notifications[0].body, 'Copia de seguridad creada.');
     assert.ok(!JSON.stringify(notifications).includes('private document text'));
@@ -62,26 +69,38 @@ describe('Avisos nativos de operaciones completadas', () => {
 
   it('devuelve el resultado sin aviso nativo cuando la ventana está activa o el sistema no lo soporta', async () => {
     for (const options of [{ focused: true }, { supported: false }]) {
-      const { handlers, notifications } = mainWithMocks(options);
-      const result = await handlers.get('academic:exportBackup')({ sender: {} });
+      const { handlers, notifications, trustedEvent } = mainWithMocks(options);
+      const result = await handlers.get('academic:exportBackup')(trustedEvent);
       assert.equal(result.canceled, false);
       assert.equal(notifications.length, 0);
     }
   });
 
   it('no notifica una operación que falla', async () => {
-    const { handlers, notifications } = mainWithMocks({ writeFails: true });
-    await assert.rejects(handlers.get('academic:exportBackup')({ sender: {} }));
+    const { handlers, notifications, trustedEvent } = mainWithMocks({ writeFails: true });
+    await assert.rejects(handlers.get('academic:exportBackup')(trustedEvent));
     assert.equal(notifications.length, 0);
   });
 
-  it('notifica una restauración completada sin incluir datos de la copia', async () => {
-    const { handlers, notifications } = mainWithMocks();
-    const preview = await handlers.get('academic:previewBackup')({ sender: {} });
-    await handlers.get('academic:restoreBackup')({ sender: {} }, { backupId: preview.backupId, strategy: 'merge' });
+  it('notifica una restauración completada sin incluir datos de la copia y aisla por ventana', async () => {
+    const { handlers, notifications, trustedEvent, sender } = mainWithMocks();
+    const preview = await handlers.get('academic:previewBackup')(trustedEvent);
+    await assert.rejects(
+      handlers.get('academic:restoreBackup')({ sender: {} }, { backupId: preview.backupId, strategy: 'merge' }),
+      /ventana de la aplicación/
+    );
+    await handlers.get('academic:restoreBackup')(trustedEvent, { backupId: preview.backupId, strategy: 'merge' });
     assert.equal(notifications.length, 1);
     assert.equal(notifications[0].body, 'Copia de seguridad restaurada.');
     assert.ok(!JSON.stringify(notifications).includes('private document text'));
+
+    // Una nueva vista previa se descarta al navegar fuera del documento principal.
+    const preview2 = await handlers.get('academic:previewBackup')(trustedEvent);
+    sender.emit('did-start-navigation', {}, 'https://example.com', false, true);
+    await assert.rejects(
+      handlers.get('academic:restoreBackup')(trustedEvent, { backupId: preview2.backupId, strategy: 'merge' }),
+      /revisarse antes/
+    );
   });
 });
 
@@ -112,4 +131,5 @@ it('el aviso visible evita duplicados y distingue errores para lectores de panta
   assert.equal(body.children[0].children[0].attributes.role, 'status');
   assert.equal(body.children[0].children[1].attributes.role, 'alert');
   assert.equal(body.children[0].attributes['aria-live'], undefined);
+  assert.equal(window.uiEscapeHtml(`<img "x" 'y' &>`), '&lt;img &quot;x&quot; &#39;y&#39; &amp;&gt;');
 });
