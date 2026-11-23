@@ -1,0 +1,36 @@
+{
+  "choices": [],
+  "overallFeedback": [
+    {
+      "from": 0,
+      "to": 100,
+      "feedback": "Obtuviste @score de @total puntos."
+    }
+  ],
+  "behaviour": {
+    "autoContinue": true,
+    "timeoutCorrect": 2000,
+    "timeoutWrong": 3000,
+    "soundEffectsEnabled": true,
+    "enableRetry": true,
+    "enableSolutionsButton": true,
+    "passPercentage": 100
+  },
+  "l10n": {
+    "nextButtonLabel": "Siguiente pregunta",
+    "showSolutionButtonLabel": "Mostrar solución",
+    "retryButtonLabel": "Reintentar",
+    "solutionViewTitle": "Lista de soluciones",
+    "correctText": "¡Correcto!",
+    "incorrectText": "¡Incorrecto!",
+    "shouldSelect": "Debía seleccionarse",
+    "shouldNotSelect": "No debía seleccionarse",
+    "muteButtonLabel": "Silenciar sonido de retroalimentación",
+    "closeButtonLabel": "Cerrar",
+    "slideOfTotal": "Pregunta :num de :total",
+    "scoreBarLabel": "Obtuviste :num de :total puntos",
+    "solutionListQuestionNumber": "Pregunta :num",
+    "a11yShowSolution": "Mostrar la solución. La tarea se marcará con su solución correcta.",
+    "a11yRetry": "Reintentar la tarea. Se reinician todas las respuestas y comienza de nuevo."
+  }
+}

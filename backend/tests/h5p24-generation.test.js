@@ -124,6 +124,6 @@ test('H5P-24: Maneja falla simulada de API (HTTP 503 / 429) y clave ausente', as
     documentIds: ['doc-1'], activityType: 'multiple-choice', questionCount: 1, instructions: ''
   }, { sender });
 
-  assert.equal(attempts, 5);
+  assert.equal(attempts, 3);
   assert.equal(res503.code, 'SERVICE_UNAVAILABLE');
 });

@@ -1,10 +1,8 @@
 'use strict';
 const { parentPort, workerData } = require('node:worker_threads');
-const fs = require('node:fs/promises');
-const path = require('node:path');
 const crypto = require('node:crypto');
-const JSZip = require('jszip');
 const { validateQuestions } = require('./llmClient');
+const { TEMPLATE_TYPES, loadTemplate, createBasePackageZip } = require('./h5pTemplates');
 
 function html(value) {
   return value.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
@@ -17,29 +15,62 @@ function feedbackHtml(value) {
 
 (async () => {
   try {
-    const questions = validateQuestions(workerData.questions, workerData.questions.length);
-    const zip = await JSZip.loadAsync(await fs.readFile(path.join(__dirname, 'templates', 'question-set-616.h5p')));
-    const metadata = JSON.parse(await zip.file('h5p.json').async('string'));
-    const template = JSON.parse(await zip.file('content/content.json').async('string'));
-    const sample = template.questions.find(question => question.library === 'H5P.MultiChoice 1.14');
-    if (!sample) throw new Error('TEMPLATE');
-    const base = sample.params;
-    delete base.media;
-    delete base.overallFeedback;
-    // Evita que etiquetas que formen parte del contenido queden desordenadas.
-    base.behaviour = { ...base.behaviour, randomAnswers: false };
-    base.UI = { showSolutionButton: 'Mostrar solución', tryAgainButton: 'Reintentar', checkAnswerButton: 'Comprobar', tipsLabel: 'Mostrar pista', scoreBarLabel: 'Obtuviste :num de :total puntos', tipAvailable: 'Pista disponible', feedbackAvailable: 'Comentarios disponibles', readFeedback: 'Leer comentarios', wrongAnswer: 'Respuesta incorrecta', correctAnswer: 'Respuesta correcta', shouldCheck: 'Debía seleccionarse', shouldNotCheck: 'No debía seleccionarse', noInput: 'Responde antes de ver la solución' };
+    const activityType = workerData.activityType === TEMPLATE_TYPES.MULTICHOICE
+      ? TEMPLATE_TYPES.MULTICHOICE
+      : TEMPLATE_TYPES.QUESTIONSET;
+    const expectedCount = activityType === TEMPLATE_TYPES.MULTICHOICE ? 1 : workerData.questions.length;
+    const questions = validateQuestions(workerData.questions, expectedCount);
+
+    if (activityType === TEMPLATE_TYPES.MULTICHOICE) {
+      const mcTemplate = await loadTemplate(TEMPLATE_TYPES.MULTICHOICE);
+      const zip = await createBasePackageZip(TEMPLATE_TYPES.MULTICHOICE);
+      const first = questions[0];
+      const metadata = {
+        ...mcTemplate.metadata,
+        title: first.pregunta.slice(0, 120) || mcTemplate.metadata.title
+      };
+      const content = {
+        ...mcTemplate.content,
+        question: `<p>${html(first.pregunta)}</p>`,
+        overallFeedback: [{ from: 0, to: 100, feedback: feedbackHtml(first.retroalimentacion) }],
+        answers: first.opciones.map(option => ({
+          text: `<div>${html(option)}</div>`,
+          correct: option === first.respuestaCorrecta,
+          tipsAndFeedback: { tip: '', chosenFeedback: '', notChosenFeedback: '' }
+        }))
+      };
+
+      zip.file('h5p.json', JSON.stringify(metadata));
+      zip.file('content/content.json', JSON.stringify(content));
+      const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+      parentPort.postMessage({ bytes });
+      return;
+    }
+
+    const qsTemplate = await loadTemplate(TEMPLATE_TYPES.QUESTIONSET);
+    const mcTemplate = await loadTemplate(TEMPLATE_TYPES.MULTICHOICE);
+    const zip = await createBasePackageZip(TEMPLATE_TYPES.QUESTIONSET);
+
+    const metadata = qsTemplate.metadata;
+    const template = qsTemplate.content;
+    const base = mcTemplate.content;
+
     template.questions = questions.map(question => ({
-      library: 'H5P.MultiChoice 1.14', subContentId: crypto.randomUUID(),
+      library: mcTemplate.mainLibraryKey,
+      subContentId: crypto.randomUUID(),
       metadata: { title: question.pregunta.slice(0, 120), license: 'U', contentType: 'Multiple Choice' },
-      params: { ...base, question: `<p>${html(question.pregunta)}</p>`, overallFeedback: [{ from: 0, to: 100, feedback: feedbackHtml(question.retroalimentacion) }], answers: question.opciones.map(option => ({ text: `<div>${html(option)}</div>`, correct: option === question.respuestaCorrecta, tipsAndFeedback: { tip: '', chosenFeedback: '', notChosenFeedback: '' } })) }
+      params: {
+        ...base,
+        question: `<p>${html(question.pregunta)}</p>`,
+        overallFeedback: [{ from: 0, to: 100, feedback: feedbackHtml(question.retroalimentacion) }],
+        answers: question.opciones.map(option => ({
+          text: `<div>${html(option)}</div>`,
+          correct: option === question.respuestaCorrecta,
+          tipsAndFeedback: { tip: '', chosenFeedback: '', notChosenFeedback: '' }
+        }))
+      }
     }));
-    template.texts = { prevButton: 'Anterior', nextButton: 'Siguiente', finishButton: 'Finalizar', textualProgress: 'Pregunta @current de @total', questionLabel: 'Pregunta', jumpToQuestion: 'Ir a la pregunta %d', readSpeakerProgress: 'Pregunta @current de @total', unansweredText: 'Sin responder', answeredText: 'Respondida', currentQuestionText: 'Pregunta actual' };
-    template.endGame = { ...template.endGame, message: 'Tu resultado:', finishButtonText: 'Finalizar', solutionButtonText: 'Mostrar solución', retryButtonText: 'Reintentar', noResultMessage: 'Finalizado', overallFeedback: [{ from: 0, to: 100, feedback: 'Obtuviste @score de @total puntos.' }] };
-    delete template.endGame.oldFeedback;
-    template.introPage = { showIntroPage: false, startButtonText: 'Comenzar', introduction: '' };
-    metadata.title = 'Cuestionario generado'; metadata.language = 'es'; metadata.license = 'U';
-    zip.remove('content');
+
     zip.file('h5p.json', JSON.stringify(metadata));
     zip.file('content/content.json', JSON.stringify(template));
     const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });

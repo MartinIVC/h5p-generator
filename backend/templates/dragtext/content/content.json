@@ -1,0 +1,42 @@
+{
+  "media": {
+    "disableImageZooming": false
+  },
+  "taskDescription": "Arrastra las palabras a los espacios correctos.",
+  "textField": "",
+  "distractors": "",
+  "overallFeedback": [
+    {
+      "from": 0,
+      "to": 100,
+      "feedback": "Obtuviste @score de @total puntos."
+    }
+  ],
+  "checkAnswer": "Comprobar",
+  "submitAnswer": "Enviar",
+  "tryAgain": "Reintentar",
+  "showSolution": "Mostrar solución",
+  "dropZoneIndex": "Zona de colocación @index.",
+  "empty": "La zona de colocación @index está vacía.",
+  "contains": "La zona de colocación @index contiene el elemento @draggable.",
+  "ariaDraggableIndex": "@index de @count elementos que se pueden colocar.",
+  "tipLabel": "Mostrar pista",
+  "correctText": "¡Correcto!",
+  "incorrectText": "¡Incorrecto!",
+  "resetDropTitle": "Restablecer colocación",
+  "resetDropDescription": "¿Seguro que quieres restablecer esta zona de colocación?",
+  "grabbed": "Elemento tomado para arrastrar.",
+  "cancelledDragging": "Arrastre cancelado.",
+  "correctAnswer": "Respuesta correcta:",
+  "feedbackHeader": "Retroalimentación",
+  "behaviour": {
+    "enableRetry": true,
+    "enableSolutionsButton": true,
+    "enableCheckButton": true,
+    "instantFeedback": false
+  },
+  "scoreBarLabel": "Obtuviste :num de :total puntos",
+  "a11yCheck": "Comprobar las respuestas. Las respuestas se marcarán como correctas, incorrectas o sin respuesta.",
+  "a11yShowSolution": "Mostrar la solución. La tarea se marcará con su solución correcta.",
+  "a11yRetry": "Reintentar la tarea. Se reinician todas las respuestas y comienza de nuevo."
+}

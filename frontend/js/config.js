@@ -676,7 +676,15 @@
         verification.textContent = 'Comprobando clave…';
         try {
           const result = await window.academicAPI?.verifyApiKey?.(candidate);
-          const messages = { valid: 'Clave válida.', invalid: 'Clave inválida o sin permisos.', quota: 'Cuota agotada o límite de solicitudes alcanzado.', missing: 'No hay una clave guardada.', error: 'No se pudo comprobar la clave. Revisa la conexión e inténtalo de nuevo.' };
+          const messages = {
+            valid: 'Clave válida.',
+            invalid: 'La clave no es válida.',
+            denied: 'Gemini denegó el acceso. Revisa los permisos del proyecto en Google AI Studio.',
+            unavailable: 'No hay un modelo de Gemini disponible para comprobar la clave. Inténtalo más tarde.',
+            quota: 'Cuota agotada o límite de solicitudes alcanzado.',
+            missing: 'No hay una clave guardada.',
+            error: 'No se pudo comprobar la clave. Revisa la conexión e inténtalo de nuevo.'
+          };
           verification.textContent = messages[result?.status] || messages.error;
           verification.className = result?.status === 'valid' ? 'api-key-verification-success' : 'api-key-verification-error';
         } catch {

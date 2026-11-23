@@ -1,0 +1,21 @@
+{
+  "intro": "Elige la afirmación correcta para construir el resumen.",
+  "summaries": [],
+  "overallFeedback": [
+    {
+      "from": 0,
+      "to": 100,
+      "feedback": "Obtuviste @score de @total puntos."
+    }
+  ],
+  "solvedLabel": "Progreso:",
+  "scoreLabel": "Respuestas incorrectas:",
+  "resultLabel": "Tu resultado",
+  "labelCorrect": "Correcta.",
+  "labelIncorrect": "¡Incorrecto! Inténtalo otra vez.",
+  "alternativeIncorrectLabel": "Incorrecto",
+  "labelCorrectAnswers": "Respuestas correctas.",
+  "tipButtonLabel": "Mostrar pista",
+  "scoreBarLabel": "Obtuviste :num de :total puntos",
+  "progressText": "Progreso :num de :total"
+}

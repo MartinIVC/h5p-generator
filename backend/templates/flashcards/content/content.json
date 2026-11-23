@@ -1,0 +1,23 @@
+{
+  "description": "Responde cada tarjeta didáctica con base en el material.",
+  "cards": [],
+  "progressText": "Tarjeta @card de @total",
+  "next": "Siguiente",
+  "previous": "Anterior",
+  "checkAnswerText": "Comprobar",
+  "showSolutionsRequiresInput": true,
+  "defaultAnswerText": "Tu respuesta",
+  "correctAnswerText": "Correcta",
+  "incorrectAnswerText": "Incorrecta",
+  "showSolutionText": "Respuesta correcta",
+  "results": "Resultados",
+  "ofCorrect": "@score de @total correctas",
+  "showResults": "Mostrar resultados",
+  "answerShortText": "R:",
+  "retry": "Reintentar",
+  "caseSensitive": false,
+  "cardAnnouncement": "Respuesta incorrecta. La respuesta correcta era @answer",
+  "correctAnswerAnnouncement": "@answer es correcta.",
+  "pageAnnouncement": "Página @current de @total",
+  "randomCards": false
+}

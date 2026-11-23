@@ -1,0 +1,30 @@
+{
+  "taskDescription": "Encuentra las palabras clave en la cuadrícula.",
+  "wordList": "",
+  "behaviour": {
+    "orientations": {
+      "horizontal": true,
+      "horizontalBack": true,
+      "vertical": true,
+      "verticalUp": true,
+      "diagonal": true,
+      "diagonalBack": true,
+      "diagonalUp": true,
+      "diagonalUpBack": true
+    },
+    "fillPool": "abcdefghijklmnñopqrstuvwxyz",
+    "preferOverlap": true,
+    "showVocabulary": true,
+    "enableShowSolution": true,
+    "enableRetry": true
+  },
+  "l10n": {
+    "check": "Comprobar",
+    "tryAgain": "Reintentar",
+    "showSolution": "Mostrar solución",
+    "found": "@found de @totalWords encontradas",
+    "timeSpent": "Tiempo empleado",
+    "score": "Obtuviste @score de @total puntos",
+    "wordListHeader": "Palabras a encontrar"
+  }
+}

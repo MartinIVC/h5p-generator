@@ -9,14 +9,16 @@ const messages = {
   DOCUMENT_NOT_FOUND: 'Los documentos ya no están disponibles. Vuelve a seleccionarlos.',
   SOURCE_TOO_LARGE: 'El texto de los documentos supera el límite para una generación.',
   MISSING_KEY: 'Configura una clave de Gemini antes de generar.',
-  API_KEY_INVALID: 'La clave de Gemini no es válida o no tiene acceso al modelo.',
+  API_KEY_INVALID: 'La clave de Gemini no es válida.',
+  API_ACCESS_DENIED: 'Gemini denegó el acceso. Revisa los permisos del proyecto en Google AI Studio.',
+  MODEL_UNAVAILABLE: 'No hay un modelo de Gemini disponible para generar la actividad.',
   QUOTA: 'Gemini ha alcanzado el límite de solicitudes. Inténtalo más tarde.',
   INVALID_RESPONSE: 'Gemini no devolvió preguntas válidas. Inténtalo nuevamente.',
   GENERATION_FAILED: 'No se pudo completar la generación. Inténtalo nuevamente.',
-  NETWORK_ERROR: 'No se pudo conectar con Gemini después de varios intentos. Comprueba tu conexión.',
-  SERVICE_UNAVAILABLE: 'Gemini sigue temporalmente no disponible después de varios intentos. Inténtalo más tarde.',
+  NETWORK_ERROR: 'No se pudo conectar con Gemini. Comprueba tu conexión.',
+  SERVICE_UNAVAILABLE: 'Gemini no está disponible en este momento. Inténtalo más tarde.',
   API_REQUEST_FAILED: 'Gemini rechazó la solicitud. Revisa la configuración y el acceso al modelo.',
-  GENERATION_TIMEOUT: 'Gemini superó el tiempo de espera de 180 segundos. Inténtalo más tarde.',
+  GENERATION_TIMEOUT: 'Gemini no respondió a tiempo. Inténtalo más tarde.',
   GENERATION_CANCELLED: 'La generación se canceló al salir de la actividad.',
   PACKAGE_FAILED: 'Se generaron las preguntas, pero no se pudo preparar el archivo H5P.',
   NOT_FOUND: 'El cuestionario ya no está disponible. Vuelve a generarlo.',
@@ -26,6 +28,13 @@ const messages = {
   SAVE_FAILED: 'No se pudo guardar el archivo. Inténtalo nuevamente.'
 };
 const fail = code => ({ status: 'error', code, message: messages[code] });
+
+const ACTIVE_ACTIVITY_TYPES = new Map([
+  ['multichoice', { workerType: 'multichoice', projectLabel: 'Opción múltiple (H5P.MultiChoice)' }],
+  ['questionset', { workerType: 'questionset', projectLabel: 'Cuestionario (H5P.QuestionSet)' }],
+  ['question-set', { workerType: 'questionset', projectLabel: 'Cuestionario (H5P.QuestionSet)' }],
+  ['multiple-choice', { workerType: 'questionset', projectLabel: 'Cuestionario de opción múltiple' }]
+]);
 
 function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, generate = generateQuestionsFromChunk, WorkerClass = Worker, fileSystem = fs }) {
   const sessions = new WeakMap();
@@ -44,8 +53,8 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
     sender.once('destroyed', close); sender.on('did-start-navigation', navigation);
     return session;
   }
-  async function buildPackage(questions, session) {
-    const worker = new WorkerClass(path.join(__dirname, '../../backend/h5pPackageWorker.js'), { workerData: { questions } });
+  async function buildPackage(questions, session, activityType = 'questionset') {
+    const worker = new WorkerClass(path.join(__dirname, '../../backend/h5pPackageWorker.js'), { workerData: { questions, activityType } });
     session.worker = worker;
     try {
       return await new Promise((resolve, reject) => {
@@ -62,7 +71,10 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
     const sender = event.sender;
     const session = sessionFor(sender);
     if (session.busy) return fail('BUSY');
-    if (request.activityType !== 'multiple-choice' || request.questionCount > 20) return fail('UNSUPPORTED_TYPE');
+    const activityConfig = ACTIVE_ACTIVITY_TYPES.get(request.activityType);
+    if (!activityConfig || request.questionCount > 20 || (activityConfig.workerType === 'multichoice' && request.questionCount !== 1)) {
+      return fail('UNSUPPORTED_TYPE');
+    }
     const documents = request.documentIds.map(id => inspection.getDocument(sender, id));
     if (documents.some(doc => !doc)) return fail('DOCUMENT_NOT_FOUND');
     const source = documents.map(doc => doc.text).join('\n\n');
@@ -72,17 +84,17 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
       let key;
       try { key = storage.getApiKey(); } catch { return fail('MISSING_KEY'); }
       if (!key) return fail('MISSING_KEY');
-      const questions = await generate(source, key, request.instructions, request.questionCount, { signal: AbortSignal.any([session.abort.signal, AbortSignal.timeout(180000)]) });
+      const questions = await generate(source, key, request.instructions, request.questionCount, { signal: AbortSignal.any([session.abort.signal, AbortSignal.timeout(90000)]) });
       if (session.closed || sender.isDestroyed() || request.documentIds.some((id, i) => inspection.getDocument(sender, id) !== documents[i])) return fail('DOCUMENT_NOT_FOUND');
       let bytes;
-      try { bytes = await buildPackage(questions, session); }
+      try { bytes = await buildPackage(questions, session, activityConfig.workerType); }
       catch { return fail('PACKAGE_FAILED'); }
       if (session.closed || sender.isDestroyed() || request.documentIds.some((id, i) => inspection.getDocument(sender, id) !== documents[i])) return fail('DOCUMENT_NOT_FOUND');
       const packageId = randomUUID();
-      session.package = { id: packageId, bytes };
+      session.package = { id: packageId, bytes, h5pType: activityConfig.projectLabel };
       return { status: 'ok', kind: 'package', packageId, questionCount: questions.length };
     } catch (error) {
-      const code = ['API_KEY_INVALID', 'QUOTA', 'INVALID_RESPONSE', 'NETWORK_ERROR', 'SERVICE_UNAVAILABLE', 'API_REQUEST_FAILED', 'GENERATION_TIMEOUT', 'GENERATION_CANCELLED'].includes(error?.message) ? error.message : 'GENERATION_FAILED';
+      const code = ['API_KEY_INVALID', 'API_ACCESS_DENIED', 'MODEL_UNAVAILABLE', 'QUOTA', 'INVALID_RESPONSE', 'NETWORK_ERROR', 'SERVICE_UNAVAILABLE', 'API_REQUEST_FAILED', 'GENERATION_TIMEOUT', 'GENERATION_CANCELLED'].includes(error?.message) ? error.message : 'GENERATION_FAILED';
       if (code === 'INVALID_RESPONSE' && Object.hasOwn(RESPONSE_REASONS, error.reason)) {
         return { ...fail(code), reason: error.reason, message: `No se pudo validar el cuestionario. ${RESPONSE_REASONS[error.reason]}` };
       }
@@ -114,7 +126,7 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
       await fileSystem.rename(temporaryPath, filePath);
       temporaryPath = null;
       let projectSaved = true;
-      try { storage.saveProject({ title: path.basename(filePath, path.extname(filePath)), courseId, h5pType: 'Cuestionario de opción múltiple', filePath, fileSizeBytes: pkg.bytes.length }); } catch { projectSaved = false; }
+      try { storage.saveProject({ title: path.basename(filePath, path.extname(filePath)), courseId, h5pType: pkg.h5pType || 'Cuestionario de opción múltiple', filePath, fileSizeBytes: pkg.bytes.length }); } catch { projectSaved = false; }
       return { status: 'ok', fileName: path.basename(filePath), projectSaved };
     } catch { return fail('SAVE_FAILED'); }
     finally {

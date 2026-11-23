@@ -21,6 +21,8 @@ global.fetch = async (url, options) => {
   assert.match(url, /^https:\/\/generativelanguage.googleapis.com\//);
   assert.equal(options.headers['x-goog-api-key'], 'synthetic-test-key');
   fetchCalls++;
+  if (networkMode === 'fallback' && url.includes('/gemini-3.5-flash-lite:')) return { ok: false, status: 404 };
+  if (networkMode === 'unavailable') return { ok: false, status: 404 };
   if (networkMode === 'transient' && transientFailures++ < 2) return { ok: false, status: 503 };
   if (networkMode === 'offline') throw new Error('private network error');
   if (networkMode === 'quota') return { ok: false, status: 429 };
@@ -66,8 +68,24 @@ async function run() {
   assert.equal(preferences.nodeIntegration, false);
   const evaluate = expression => window.webContents.executeJavaScript(expression);
   const invoke = (method, request) => evaluate(`window.academicAPI.${method}(${JSON.stringify(request)})`);
+  const waitFor = async expression => {
+    const deadline = Date.now() + 15000;
+    while (!(await evaluate(expression))) {
+      if (Date.now() > deadline) throw new Error(`Tiempo agotado: ${expression}`);
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  };
   assert.deepEqual(await evaluate('[typeof require, typeof process, typeof window.academicAPI.ipcRenderer]'), ['undefined', 'undefined', 'undefined']);
   assert.equal((await invoke('verifyApiKey', 'synthetic-test-key')).status, 'valid');
+  networkMode = 'fallback';
+  const beforeVerify = fetchCalls;
+  await evaluate('window.configManager.openSettingsModal()');
+  await waitFor('Boolean(document.getElementById("btn-verify-api-key"))');
+  await evaluate('document.getElementById("btn-verify-api-key").click()');
+  await waitFor('document.getElementById("api-key-verification").textContent === "Clave válida."');
+  assert.equal(fetchCalls - beforeVerify, 2);
+  await evaluate('document.getElementById("btn-close-settings-modal").click()');
+  networkMode = 'ok';
   assert.equal((await invoke('inspectDocument', { name: '../private.txt', bytes: [1] })).code, 'INVALID_ARGUMENT');
   const inspect = text => evaluate(`window.academicAPI.inspectDocument({name:'sample.txt',bytes:new TextEncoder().encode(${JSON.stringify(text)})})`);
   assert.equal((await inspect('   ')).code, 'INSPECTION_FAILED');
@@ -83,9 +101,15 @@ async function run() {
   assert.equal((await invoke('generateH5P', request)).code, 'QUOTA');
   networkMode = 'transient';
   const callsBeforeRecovery = fetchCalls;
+  assert.equal((await invoke('generateH5P', request)).status, 'ok');
+  assert.equal(fetchCalls - callsBeforeRecovery, 3);
+  networkMode = 'unavailable';
+  assert.equal((await invoke('generateH5P', request)).code, 'MODEL_UNAVAILABLE');
+  networkMode = 'fallback';
+  const beforeFallback = fetchCalls;
   const generated = await invoke('generateH5P', request);
   assert.equal(generated.status, 'ok');
-  assert.equal(fetchCalls - callsBeforeRecovery, 3);
+  assert.equal(fetchCalls - beforeFallback, 2);
   networkMode = 'ok';
   const save = { packageId: generated.packageId, suggestedName: 'actividad' };
   assert.equal((await invoke('saveH5PFile', save)).status, 'cancelled');
@@ -130,13 +154,6 @@ async function run() {
   assert.equal((await other.webContents.executeJavaScript(`window.academicAPI.saveH5PFile(${JSON.stringify(save)})`)).code, 'INVALID_SENDER');
   other.destroy();
   // Recorre también la interfaz real con un archivo sintético.
-  const waitFor = async expression => {
-    const deadline = Date.now() + 15000;
-    while (!(await evaluate(expression))) {
-      if (Date.now() > deadline) throw new Error(`Tiempo agotado: ${expression}`);
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-  };
   window.setSize(840, 600);
   await evaluate(`window.coursesManager.startProjectCreation('unassigned')`);
   assert.equal(await evaluate('document.getElementById("btn-next-step").disabled'), true);
@@ -150,6 +167,29 @@ async function run() {
   })()`);
   await waitFor('Boolean(document.getElementById("question-count"))');
   assert.equal(await evaluate('document.activeElement.id'), 'selector-title');
+  assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true);
+  // CA-4: botón Generar Evaluación deshabilitado antes de elegir formato
+  assert.equal(await evaluate('document.getElementById("btn-generate-h5p").disabled'), true);
+  assert.equal(await evaluate('document.querySelectorAll(".activity-type-card.is-upcoming").length'), 10);
+  // D1 + CA-1/CA-2: Opción Múltiple fija cantidad en 1, bloquea botones rápidos y habilita generación
+  await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="multichoice"]\').click()');
+  assert.equal(await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="multichoice"]\').classList.contains("selected")'), true);
+  assert.equal(await evaluate('document.getElementById("question-count").value'), '1');
+  assert.equal(await evaluate('document.getElementById("question-count").disabled'), true);
+  assert.equal(await evaluate('document.querySelector(\'.btn-quick-count[data-count="3"]\').disabled'), true);
+  assert.equal(await evaluate('document.getElementById("btn-generate-h5p").disabled'), false);
+  assert.equal(await evaluate('window.uploadManager.getActivityType()'), 'multichoice');
+  // CA-4: deseleccionar tarjeta vuelve a deshabilitar Generar Evaluación
+  await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="multichoice"]\').click()');
+  assert.equal(await evaluate('document.getElementById("btn-generate-h5p").disabled'), true);
+  assert.equal(await evaluate('window.uploadManager.getActivityType()'), null);
+  // CA-1/CA-2/CA-3: Cuestionario habilita botones rápidos 3/5/10 y selector 1..20
+  await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="questionset"]\').click()');
+  assert.equal(await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="questionset"]\').classList.contains("selected")'), true);
+  assert.equal(await evaluate('document.getElementById("question-count").disabled'), false);
+  await evaluate('document.querySelector(\'.btn-quick-count[data-count="3"]\').click()');
+  assert.equal(await evaluate('document.getElementById("question-count").value'), '3');
+  assert.equal(await evaluate('window.uploadManager.getQuestionCount()'), 3);
   await evaluate('document.getElementById("question-count").focus()');
   window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
   window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });

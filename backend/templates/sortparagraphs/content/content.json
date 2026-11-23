@@ -1,0 +1,55 @@
+{
+  "media": {
+    "disableImageZooming": false
+  },
+  "taskDescription": "<p>Ordena los párrafos en la secuencia correcta.</p>",
+  "paragraphs": [],
+  "overallFeedback": [
+    {
+      "from": 0,
+      "to": 100,
+      "feedback": "Obtuviste @score de @total puntos."
+    }
+  ],
+  "behaviour": {
+    "scoringMode": "positions",
+    "applyPenalties": true,
+    "duplicatesInterchangeable": true,
+    "addButtonsForMovement": true,
+    "enableRetry": true,
+    "enableSolutionsButton": true
+  },
+  "l10n": {
+    "checkAnswer": "Comprobar",
+    "submitAnswer": "Enviar",
+    "tryAgain": "Reintentar",
+    "showSolution": "Mostrar solución",
+    "up": "Arriba",
+    "down": "Abajo",
+    "disabled": "Deshabilitado"
+  },
+  "a11y": {
+    "check": "Comprobar las respuestas. Las respuestas se marcarán como correctas o incorrectas.",
+    "showSolution": "Mostrar la solución. Se mostrará la secuencia correcta.",
+    "retry": "Reintentar la tarea. Se reinician todas las respuestas y comienza de nuevo.",
+    "yourResult": "Obtuviste @score de @total puntos",
+    "listDescription": "Lista ordenable de párrafos.",
+    "listDescriptionCheckAnswer": "Lista de párrafos con resultados.",
+    "listDescriptionShowSolution": "Lista de párrafos con soluciones.",
+    "paragraph": "Párrafo",
+    "correct": "correcto",
+    "wrong": "incorrecto",
+    "point": "@score punto",
+    "sevenOfNine": "@current de @total",
+    "currentPosition": "Posición actual en la lista",
+    "instructionsSelected": "Presiona la barra espaciadora para reordenar",
+    "instructionsGrabbed": "Presiona las teclas de flecha arriba y abajo para cambiar la posición, barra espaciadora para soltar, escape para cancelar",
+    "grabbed": "Tomado",
+    "moved": "Movido",
+    "dropped": "Soltado",
+    "reorderCancelled": "Reordenación cancelada",
+    "finalPosition": "Posición final",
+    "nextParagraph": "Párrafo siguiente",
+    "correctParagraph": "Párrafo correcto en la posición"
+  }
+}
