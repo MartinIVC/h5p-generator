@@ -11,14 +11,16 @@ const messages = {
   DOCUMENT_NOT_FOUND: 'Los documentos ya no están disponibles. Vuelve a seleccionarlos.',
   SOURCE_TOO_LARGE: 'El texto de los documentos supera el límite para una generación.',
   MISSING_KEY: 'Configura una clave de Gemini antes de generar.',
-  API_KEY_INVALID: 'La clave de Gemini no es válida o no tiene acceso al modelo.',
+  API_KEY_INVALID: 'La clave de Gemini no es válida.',
+  API_ACCESS_DENIED: 'Gemini denegó el acceso. Revisa los permisos del proyecto en Google AI Studio.',
+  MODEL_UNAVAILABLE: 'No hay un modelo de Gemini disponible para generar la actividad.',
   QUOTA: 'Gemini ha alcanzado el límite de solicitudes. Inténtalo más tarde.',
   INVALID_RESPONSE: 'Gemini no devolvió contenido válido para la actividad. Inténtalo nuevamente.',
   GENERATION_FAILED: 'No se pudo completar la generación. Inténtalo nuevamente.',
-  NETWORK_ERROR: 'No se pudo conectar con Gemini después de tres intentos. Comprueba tu conexión.',
-  SERVICE_UNAVAILABLE: 'Gemini sigue temporalmente no disponible después de tres intentos. Inténtalo más tarde.',
+  NETWORK_ERROR: 'No se pudo conectar con Gemini. Comprueba tu conexión.',
+  SERVICE_UNAVAILABLE: 'Gemini no está disponible en este momento. Inténtalo más tarde.',
   API_REQUEST_FAILED: 'Gemini rechazó la solicitud. Revisa la configuración y el acceso al modelo.',
-  GENERATION_TIMEOUT: 'Gemini superó el tiempo de espera de 90 segundos. Inténtalo más tarde.',
+  GENERATION_TIMEOUT: 'Gemini no respondió a tiempo. Inténtalo más tarde.',
   GENERATION_CANCELLED: 'La generación se canceló al salir de la actividad.',
   PACKAGE_FAILED: 'Se generó el contenido, pero no se pudo preparar el archivo H5P.',
   NOT_FOUND: 'La actividad preparada ya no está disponible. Vuelve a generarla.',
@@ -103,7 +105,7 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
       session.package = { id: packageId, bytes, h5pType: activityConfig.projectLabel };
       return { status: 'ok', kind: 'package', packageId, questionCount: items.length };
     } catch (error) {
-      const code = ['API_KEY_INVALID', 'QUOTA', 'INVALID_RESPONSE', 'NETWORK_ERROR', 'SERVICE_UNAVAILABLE', 'API_REQUEST_FAILED', 'GENERATION_TIMEOUT', 'GENERATION_CANCELLED'].includes(error?.message) ? error.message : 'GENERATION_FAILED';
+      const code = ['API_KEY_INVALID', 'API_ACCESS_DENIED', 'MODEL_UNAVAILABLE', 'QUOTA', 'INVALID_RESPONSE', 'NETWORK_ERROR', 'SERVICE_UNAVAILABLE', 'API_REQUEST_FAILED', 'GENERATION_TIMEOUT', 'GENERATION_CANCELLED'].includes(error?.message) ? error.message : 'GENERATION_FAILED';
       if (code === 'INVALID_RESPONSE' && Object.hasOwn(RESPONSE_REASONS, error.reason)) {
         return { ...fail(code), reason: error.reason, message: `No se pudo validar la actividad. ${RESPONSE_REASONS[error.reason]}` };
       }

@@ -6,6 +6,7 @@ const { pathToFileURL } = require('node:url');
 const { registerH5PIpcHandlers } = require(path.join(__dirname, 'ipc', 'h5pHandlers.js'));
 const { createDocumentInspection } = require(path.join(__dirname, 'ipc', 'documentInspection.js'));
 const { createH5PGeneration } = require(path.join(__dirname, 'ipc', 'h5pGeneration.js'));
+const { verifyGeminiKey } = require(path.join(__dirname, '..', 'backend', 'gemini.js'));
 // Chromium no detecta automáticamente Libsecret en sesiones Hyprland.
 if (process.platform === 'linux' && (process.env.XDG_CURRENT_DESKTOP || '').toLowerCase().split(':').includes('hyprland')) {
   app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
@@ -203,16 +204,7 @@ function registerIpcHandlers() {
     try {
       const key = candidate == null ? academicStorage.getApiKey() : candidate.trim();
       if (!key) return { status: 'missing' };
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify({ contents: [{ parts: [{ text: 'Responde OK.' }] }], generationConfig: { maxOutputTokens: 8 } }),
-        signal: AbortSignal.timeout(15000)
-      });
-      if (response.ok) return { status: 'valid' };
-      if (response.status === 400 || response.status === 401 || response.status === 403) return { status: 'invalid' };
-      if (response.status === 429) return { status: 'quota' };
-      return { status: 'error' };
+      return { status: await verifyGeminiKey(key) };
     } catch {
       return { status: 'error' };
     }
