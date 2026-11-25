@@ -33,6 +33,8 @@ test('preload conecta los métodos explícitos con los canales registrados', asy
   }
   assert.equal(typeof api.revealProjectFile, 'function');
   assert.equal(typeof api.verifyApiKey, 'function');
+  assert.equal(typeof api.getNotificationSettings, 'function');
+  assert.equal(typeof api.setNotificationSettings, 'function');
   assert.equal(api.ipcRenderer, undefined);
 });
 test('rechaza emisores y argumentos inválidos antes de acceder a servicios', async () => {

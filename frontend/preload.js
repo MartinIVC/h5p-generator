@@ -46,6 +46,10 @@ contextBridge.exposeInMainWorld('academicAPI', {
   verifyApiKey: (apiKey) => ipcRenderer.invoke('llm:verify-key', apiKey),
   removeApiKey: () => ipcRenderer.invoke('academic:removeApiKey'),
 
+  // Notificaciones del sistema
+  getNotificationSettings: () => ipcRenderer.invoke('academic:getNotificationSettings'),
+  setNotificationSettings: (settings) => ipcRenderer.invoke('academic:setNotificationSettings', settings),
+
   // Operaciones explícitas del flujo H5P.
   inspectDocument: (document) => ipcRenderer.invoke('h5p:inspect-document', document),
   releaseDocument: (documentId) => ipcRenderer.invoke('h5p:release-document', { documentId }),

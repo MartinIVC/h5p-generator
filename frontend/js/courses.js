@@ -326,8 +326,8 @@
       if (window.academicAPI && typeof window.academicAPI.revealFile === 'function') {
         return window.academicAPI.revealFile(filePath);
       }
-      window.uiMessage?.(`Archivo en: ${filePath}`);
-      return true;
+      window.uiMessage?.('La apertura de carpetas solo está disponible en la aplicación de escritorio.', 'info');
+      return false;
     }
   };
 

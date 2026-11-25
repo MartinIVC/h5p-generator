@@ -964,6 +964,34 @@ class AcademicStorage {
     }
     return { hasKey: false, maskedKey: '' };
   }
+
+  /**
+   * Indica si las notificaciones nativas del sistema están habilitadas.
+   * Por defecto están activadas hasta que el usuario decida deshabilitarlas.
+   * @returns {boolean}
+   */
+  getSystemNotificationsEnabled() {
+    const data = this._readData();
+    return data.settings?.systemNotificationsEnabled !== false;
+  }
+
+  /**
+   * Actualiza la preferencia local de notificaciones nativas del sistema.
+   * @param {boolean} enabled
+   * @returns {boolean}
+   */
+  setSystemNotificationsEnabled(enabled) {
+    if (typeof enabled !== 'boolean') {
+      throw new Error('La preferencia de notificaciones no es válida.');
+    }
+    const data = this._readData();
+    if (!data.settings || typeof data.settings !== 'object' || Array.isArray(data.settings)) {
+      data.settings = {};
+    }
+    data.settings.systemNotificationsEnabled = enabled;
+    this._writeData(data);
+    return enabled;
+  }
 }
 
 // Instancia singleton por defecto

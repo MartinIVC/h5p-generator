@@ -2824,23 +2824,86 @@ body {
 }
 
 .ui-message {
-  padding: 0.9rem 1.1rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 0.95rem 0.85rem 1.05rem;
   border: 1px solid var(--md-sys-color-outline-variant);
+  border-left: 3px solid var(--md-sys-color-outline);
   border-radius: 12px;
   background: var(--md-sys-color-surface-container-lowest);
   color: var(--md-sys-color-on-surface);
+  font-size: 0.9rem;
+  line-height: 1.45;
   box-shadow: 0 10px 30px color-mix(in srgb, var(--md-sys-color-shadow) 17%, transparent);
   animation: dialog-arrive 180ms var(--ui-motion-ease) both;
 }
 
+.ui-message-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.ui-message-success {
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 42%, var(--md-sys-color-outline-variant));
+  border-left-color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 9%, var(--md-sys-color-surface-container-lowest));
+  color: var(--md-sys-color-on-surface);
+}
+
 .ui-message-error {
   border-color: color-mix(in srgb, var(--md-sys-color-error) 45%, var(--md-sys-color-outline-variant));
+  border-left-color: var(--md-sys-color-error);
   background: var(--md-sys-color-error-container);
   color: var(--md-sys-color-on-error-container);
 }
 
+.ui-message-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  margin: -0.15rem -0.2rem -0.15rem 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: currentColor;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.ui-message-close:hover,
+.ui-message-close:focus-visible {
+  opacity: 1;
+  border-color: currentColor;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
 .ui-message.is-leaving { opacity: 0; transform: translateY(4px); transition: opacity 160ms ease, transform 160ms ease; }
 .ui-message-region > * { pointer-events: auto; }
+.motion-reduced .ui-message { animation: none; }
+
+.notifications-preference-status {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.825rem;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.notifications-preference-status:empty {
+  display: none;
+}
+
+.notifications-preference-status[role="alert"],
+.backup-operation-status[role="alert"] {
+  color: var(--md-sys-color-error);
+  font-weight: 500;
+}
 
 .menu-overlay { backdrop-filter: blur(5px); }
 .side-menu { transition-duration: var(--ui-motion-normal); transition-timing-function: var(--ui-motion-ease); }

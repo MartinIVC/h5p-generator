@@ -25,6 +25,8 @@
     hasKey: false,
     maskedKey: '',
     storageError: false,
+    notificationsEnabled: true,
+    notificationsSupported: true,
     isEditingKey: false,
     isConfirmingRemoveKey: false,
     onSuccessCallback: null,
@@ -127,6 +129,18 @@
       }
       localStorage.removeItem('h5p_gemini_api_key');
       return { hasKey: false, maskedKey: '' };
+    },
+    async getNotificationSettings() {
+      if (window.academicAPI && typeof window.academicAPI.getNotificationSettings === 'function') {
+        return window.academicAPI.getNotificationSettings();
+      }
+      return { enabled: true, supported: false };
+    },
+    async setNotificationSettings(enabled) {
+      if (window.academicAPI && typeof window.academicAPI.setNotificationSettings === 'function') {
+        return window.academicAPI.setNotificationSettings({ enabled: Boolean(enabled) });
+      }
+      return { enabled: Boolean(enabled), supported: false };
     }
   };
 
@@ -162,11 +176,22 @@
     }
   }
 
+  async function refreshNotificationSettings() {
+    try {
+      const settings = await api.getNotificationSettings();
+      state.notificationsEnabled = settings?.enabled !== false;
+      state.notificationsSupported = Boolean(settings?.supported);
+    } catch {
+      state.notificationsEnabled = true;
+      state.notificationsSupported = false;
+    }
+  }
+
   /**
    * Abre el modal de configuración general (Opciones)
    */
   async function openSettingsModal() {
-    await refreshStatus();
+    await Promise.all([refreshStatus(), refreshNotificationSettings()]);
     state.isEditingKey = !state.hasKey;
     renderSettingsModal(false);
   }
@@ -293,6 +318,19 @@
             <label><input type="radio" name="motion-preference" value="system" ${window.uiPreferences?.getMotionPreference() !== 'reduced' ? 'checked' : ''}> Seguir al sistema</label>
             <label><input type="radio" name="motion-preference" value="reduced" ${window.uiPreferences?.getMotionPreference() === 'reduced' ? 'checked' : ''}> Reducir efectos</label>
           </div>
+        </fieldset>
+        <fieldset class="motion-preference-fieldset notifications-preference-fieldset">
+          <legend class="form-label">Notificaciones del sistema</legend>
+          <p class="settings-section-desc" id="notifications-preference-desc">
+            ${state.notificationsSupported
+              ? 'Avisa desde el sistema operativo al terminar tareas en segundo plano. Los avisos visibles dentro de la aplicación siempre permanecen activos.'
+              : 'Las notificaciones del sistema no están disponibles en este equipo. Los avisos visibles dentro de la aplicación siguen activos.'}
+          </p>
+          <div class="motion-preference-options">
+            <label><input type="radio" name="system-notifications" value="enabled" ${state.notificationsEnabled ? 'checked' : ''} ${!state.notificationsSupported ? 'disabled' : ''}> Activadas en segundo plano</label>
+            <label><input type="radio" name="system-notifications" value="disabled" ${!state.notificationsEnabled ? 'checked' : ''} ${!state.notificationsSupported ? 'disabled' : ''}> Desactivadas</label>
+          </div>
+          <p class="notifications-preference-status" id="notifications-preference-status" role="status" aria-live="polite" aria-atomic="true"></p>
         </fieldset>
       </section>
     `;
@@ -532,6 +570,14 @@
     const btnFooterClose = document.getElementById('btn-close-settings-modal-footer');
     if (btnFooterClose) btnFooterClose.addEventListener('click', closeModal);
 
+    const setLiveStatus = (element, message, isError = false) => {
+      if (!element) return;
+      element.setAttribute('role', isError ? 'alert' : 'status');
+      element.setAttribute('aria-live', isError ? 'assertive' : 'polite');
+      element.setAttribute('aria-atomic', 'true');
+      element.textContent = message;
+    };
+
     const backupStatus = document.getElementById('backup-operation-status');
     const backupPreview = document.getElementById('backup-preview');
     const backupPreviewSummary = document.getElementById('backup-preview-summary');
@@ -542,13 +588,17 @@
       const button = event.currentTarget;
       button.disabled = true;
       button.textContent = 'Creando copia…';
+      setLiveStatus(backupStatus, 'Creando copia de seguridad…');
       try {
         const result = await window.academicAPI?.exportBackup?.();
         if (!result) throw new Error('La función de copias de seguridad no está disponible.');
-        if (result.canceled) return;
-        if (backupStatus) backupStatus.textContent = `Copia creada con ${formatBackupCounts(result.summary.counts)} Guardada en: ${result.filePath}`;
+        if (result.canceled) {
+          setLiveStatus(backupStatus, '');
+          return;
+        }
+        setLiveStatus(backupStatus, `Copia creada con ${formatBackupCounts(result.summary.counts)} Guardada en: ${result.filePath}`);
       } catch (err) {
-        if (backupStatus) backupStatus.textContent = 'No se pudo crear la copia de seguridad. Inténtalo de nuevo.';
+        setLiveStatus(backupStatus, 'No se pudo crear la copia de seguridad. Inténtalo de nuevo.', true);
       } finally {
         button.disabled = false;
         button.textContent = 'Crear copia';
@@ -559,7 +609,7 @@
       const button = event.currentTarget;
       button.disabled = true;
       button.textContent = 'Revisando…';
-      if (backupStatus) backupStatus.textContent = '';
+      setLiveStatus(backupStatus, '');
       try {
         const result = await window.academicAPI?.previewBackup?.();
         if (!result) throw new Error('La función de restauración no está disponible.');
@@ -574,7 +624,7 @@
         replaceConfirm.classList.add('hidden');
         document.getElementById('btn-merge-backup')?.focus();
       } catch (err) {
-        if (backupStatus) backupStatus.textContent = 'No se pudo leer la copia de seguridad. Comprueba el archivo e inténtalo de nuevo.';
+        setLiveStatus(backupStatus, 'No se pudo leer la copia de seguridad. Comprueba el archivo e inténtalo de nuevo.', true);
       } finally {
         button.disabled = false;
         button.textContent = 'Restaurar copia';
@@ -586,17 +636,16 @@
       button.disabled = true;
       const previousText = button.textContent;
       button.textContent = 'Restaurando…';
+      setLiveStatus(backupStatus, 'Restaurando copia de seguridad…');
       try {
-        const result = await window.academicAPI.restoreBackup(pendingBackupId, strategy);
+        await window.academicAPI.restoreBackup(pendingBackupId, strategy);
         pendingBackupId = null;
         backupPreview.classList.add('hidden');
-        if (backupStatus) backupStatus.textContent = `Restauración completada: ${formatBackupCounts(result.counts)} Se conservaron los archivos y la clave actual.`;
         closeModal();
-        window.uiMessage?.('Copia restaurada. Se actualizará la biblioteca.', 'info');
+        window.uiMessage?.('Copia restaurada. Se actualizará la biblioteca.', 'success');
         await window.coursesManager?.navigateToHome?.();
       } catch (err) {
-        if (backupStatus) backupStatus.textContent = 'No se pudo restaurar la copia de seguridad. Inténtalo de nuevo.';
-        window.uiMessage?.('No se pudo restaurar la copia de seguridad. Inténtalo de nuevo.', 'error');
+        setLiveStatus(backupStatus, 'No se pudo restaurar la copia de seguridad. Inténtalo de nuevo.', true);
       } finally {
         button.disabled = false;
         button.textContent = previousText;
@@ -627,6 +676,36 @@
 
     modal.querySelectorAll('input[name="motion-preference"]').forEach(radio => {
       radio.addEventListener('change', () => window.uiPreferences?.setMotionPreference(radio.value));
+    });
+
+    const notificationRadios = Array.from(modal.querySelectorAll('input[name="system-notifications"]'));
+    const notificationStatus = document.getElementById('notifications-preference-status');
+    notificationRadios.forEach(radio => {
+      radio.addEventListener('change', async () => {
+        if (!radio.checked) return;
+        const previous = state.notificationsEnabled;
+        const nextEnabled = radio.value === 'enabled';
+        notificationRadios.forEach(item => { item.disabled = true; });
+        try {
+          const updated = await api.setNotificationSettings(nextEnabled);
+          state.notificationsEnabled = updated?.enabled !== false;
+          state.notificationsSupported = Boolean(updated?.supported);
+          setLiveStatus(
+            notificationStatus,
+            state.notificationsEnabled
+              ? 'Notificaciones del sistema activadas para tareas en segundo plano.'
+              : 'Notificaciones del sistema desactivadas. Los avisos visibles en la aplicación siguen activos.'
+          );
+        } catch {
+          state.notificationsEnabled = previous;
+          notificationRadios.forEach(item => {
+            item.checked = item.value === (previous ? 'enabled' : 'disabled');
+          });
+          setLiveStatus(notificationStatus, 'No se pudo guardar la preferencia de notificaciones.', true);
+        } finally {
+          notificationRadios.forEach(item => { item.disabled = !state.notificationsSupported; });
+        }
+      });
     });
 
     // Botón cambiar clave
@@ -693,12 +772,12 @@
         const candidate = inputKey ? inputKey.value.trim() : null;
         if (inputKey && !candidate) {
           verification.className = 'api-key-verification-error';
-          verification.textContent = 'Ingresa una clave para probarla.';
+          setLiveStatus(verification, 'Ingresa una clave para probarla.', true);
           return;
         }
         verifyButton.disabled = true;
         verification.className = '';
-        verification.textContent = 'Comprobando clave…';
+        setLiveStatus(verification, 'Comprobando clave…');
         try {
           const result = await window.academicAPI?.verifyApiKey?.(candidate);
           const messages = {
@@ -710,18 +789,19 @@
             missing: 'No hay una clave guardada.',
             error: 'No se pudo comprobar la clave. Revisa la conexión e inténtalo de nuevo.'
           };
-          verification.textContent = messages[result?.status] || messages.error;
-          verification.className = result?.status === 'valid' ? 'api-key-verification-success' : 'api-key-verification-error';
+          const isValid = result?.status === 'valid';
+          verification.className = isValid ? 'api-key-verification-success' : 'api-key-verification-error';
+          setLiveStatus(verification, messages[result?.status] || messages.error, !isValid);
         } catch {
           verification.className = 'api-key-verification-error';
-          verification.textContent = 'No se pudo comprobar la clave. Revisa la conexión e inténtalo de nuevo.';
+          setLiveStatus(verification, 'No se pudo comprobar la clave. Revisa la conexión e inténtalo de nuevo.', true);
         } finally {
           verifyButton.disabled = false;
         }
       });
       inputKey?.addEventListener('input', () => {
-        verification.textContent = '';
         verification.className = '';
+        setLiveStatus(verification, '');
       });
     }
     if (btnTogglePwd && inputKey) {
