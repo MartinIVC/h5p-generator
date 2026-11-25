@@ -736,6 +736,12 @@ body {
   background-color: var(--md-sys-color-surface-container-lowest);
 }
 
+.upload-prompt-textarea:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  background-color: var(--md-sys-color-surface-container);
+}
+
 /* Pie de acciones del panel */
 .upload-footer-actions {
   display: flex;

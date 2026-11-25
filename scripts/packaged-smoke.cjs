@@ -244,14 +244,8 @@ async function run() {
   })()`), true);
   await evaluate(`window.coursesManager.startProjectCreation('unassigned')`);
   assert.equal(await evaluate('document.getElementById("btn-next-step").disabled'), true);
-  // H5P-35 (BUG-20): maxlength=10000 y contador de instrucciones
-  assert.equal(await evaluate('document.getElementById("upload-prompt-input").maxLength'), 10000);
-  await evaluate(`(() => {
-    const prompt = document.getElementById('upload-prompt-input');
-    prompt.value = 'Enfoca las preguntas en arquitectura.';
-    prompt.dispatchEvent(new Event('input', { bubbles: true }));
-  })()`);
-  assert.match(await evaluate('document.getElementById("upload-prompt-counter").textContent'), /37 \/ 10\.000/);
+  // H5P-36: el campo de instrucciones ya no reside en Paso 1 (#panel-upload)
+  assert.equal(await evaluate('document.querySelector("#panel-upload #upload-prompt-input")'), null);
   // H5P-35 (BUG-18): vista previa parcial a 512 KiB y exclusión de archivos rechazados en el visor
   await evaluate(`(() => {
     const transfer = new DataTransfer();
@@ -274,9 +268,6 @@ async function run() {
     const input = document.getElementById('upload-file-input');
     input.files = transfer.files;
     input.dispatchEvent(new Event('change', { bubbles: true }));
-    const prompt = document.getElementById('upload-prompt-input');
-    prompt.value = 'Instrucciones de borrador previo';
-    prompt.dispatchEvent(new Event('input', { bubbles: true }));
     document.querySelector('[data-action="preview"]').click();
   })()`);
   await waitFor('Boolean(document.querySelector(".preview-pdf-canvas")?.width > 0) && document.getElementById("pdf-page-indicator")?.textContent?.includes("1 / 1")');
@@ -297,21 +288,46 @@ async function run() {
     input.dispatchEvent(new Event('change', {bubbles:true}));
   })()`);
   await waitFor('!document.getElementById("btn-next-step").disabled');
-  // Verificar que el ancho del panel de Paso 1 y Paso 2 coinciden tanto en escritorio (1280x800) como en 840x600
-  const step1Width840 = await evaluate('document.querySelector("#panel-upload .upload-card-wrapper").getBoundingClientRect().width');
-  window.setSize(1280, 800);
-  await new Promise(resolve => setTimeout(resolve, 60));
-  const step1Width1280 = await evaluate('document.querySelector("#panel-upload .upload-card-wrapper").getBoundingClientRect().width');
   await evaluate(`document.getElementById('btn-next-step').click()`);
   await waitFor('Boolean(document.getElementById("question-count"))');
-  const step2Width1280 = await evaluate('document.getElementById("activity-selector-card").getBoundingClientRect().width');
-  assert.ok(Math.abs(step1Width1280 - step2Width1280) <= 1, `Ancho Paso 1 (${step1Width1280}) != Paso 2 (${step2Width1280}) en 1280x800`);
+  assert.equal(await evaluate('document.activeElement.id'), 'selector-title');
+  // Verificar de forma síncrona (sin carrera con el gestor de ventanas) que el ancho del Paso 1 y del Paso 2 coinciden
+  const measureStepWidths = () => evaluate(`(() => {
+    const panelUpload = document.getElementById('panel-upload');
+    const panelSelector = document.getElementById('panel-selector');
+    const step2Rect = document.getElementById('activity-selector-card').getBoundingClientRect();
+    const step2PanelRect = panelSelector.getBoundingClientRect();
+    panelSelector.classList.add('hidden');
+    panelUpload.classList.remove('hidden');
+    const step1Rect = panelUpload.querySelector('.upload-card-wrapper').getBoundingClientRect();
+    const step1PanelRect = panelUpload.getBoundingClientRect();
+    panelUpload.classList.add('hidden');
+    panelSelector.classList.remove('hidden');
+    return {
+      innerWidth: window.innerWidth,
+      step1: step1Rect.width,
+      step2: step2Rect.width,
+      panel1: step1PanelRect.width,
+      panel2: step2PanelRect.width
+    };
+  })()`);
+  const widthsInitial = await measureStepWidths();
+  assert.ok(Math.abs(widthsInitial.step1 - widthsInitial.step2) <= 1, `Ancho Paso 1 (${widthsInitial.step1}) != Paso 2 (${widthsInitial.step2}) en ancho ${widthsInitial.innerWidth}`);
+  assert.ok(Math.abs(widthsInitial.step2 - widthsInitial.panel2) <= 1, `Paso 2 (${widthsInitial.step2}) no llena .step-panel (${widthsInitial.panel2})`);
   window.setSize(840, 600);
   await new Promise(resolve => setTimeout(resolve, 60));
-  const step2Width840 = await evaluate('document.getElementById("activity-selector-card").getBoundingClientRect().width');
-  assert.ok(Math.abs(step1Width840 - step2Width840) <= 1, `Ancho Paso 1 (${step1Width840}) != Paso 2 (${step2Width840}) en 840x600`);
-  assert.equal(await evaluate('document.activeElement.id'), 'selector-title');
+  const widths840 = await measureStepWidths();
+  assert.ok(Math.abs(widths840.step1 - widths840.step2) <= 1, `Ancho Paso 1 (${widths840.step1}) != Paso 2 (${widths840.step2}) en 840x600 (innerWidth=${widths840.innerWidth})`);
   assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true);
+  // H5P-36 + H5P-35 (BUG-20): instrucciones con maxlength=10000 y contador en Paso 2 (#panel-selector)
+  assert.equal(await evaluate('document.querySelector("#panel-selector #upload-prompt-input").maxLength'), 10000);
+  await evaluate(`(() => {
+    const prompt = document.getElementById('upload-prompt-input');
+    prompt.value = 'Enfoca las preguntas en arquitectura.';
+    prompt.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  assert.match(await evaluate('document.getElementById("upload-prompt-counter").textContent'), /37 \/ 10\.000/);
+  assert.equal(await evaluate('window.uploadManager.getPrompt()'), 'Enfoca las preguntas en arquitectura.');
   // CA-4 + H5P-16: botón Generar Evaluación deshabilitado antes de elegir formato y 12 formatos activos con filtros por categoría
   assert.equal(await evaluate('document.getElementById("btn-generate-h5p").disabled'), true);
   assert.equal(await evaluate('document.querySelectorAll(".activity-type-card").length'), 12);
@@ -416,7 +432,10 @@ async function run() {
   assert.equal(flashcardsContent.cards.length, 3);
   assert.equal(fs.readdirSync(directory).some(name => name.startsWith('.h5p-work-')), false);
   // CA-1/CA-2/CA-3: Cuestionario habilita botones rápidos 3/5/10 y selector 1..20
+  const flashcardsPlaceholder = await evaluate('document.getElementById("upload-prompt-input").placeholder');
   await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="questionset"]\').click()');
+  const questionsetPlaceholder = await evaluate('document.getElementById("upload-prompt-input").placeholder');
+  assert.notEqual(flashcardsPlaceholder, questionsetPlaceholder);
   assert.equal(await evaluate('document.getElementById("btn-reveal-saved-h5p").classList.contains("hidden")'), true);
   assert.equal(await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="questionset"]\').classList.contains("selected")'), true);
   assert.equal(await evaluate('document.getElementById("question-count").disabled'), false);
@@ -427,16 +446,31 @@ async function run() {
   window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
   window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
   await waitFor('document.activeElement.id === "h5p-name"');
+  window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
+  window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
+  await waitFor('document.activeElement.id === "upload-prompt-input"');
   networkMode = 'offline';
   await evaluate('document.getElementById("question-count").value = 1; document.getElementById("btn-generate-h5p").click()');
   await waitFor('document.getElementById("generation-status").getAttribute("role") === "alert"');
-  // H5P-33 (BUG-08): cancelar generación en curso y reintentar de inmediato sin bloqueo BUSY.
+  // H5P-33 (BUG-08) + H5P-36: durante la generación el campo de instrucciones permanece deshabilitado; cancelar libera BUSY y rehabilita.
   networkMode = 'slow';
   await evaluate('document.getElementById("btn-generate-h5p").click()');
   await waitFor('!document.getElementById("generation-progress").classList.contains("hidden") && Boolean(document.getElementById("btn-cancel-generation"))');
+  assert.equal(await evaluate('document.getElementById("upload-prompt-input").disabled'), true);
   await evaluate('document.getElementById("btn-cancel-generation").click()');
   await waitFor('document.getElementById("generation-status").textContent.includes("cancelada")');
+  assert.equal(await evaluate('document.getElementById("upload-prompt-input").disabled'), false);
   networkMode = 'ok';
+  await evaluate('document.getElementById("btn-generate-h5p").click()');
+  await waitFor('!document.getElementById("btn-save-h5p").classList.contains("hidden")');
+  // H5P-36: editar instrucciones tras generar invalida el paquete pendiente y oculta #btn-save-h5p
+  await evaluate(`(() => {
+    const prompt = document.getElementById('upload-prompt-input');
+    prompt.value = 'Enfoca las preguntas en casos prácticos.';
+    prompt.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  assert.equal(await evaluate('document.getElementById("btn-save-h5p").classList.contains("hidden")'), true);
+  assert.equal(await evaluate('document.getElementById("btn-reveal-saved-h5p").classList.contains("hidden")'), true);
   await evaluate('document.getElementById("btn-generate-h5p").click()');
   await waitFor('!document.getElementById("btn-save-h5p").classList.contains("hidden")');
   assert.match(await evaluate('document.getElementById("generation-status").textContent'), /Comprueba las respuestas y explicaciones/);
@@ -447,6 +481,32 @@ async function run() {
   dialogMode = 'ok';
   await evaluate('document.getElementById("btn-save-h5p").click()');
   await waitFor('document.getElementById("generation-status").textContent.includes("guardado y añadido")');
+  // H5P-36: reanudar borrador con prompt guardado restaura las instrucciones al entrar al Paso 2, e iniciar nuevo proyecto las aísla
+  const draftWithPrompt = await evaluate(`window.coursesManager.saveDraft({
+    courseId: 'unassigned',
+    courseName: 'Proyecto sin ramo',
+    prompt: 'Instrucciones restauradas desde borrador',
+    activityType: 'questionset',
+    questionCount: 3,
+    files: [{ name: 'ui.txt', size: 36, lastModified: Date.now() }]
+  })`);
+  await evaluate(`window.coursesManager.startProjectCreation('unassigned', ${JSON.stringify(draftWithPrompt)})`);
+  assert.match(await evaluate('document.getElementById("draft-resume-files").textContent'), /Paso 2/);
+  assert.equal(await evaluate('window.uploadManager.getPrompt()'), 'Instrucciones restauradas desde borrador');
+  await evaluate(`(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(['Material sintético sobre integridad.'], 'ui.txt', {type:'text/plain'}));
+    const input = document.getElementById('upload-file-input');
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', {bubbles:true}));
+    document.getElementById('btn-next-step').click();
+  })()`);
+  await waitFor('Boolean(document.getElementById("upload-prompt-input"))');
+  assert.equal(await evaluate('document.getElementById("upload-prompt-input").value'), 'Instrucciones restauradas desde borrador');
+  assert.match(await evaluate('document.getElementById("upload-prompt-counter").textContent'), /40 \/ 10\.000/);
+  await evaluate(`window.coursesManager.startProjectCreation('unassigned')`);
+  assert.equal(await evaluate('window.uploadManager.getAllFiles().length'), 0);
+  assert.equal(await evaluate('window.uploadManager.getPrompt()'), '');
   // H5P-22: tarjeta de proyecto muestra material fuente, "Ver en carpeta" localiza el archivo y comunica su ausencia posterior
   await evaluate(`window.coursesManager.navigateToCourseDetail('unassigned')`);
   await waitFor('Boolean(document.querySelector(".project-card .btn-reveal-project"))');
