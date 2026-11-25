@@ -9,6 +9,7 @@ const id = '01234567-89ab-4cde-8fab-0123456789ab';
 const requests = {
   'h5p:inspect-document': { name: 'apunte.txt', bytes: new Uint8Array([1, 2]) },
   'h5p:generate': { documentIds: [id], activityType: 'multiple-choice', questionCount: 3, instructions: '' },
+  'h5p:cancel-generation': {},
   'h5p:save-file': { packageId: id, suggestedName: 'actividad.h5p' }
 };
 function setup() {
@@ -26,10 +27,11 @@ test('preload conecta los métodos explícitos con los canales registrados', asy
       ipcRenderer: { invoke: (channel, payload) => handlers.get(channel)({ trusted: true }, payload) }
     })
   }, { filename });
-  for (const [method, channel] of [['inspectDocument', 'h5p:inspect-document'], ['generateH5P', 'h5p:generate'], ['saveH5PFile', 'h5p:save-file']]) {
+  for (const [method, channel] of [['inspectDocument', 'h5p:inspect-document'], ['generateH5P', 'h5p:generate'], ['cancelGeneration', 'h5p:cancel-generation'], ['saveH5PFile', 'h5p:save-file']]) {
     const result = await api[method](requests[channel]);
     assert.equal(result.status, method === 'inspectDocument' ? 'ok' : 'error');
   }
+  assert.equal(typeof api.revealProjectFile, 'function');
   assert.equal(typeof api.verifyApiKey, 'function');
   assert.equal(api.ipcRenderer, undefined);
 });
@@ -71,17 +73,32 @@ test('el proceso principal valida el marco y captura errores de almacenamiento d
   const frame = { url: require('node:url').pathToFileURL(path.join(path.dirname(mainFile), 'index.html')).href };
   const sender = Object.assign(new (require('node:events').EventEmitter)(), { mainFrame: frame, isDestroyed: () => false });
   const win = { webContents: sender, isDestroyed: () => false };
+  const revealedPaths = [];
+  const openedUrls = [];
   const electron = {
     app: { commandLine: { appendSwitch() {} }, setName() {}, on() {}, whenReady: () => new Promise(() => {}) },
     BrowserWindow: { fromWebContents: candidate => candidate === sender ? win : null },
-    ipcMain: { handle: (channel, fn) => handlers.set(channel, fn) }, shell: {}, Notification: {}, dialog: {}
+    ipcMain: { handle: (channel, fn) => handlers.set(channel, fn) },
+    shell: {
+      showItemInFolder: p => revealedPaths.push(p),
+      openExternal: async u => openedUrls.push(u)
+    },
+    Notification: {}, dialog: {}
   };
+  const projects = [{ id: 'proj-1', filePath: '/tmp/registrado.h5p' }];
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(mainFile, 'utf8'), {
     module, __dirname: path.dirname(mainFile), process, Buffer, AbortSignal, console,
     require: name => {
       if (name === 'electron') return electron;
-      if (name.endsWith('backend/storage.js')) return { academicStorage: { getApiKey() { throw new Error('clave privada'); } } };
+      if (name.endsWith('backend/storage.js')) return {
+        academicStorage: {
+          getApiKey() { throw new Error('clave privada'); },
+          getAllCourses: () => [],
+          getProjects: () => projects,
+          verifyFileExists: p => p === '/tmp/registrado.h5p'
+        }
+      };
       return require(name);
     }
   }, { filename: mainFile });
@@ -91,9 +108,28 @@ test('el proceso principal valida el marco y captura errores de almacenamiento d
   assert.equal(result.status, 'ok');
   assert.equal(result.name, 'a.txt');
   assert.equal(result.text, undefined);
+  // El enlace de salto (#main-content) conserva la confianza del marco local.
+  frame.url = `${frame.url}#main-content`;
+  assert.deepEqual(await handlers.get('academic:getCourses')({ sender, senderFrame: frame }), []);
+  // Rutas arbitrarias del renderer son rechazadas; revealProjectFile resuelve por ID en main.
+  assert.equal(await handlers.get('academic:verifyFileExists')({ sender, senderFrame: frame }, '/etc/passwd'), false);
+  assert.equal(await handlers.get('academic:revealFile')({ sender, senderFrame: frame }, '/etc/passwd'), false);
+  assert.equal(revealedPaths.length, 0);
+  assert.equal((await handlers.get('academic:revealProjectFile')({ sender, senderFrame: frame }, 'proj-1')).status, 'ok');
+  assert.deepEqual(revealedPaths, ['/tmp/registrado.h5p']);
+  assert.equal((await handlers.get('academic:revealProjectFile')({ sender, senderFrame: frame }, 'desconocido')).status, 'not_found');
+  // URLs externas inválidas o de esquema peligroso son rechazadas sin lanzar excepción.
+  assert.equal(await handlers.get('app:openExternalUrl')({ sender, senderFrame: frame }, 'file:///etc/passwd'), false);
+  assert.equal(await handlers.get('app:openExternalUrl')({ sender, senderFrame: frame }, 12345), false);
+  assert.equal(await handlers.get('app:openExternalUrl')({ sender, senderFrame: frame }, 'https://aistudio.google.com/app/apikey'), true);
+  assert.deepEqual(openedUrls, ['https://aistudio.google.com/app/apikey']);
+  // Emisores no confiables son rechazados tanto en h5p:* como en academic:* y app:*.
   assert.equal((await inspect({ sender, senderFrame: { url: frame.url } }, requests['h5p:inspect-document'])).code, 'INVALID_SENDER');
   assert.equal((await handlers.get('llm:verify-key')({ sender, senderFrame: frame }, null)).status, 'error');
+  await assert.rejects(handlers.get('academic:getCourses')({ sender: {} }), /ventana de la aplicación/);
+  await assert.rejects(handlers.get('app:openExternalUrl')({ sender: {} }, 'https://example.com'), /ventana de la aplicación/);
   frame.url = 'https://example.com/';
   assert.equal((await inspect({ sender, senderFrame: frame }, requests['h5p:inspect-document'])).code, 'INVALID_SENDER');
   assert.equal((await handlers.get('llm:verify-key')({}, null)).status, 'error');
+  await assert.rejects(handlers.get('academic:getCourses')({ sender, senderFrame: frame }), /ventana de la aplicación/);
 });

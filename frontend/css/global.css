@@ -873,12 +873,64 @@ body {
   justify-content: center;
 }
 
-/* Visor de PDF (Iframe) */
-.preview-iframe {
+/* Visor de PDF en <canvas> (PDF.js) */
+.preview-pdf-shell {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
-  border: none;
+  min-height: 0;
+}
+
+.preview-pdf-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.55rem 1rem;
+  background-color: var(--md-sys-color-surface-container);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.preview-pdf-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.btn-pdf-tool {
+  min-height: 32px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+.preview-pdf-indicator {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface-variant);
+  min-width: 3.2rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-pdf-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 1rem;
+  background-color: var(--md-sys-color-surface-container-low);
+}
+
+.preview-pdf-canvas {
+  display: block;
   background-color: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.14);
 }
 
 /* Visor de Texto Plano y Markdown */

@@ -257,7 +257,10 @@
   };
   let draftSaveTimer = null;
   let draftStatus = null;
+  let draftContextToken = 0;
   let flushDraftHandler = async () => {};
+  let leaveWizardHandler = () => {};
+  let draftDeletedHandler = () => {};
 
   /**
    * Obtiene la extensión en minúsculas de un nombre de archivo.
@@ -497,9 +500,10 @@
    * @returns {string}
    */
   function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    if (window.uiEscapeHtml) return window.uiEscapeHtml(str);
+    return String(str ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[ch]);
   }
 
   /**
@@ -546,6 +550,8 @@
     const resumeFiles = container.querySelector('#draft-resume-files');
     draftStatus = container.querySelector('#draft-save-status');
 
+    let activeGenerationCanceller = null;
+
     function getCourseName() {
       return window.coursesManager?.getActiveCourse()?.name || 'Proyecto sin ramo';
     }
@@ -555,6 +561,7 @@
       if (!state.courseId || (!state.draftId && state.files.length === 0 && !state.prompt.trim() && !state.activityType)) return;
       if (!window.coursesManager?.saveDraft) return;
 
+      const contextToken = draftContextToken;
       const courseId = state.courseId;
       const draftId = state.draftId;
       if (draftStatus) {
@@ -575,7 +582,7 @@
             lastModified: file.lastModified
           }))
         });
-        if (state.courseId === courseId) {
+        if (contextToken === draftContextToken && state.courseId === courseId) {
           state.draftId = saved.id;
           const savedTime = formatDraftTime(saved.updatedAt, false);
           if (draftStatus) draftStatus.textContent = savedTime
@@ -583,7 +590,7 @@
             : 'Borrador guardado. Los documentos no se copiaron.';
         }
       } catch (err) {
-        if (draftStatus) {
+        if (contextToken === draftContextToken && draftStatus) {
           draftStatus.setAttribute('role', 'alert');
           draftStatus.textContent = 'No se pudo guardar el borrador. Mantén esta ventana abierta y vuelve a intentarlo.';
         }
@@ -608,18 +615,50 @@
       state.inspectionError = '';
     }
 
+    function cancelActiveWizardOperations() {
+      invalidateSelection();
+      state.inspecting = false;
+      if (typeof activeGenerationCanceller === 'function') {
+        activeGenerationCanceller();
+      }
+    }
+
+    leaveWizardHandler = cancelActiveWizardOperations;
+
+    draftDeletedHandler = (deletedDraftId) => {
+      if (!deletedDraftId || state.draftId !== deletedDraftId) return;
+      window.clearTimeout(draftSaveTimer);
+      draftContextToken++;
+      cancelActiveWizardOperations();
+      state.files.forEach(forgetInspection);
+      state.files = [];
+      state.prompt = '';
+      state.courseId = null;
+      state.courseName = '';
+      state.draftId = null;
+      state.restoredFiles = [];
+      state.activityType = null;
+      state.activeCategory = 'all';
+      state.questionCount = 5;
+      state.lastVariableCount = 5;
+      promptInput.value = '';
+      resumeNotice.classList.add('hidden');
+      updateUI();
+    };
+
     function applyDraftContext(detail = {}) {
       const nextCourseId = detail.courseId || 'unassigned';
-      const draft = detail.draft;
-      const isDifferentDraft = Boolean(draft && draft.id !== state.draftId);
-      const isDifferentCourse = state.courseId !== nextCourseId;
-      const isSameLiveDraft = Boolean(draft && draft.id === state.draftId && !isDifferentCourse);
+      const draft = detail.draft || null;
+      const isSameLiveDraft = Boolean(draft && draft.id === state.draftId && state.courseId === nextCourseId);
 
-      if (isDifferentCourse || isDifferentDraft) {
-        if (state.draftId && (state.files.length || state.prompt.trim() || state.activityType)) saveDraftNow();
+      if (!isSameLiveDraft) {
+        if (state.courseId && (state.draftId || state.files.length || state.prompt.trim() || state.activityType)) {
+          saveDraftNow();
+        }
         window.clearTimeout(draftSaveTimer);
+        draftContextToken++;
+        cancelActiveWizardOperations();
         state.files.forEach(forgetInspection);
-        invalidateSelection();
         state.files = [];
         state.prompt = '';
         state.draftId = null;
@@ -943,7 +982,7 @@
       if (version !== state.inspectionVersion) return;
       const panelUpload = document.getElementById('panel-upload');
       const panelSelector = document.getElementById('panel-selector');
-      if (!panelUpload || !panelSelector) return;
+      if (!panelUpload || !panelSelector || panelUpload.classList.contains('hidden')) return;
 
       const categoryCounts = {
         all: ACTIVITY_CARDS.length,
@@ -1010,6 +1049,7 @@
           <div id="generation-progress" class="generation-progress-banner hidden" aria-hidden="true">
             <span class="generation-spinner" aria-hidden="true"></span>
             <span id="generation-progress-step"></span>
+            <button type="button" class="btn-secondary btn-cancel-generation" id="btn-cancel-generation">Cancelar</button>
           </div>
           <p id="generation-status" role="status" aria-live="polite"></p>
 
@@ -1030,6 +1070,7 @@
       const status = document.getElementById('generation-status');
       const progressBanner = document.getElementById('generation-progress');
       const progressStep = document.getElementById('generation-progress-step');
+      const cancelButton = document.getElementById('btn-cancel-generation');
       const countLabel = document.getElementById('question-count-label');
       const countInput = document.getElementById('question-count');
       const countHint = document.getElementById('question-count-hint');
@@ -1139,8 +1180,29 @@
         progressBanner.classList.toggle('hidden', !active);
         progressBanner.setAttribute('aria-hidden', String(!active));
         progressStep.textContent = active ? stageMessage : '';
+        if (cancelButton) {
+          cancelButton.disabled = !active;
+          cancelButton.textContent = 'Cancelar';
+        }
+        activeGenerationCanceller = active
+          ? () => {
+            window.academicAPI?.cancelGeneration?.().catch(() => {});
+          }
+          : null;
         syncSelectorUI();
       };
+
+      cancelButton?.addEventListener('click', async () => {
+        if (!isGenerating) return;
+        cancelButton.disabled = true;
+        cancelButton.textContent = 'Cancelando…';
+        showStatus('Cancelando generación…');
+        try {
+          await window.academicAPI?.cancelGeneration?.();
+        } catch {
+          // El estado final se actualiza cuando concluye generateH5P.
+        }
+      });
 
       categoryTabButtons.forEach(tab => {
         tab.addEventListener('click', () => {
@@ -1324,6 +1386,13 @@
           const result = await window.academicAPI.saveH5PFile({ packageId, suggestedName, courseId: state.courseId || 'unassigned' });
           if (result?.status === 'cancelled') { showStatus('Guardado cancelado. Puedes intentarlo nuevamente.'); return; }
           if (result?.status !== 'ok') { showStatus(result?.message || 'No se pudo guardar el archivo.', true); return; }
+          if (state.draftId) {
+            const completedDraftId = state.draftId;
+            window.clearTimeout(draftSaveTimer);
+            state.draftId = null;
+            draftContextToken++;
+            window.coursesManager?.deleteDraft?.(completedDraftId).catch(() => {});
+          }
           showStatus(result.projectSaved ? `Archivo ${result.fileName} guardado y añadido a tus proyectos.` : `Archivo ${result.fileName} guardado. No se pudo añadir a tus proyectos.`, !result.projectSaved);
         } catch { showStatus('No se pudo guardar el archivo. Inténtalo nuevamente.', true); }
         finally { saveButton.disabled = false; syncSelectorUI(); }
@@ -1351,6 +1420,8 @@
     getDocumentIds: () => state.files.length && state.files.every(file => state.inspections.has(file))
       ? state.files.map(file => state.inspections.get(file)) : [],
     flushDraft: () => flushDraftHandler(),
+    leaveWizard: () => leaveWizardHandler(),
+    onDraftDeleted: (draftId) => draftDeletedHandler(draftId),
     clearFiles: () => {
       const btnClearAll = document.getElementById('btn-clear-all');
       if (btnClearAll) btnClearAll.click();

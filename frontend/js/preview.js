@@ -17,9 +17,21 @@
   const state = {
     files: [],
     currentIndex: 0,
-    currentObjectUrl: null,
-    isOpen: false
+    isOpen: false,
+    pdfDoc: null,
+    pdfPage: 1,
+    pdfTotalPages: 0,
+    pdfScale: 1,
+    pdfAutoFit: true,
+    pdfRenderTask: null,
+    pdfLoadingTask: null,
+    pdfRenderToken: 0
   };
+
+  let pdfjsModulePromise = null;
+  const PDF_MIN_SCALE = 0.5;
+  const PDF_MAX_SCALE = 2.5;
+  const PDF_SCALE_STEP = 0.2;
 
   // Referencias a los elementos del DOM
   let modalEl = null;
@@ -85,48 +97,239 @@
   }
 
   /**
-   * Sanitiza strings para inserción segura en el DOM.
+   * Sanitiza strings para inserción segura en atributos y texto HTML.
    * @param {string} str
    * @returns {string}
    */
   function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str || '';
-    return div.innerHTML;
+    if (window.uiEscapeHtml) return window.uiEscapeHtml(str);
+    return String(str ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[ch]);
   }
 
   /**
-   * Libera cualquier Object URL activo en memoria para evitar fugas (memory leaks).
+   * Carga bajo demanda PDF.js desde el paquete local sin usar el visor nativo PDFium en iframe.
    */
-  function revokeActiveObjectUrl() {
-    if (state.currentObjectUrl) {
-      URL.revokeObjectURL(state.currentObjectUrl);
-      state.currentObjectUrl = null;
+  function loadPdfJs() {
+    if (!pdfjsModulePromise) {
+      const pdfModuleUrl = new URL(
+        '../backend/node_modules/pdfjs-dist/build/pdf.min.mjs',
+        window.location.href
+      ).href;
+      const pdfWorkerUrl = new URL(
+        '../backend/node_modules/pdfjs-dist/build/pdf.worker.min.mjs',
+        window.location.href
+      ).href;
+      pdfjsModulePromise = import(pdfModuleUrl)
+        .then(mod => {
+          mod.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+          return mod;
+        })
+        .catch(error => {
+          pdfjsModulePromise = null;
+          throw error;
+        });
+    }
+    return pdfjsModulePromise;
+  }
+
+  /**
+   * Cancela y libera cualquier tarea o documento PDF.js activo en memoria.
+   */
+  function cleanupPdfResources() {
+    state.pdfRenderToken++;
+    if (state.pdfRenderTask) {
+      try { state.pdfRenderTask.cancel(); } catch {}
+      state.pdfRenderTask = null;
+    }
+    if (state.pdfLoadingTask) {
+      try { state.pdfLoadingTask.destroy(); } catch {}
+      state.pdfLoadingTask = null;
+    }
+    if (state.pdfDoc) {
+      const doc = state.pdfDoc;
+      state.pdfDoc = null;
+      try { doc.destroy(); } catch {}
+    }
+    state.pdfPage = 1;
+    state.pdfTotalPages = 0;
+    state.pdfScale = 1;
+    state.pdfAutoFit = true;
+  }
+
+  function renderPdfErrorCard(message) {
+    bodyEl.innerHTML = `
+      <div class="preview-unsupported-card">
+        <p class="preview-unsupported-desc is-error">${escapeHtml(message)}</p>
+      </div>
+    `;
+    setLoadStatus('No se pudo cargar la vista previa.', true);
+  }
+
+  /**
+   * Renderiza la página actual del documento PDF sobre un elemento <canvas>.
+   */
+  async function drawCurrentPdfPage(token) {
+    if (!state.isOpen || token !== loadToken || !state.pdfDoc) return;
+    const canvas = bodyEl.querySelector('.preview-pdf-canvas');
+    const stage = bodyEl.querySelector('.preview-pdf-stage');
+    const pageIndicator = bodyEl.querySelector('#pdf-page-indicator');
+    const zoomIndicator = bodyEl.querySelector('#pdf-zoom-indicator');
+    const prevPageBtn = bodyEl.querySelector('#btn-pdf-prev');
+    const nextPageBtn = bodyEl.querySelector('#btn-pdf-next');
+    const zoomOutBtn = bodyEl.querySelector('#btn-pdf-zoom-out');
+    const zoomInBtn = bodyEl.querySelector('#btn-pdf-zoom-in');
+    if (!canvas || !stage) return;
+
+    if (state.pdfRenderTask) {
+      try { state.pdfRenderTask.cancel(); } catch {}
+      state.pdfRenderTask = null;
+    }
+
+    const renderToken = ++state.pdfRenderToken;
+    setLoadStatus(`Renderizando página ${state.pdfPage} de ${state.pdfTotalPages}…`);
+
+    try {
+      const page = await state.pdfDoc.getPage(state.pdfPage);
+      if (!state.isOpen || token !== loadToken || renderToken !== state.pdfRenderToken) return;
+
+      const baseViewport = page.getViewport({ scale: 1 });
+      if (state.pdfAutoFit && baseViewport.width > 0) {
+        const availableWidth = Math.max(240, stage.clientWidth - 32);
+        const fitScale = availableWidth / baseViewport.width;
+        state.pdfScale = Math.max(PDF_MIN_SCALE, Math.min(PDF_MAX_SCALE, fitScale));
+      }
+
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const cssViewport = page.getViewport({ scale: state.pdfScale });
+      const renderViewport = page.getViewport({ scale: state.pdfScale * dpr });
+
+      canvas.width = Math.max(1, Math.floor(renderViewport.width));
+      canvas.height = Math.max(1, Math.floor(renderViewport.height));
+      canvas.style.width = `${Math.max(1, Math.floor(cssViewport.width))}px`;
+      canvas.style.height = `${Math.max(1, Math.floor(cssViewport.height))}px`;
+      canvas.setAttribute('aria-label', `Página ${state.pdfPage} de ${state.pdfTotalPages}`);
+
+      const ctx = canvas.getContext('2d', { alpha: false });
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const renderTask = page.render({ canvasContext: ctx, viewport: renderViewport });
+      state.pdfRenderTask = renderTask;
+      await renderTask.promise;
+      if (state.pdfRenderTask === renderTask) state.pdfRenderTask = null;
+
+      if (!state.isOpen || token !== loadToken || renderToken !== state.pdfRenderToken) return;
+      if (pageIndicator) pageIndicator.textContent = `Página ${state.pdfPage} / ${state.pdfTotalPages}`;
+      if (zoomIndicator) zoomIndicator.textContent = `${Math.round(state.pdfScale * 100)}%`;
+      if (prevPageBtn) prevPageBtn.disabled = state.pdfPage <= 1;
+      if (nextPageBtn) nextPageBtn.disabled = state.pdfPage >= state.pdfTotalPages;
+      if (zoomOutBtn) zoomOutBtn.disabled = state.pdfScale <= PDF_MIN_SCALE + 0.01;
+      if (zoomInBtn) zoomInBtn.disabled = state.pdfScale >= PDF_MAX_SCALE - 0.01;
+      setLoadStatus('Vista previa lista.');
+    } catch (error) {
+      if (error?.name === 'RenderingCancelledException') return;
+      if (!state.isOpen || token !== loadToken || renderToken !== state.pdfRenderToken) return;
+      renderPdfErrorCard('No fue posible renderizar esta página del PDF.');
     }
   }
 
   /**
-   * Renderiza un archivo PDF en un iframe mediante un Object URL de blob.
+   * Renderiza un archivo PDF en <canvas> mediante PDF.js (multiplataforma, sin iframe blob:).
    * @param {File} file
+   * @param {number} token
    */
-  function renderPdf(file, token) {
-    revokeActiveObjectUrl();
-    state.currentObjectUrl = URL.createObjectURL(file);
-    setLoadStatus('Cargando vista previa…');
-
-    const iframe = document.createElement('iframe');
-    iframe.className = 'preview-iframe';
-    iframe.src = state.currentObjectUrl;
-    iframe.title = `Visor PDF de ${file.name}`;
-    iframe.addEventListener('load', () => {
-      if (state.isOpen && token === loadToken) setLoadStatus('Vista previa lista.');
-    });
-    iframe.addEventListener('error', () => {
-      if (state.isOpen && token === loadToken) setLoadStatus('No se pudo cargar la vista previa.', true);
-    });
-
+  async function renderPdf(file, token) {
     bodyEl.innerHTML = '';
-    bodyEl.appendChild(iframe);
+    cleanupPdfResources();
+    setLoadStatus('Cargando vista previa…');
+    bodyEl.innerHTML = `
+      <div class="preview-pdf-shell">
+        <div class="preview-pdf-toolbar" role="toolbar" aria-label="Controles del visor PDF">
+          <div class="preview-pdf-toolbar-group">
+            <button type="button" class="btn-secondary btn-pdf-tool" id="btn-pdf-prev" disabled aria-label="Página anterior">Anterior</button>
+            <span class="preview-pdf-indicator" id="pdf-page-indicator" aria-live="polite">Cargando…</span>
+            <button type="button" class="btn-secondary btn-pdf-tool" id="btn-pdf-next" disabled aria-label="Página siguiente">Siguiente</button>
+          </div>
+          <div class="preview-pdf-toolbar-group">
+            <button type="button" class="btn-secondary btn-pdf-tool" id="btn-pdf-zoom-out" disabled aria-label="Reducir zoom">−</button>
+            <span class="preview-pdf-indicator" id="pdf-zoom-indicator">100%</span>
+            <button type="button" class="btn-secondary btn-pdf-tool" id="btn-pdf-zoom-in" disabled aria-label="Aumentar zoom">+</button>
+            <button type="button" class="btn-secondary btn-pdf-tool" id="btn-pdf-fit" disabled>Ajustar</button>
+          </div>
+        </div>
+        <div class="preview-pdf-stage">
+          <canvas class="preview-pdf-canvas" role="img" aria-label="Vista previa de documento PDF"></canvas>
+        </div>
+      </div>
+    `;
+
+    try {
+      const [pdfjs, buffer] = await Promise.all([loadPdfJs(), file.arrayBuffer()]);
+      if (!state.isOpen || token !== loadToken) return;
+
+      const data = new Uint8Array(buffer);
+      const loadingTask = pdfjs.getDocument({
+        data,
+        useWorkerFetch: false,
+        isEvalSupported: false,
+        useSystemFonts: true
+      });
+      state.pdfLoadingTask = loadingTask;
+      const pdfDoc = await loadingTask.promise;
+      if (state.pdfLoadingTask === loadingTask) state.pdfLoadingTask = null;
+
+      if (!state.isOpen || token !== loadToken) {
+        try { pdfDoc.destroy(); } catch {}
+        return;
+      }
+
+      state.pdfDoc = pdfDoc;
+      state.pdfTotalPages = pdfDoc.numPages;
+      state.pdfPage = 1;
+      state.pdfAutoFit = true;
+
+      const prevPageBtn = bodyEl.querySelector('#btn-pdf-prev');
+      const nextPageBtn = bodyEl.querySelector('#btn-pdf-next');
+      const zoomOutBtn = bodyEl.querySelector('#btn-pdf-zoom-out');
+      const zoomInBtn = bodyEl.querySelector('#btn-pdf-zoom-in');
+      const fitBtn = bodyEl.querySelector('#btn-pdf-fit');
+      if (fitBtn) fitBtn.disabled = false;
+
+      prevPageBtn?.addEventListener('click', () => {
+        if (state.pdfPage > 1) {
+          state.pdfPage--;
+          drawCurrentPdfPage(token);
+        }
+      });
+      nextPageBtn?.addEventListener('click', () => {
+        if (state.pdfPage < state.pdfTotalPages) {
+          state.pdfPage++;
+          drawCurrentPdfPage(token);
+        }
+      });
+      zoomOutBtn?.addEventListener('click', () => {
+        state.pdfAutoFit = false;
+        state.pdfScale = Math.max(PDF_MIN_SCALE, Number((state.pdfScale - PDF_SCALE_STEP).toFixed(2)));
+        drawCurrentPdfPage(token);
+      });
+      zoomInBtn?.addEventListener('click', () => {
+        state.pdfAutoFit = false;
+        state.pdfScale = Math.min(PDF_MAX_SCALE, Number((state.pdfScale + PDF_SCALE_STEP).toFixed(2)));
+        drawCurrentPdfPage(token);
+      });
+      fitBtn?.addEventListener('click', () => {
+        state.pdfAutoFit = true;
+        drawCurrentPdfPage(token);
+      });
+
+      await drawCurrentPdfPage(token);
+    } catch {
+      if (!state.isOpen || token !== loadToken) return;
+      cleanupPdfResources();
+      renderPdfErrorCard('No fue posible abrir este archivo PDF. Comprueba que no esté dañado o protegido con contraseña.');
+    }
   }
 
   /**
@@ -134,7 +337,8 @@
    * @param {File} file
    */
   function renderText(file, token) {
-    revokeActiveObjectUrl();
+    bodyEl.innerHTML = '';
+    cleanupPdfResources();
     setLoadStatus('Cargando vista previa…');
     bodyEl.innerHTML = `
       <div class="preview-text-wrapper">
@@ -199,7 +403,8 @@
    * @param {string} ext
    */
   function renderUnsupportedOffice(file, ext) {
-    revokeActiveObjectUrl();
+    bodyEl.innerHTML = '';
+    cleanupPdfResources();
     setLoadStatus('Este formato no tiene vista previa.');
 
     const isOffice = OFFICE_EXTENSIONS.includes(ext);
@@ -312,7 +517,24 @@
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
       prevFile();
+    } else if (e.key === 'PageDown' && state.pdfDoc && state.pdfPage < state.pdfTotalPages) {
+      e.preventDefault();
+      state.pdfPage++;
+      drawCurrentPdfPage(loadToken);
+    } else if (e.key === 'PageUp' && state.pdfDoc && state.pdfPage > 1) {
+      e.preventDefault();
+      state.pdfPage--;
+      drawCurrentPdfPage(loadToken);
     }
+  }
+
+  function cleanupModalState() {
+    state.isOpen = false;
+    loadToken++;
+    cleanupPdfResources();
+    if (loadStatusEl) loadStatusEl.textContent = '';
+    if (bodyEl) bodyEl.innerHTML = '';
+    document.removeEventListener('keydown', handleKeyDown);
   }
 
   /**
@@ -327,7 +549,13 @@
     state.currentIndex = Math.max(0, Math.min(initialIndex, state.files.length - 1));
     state.isOpen = true;
 
-    if (modalEl) window.uiDialog?.open(modalEl, { focus: closeBtnEl });
+    if (modalEl) {
+      window.uiDialog?.open(modalEl, {
+        focus: closeBtnEl,
+        onEscape: closeModal,
+        onClose: cleanupModalState
+      });
+    }
 
     renderCurrentFile();
     document.addEventListener('keydown', handleKeyDown);
@@ -337,24 +565,16 @@
    * Cierra el modal de previsualización y limpia los recursos.
    */
   function closeModal() {
-    state.isOpen = false;
-    loadToken++;
-    revokeActiveObjectUrl();
-    if (loadStatusEl) loadStatusEl.textContent = '';
-
     if (modalEl) {
       if (window.uiDialog) window.uiDialog.close(modalEl);
       else {
         modalEl.classList.add('hidden');
         modalEl.setAttribute('aria-hidden', 'true');
+        cleanupModalState();
       }
+    } else {
+      cleanupModalState();
     }
-
-    if (bodyEl) {
-      bodyEl.innerHTML = '';
-    }
-
-    document.removeEventListener('keydown', handleKeyDown);
   }
 
   /**

@@ -81,6 +81,7 @@ function registerH5PIpcHandlers(ipcMain, isTrustedSender, inspection = createDoc
   ipcMain.handle('h5p:release-document', handler(isTrustedSender, value =>
     objectWithKeys(value, ['documentId']) && typeof value.documentId === 'string' && UUID.test(value.documentId), inspection.release));
   ipcMain.handle('h5p:generate', handler(isTrustedSender, validGeneration, generation.generateH5P || unavailable));
+  ipcMain.handle('h5p:cancel-generation', handler(isTrustedSender, value => objectWithKeys(value, []), generation.cancelGeneration || unavailable));
   ipcMain.handle('h5p:save-file', handler(isTrustedSender, validSave, generation.saveH5PFile || unavailable));
   return inspection;
 }

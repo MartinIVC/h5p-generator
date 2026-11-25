@@ -24,8 +24,8 @@ function createDocumentInspection({ WorkerClass = Worker, timeoutMs = TIMEOUT_MS
       sender.removeListener('destroyed', cleanup);
       sender.removeListener('did-start-navigation', onNavigation);
     };
-    const onNavigation = (_event, _url, _inPlace, isMainFrame) => {
-      if (isMainFrame) cleanup();
+    const onNavigation = (_event, _url, inPlace, isMainFrame) => {
+      if (isMainFrame && !inPlace) cleanup();
     };
     sender.once('destroyed', cleanup);
     sender.on('did-start-navigation', onNavigation);

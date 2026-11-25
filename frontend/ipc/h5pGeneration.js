@@ -23,7 +23,7 @@ const messages = {
   SERVICE_UNAVAILABLE: 'Gemini no está disponible en este momento. Inténtalo más tarde.',
   API_REQUEST_FAILED: 'Gemini rechazó la solicitud. Revisa la configuración y el acceso al modelo.',
   GENERATION_TIMEOUT: 'Gemini no respondió a tiempo. Inténtalo más tarde.',
-  GENERATION_CANCELLED: 'La generación se canceló al salir de la actividad.',
+  GENERATION_CANCELLED: 'La generación fue cancelada.',
   PACKAGE_FAILED: 'Se generó el contenido, pero no se pudo preparar el archivo H5P.',
   NOT_FOUND: 'La actividad preparada ya no está disponible. Vuelve a generarla.',
   INVALID_COURSE: 'El ramo seleccionado ya no está disponible.',
@@ -58,10 +58,12 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
   function sessionFor(sender) {
     let session = sessions.get(sender);
     if (session) return session;
-    session = { closed: false, busy: false, package: null, abort: new AbortController(), worker: null };
+    session = { closed: false, busy: false, package: null, abort: new AbortController(), requestAbort: null, worker: null };
     sessions.set(sender, session);
     const close = () => {
-      session.closed = true; session.package = null; session.abort.abort();
+      session.closed = true; session.package = null;
+      session.requestAbort?.abort(); session.requestAbort = null;
+      session.abort.abort();
       if (session.worker) Promise.resolve(session.worker.terminate()).catch(() => {});
       if (sessions.get(sender) === session) sessions.delete(sender);
       sender.removeListener('destroyed', close); sender.removeListener('did-start-navigation', navigation);
@@ -99,19 +101,26 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
     const source = documents.map(doc => doc.text).join('\n\n');
     if (source.length > MAX_SOURCE_CHARS) return fail('SOURCE_TOO_LARGE');
     session.busy = true;
+    const requestAbort = new AbortController();
+    session.requestAbort = requestAbort;
     try {
       let key;
       try { key = storage.getApiKey(); } catch { return fail('SECURE_STORAGE_UNAVAILABLE'); }
       if (!key) return fail('MISSING_KEY');
       const items = await generate(source, key, request.instructions, request.questionCount, {
-        signal: session.abort.signal,
+        signal: AbortSignal.any([session.abort.signal, requestAbort.signal]),
         activityType: activityConfig.workerType
       });
+      if (requestAbort.signal.aborted && !session.closed) return fail('GENERATION_CANCELLED');
       if (session.closed || sender.isDestroyed() || request.documentIds.some((id, i) => inspection.getDocument(sender, id) !== documents[i])) return fail('DOCUMENT_NOT_FOUND');
       const safeTitle = typeof request.title === 'string' && request.title.trim() ? request.title.trim() : undefined;
       let bytes;
       try { bytes = await buildPackage(items, session, activityConfig.workerType, safeTitle); }
-      catch { return fail('PACKAGE_FAILED'); }
+      catch {
+        if (requestAbort.signal.aborted && !session.closed) return fail('GENERATION_CANCELLED');
+        return fail('PACKAGE_FAILED');
+      }
+      if (requestAbort.signal.aborted && !session.closed) return fail('GENERATION_CANCELLED');
       if (session.closed || sender.isDestroyed() || request.documentIds.some((id, i) => inspection.getDocument(sender, id) !== documents[i])) return fail('DOCUMENT_NOT_FOUND');
       const packageId = randomUUID();
       session.package = { id: packageId, bytes, h5pType: activityConfig.projectLabel };
@@ -122,7 +131,18 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
         return { ...fail(code), reason: error.reason, message: `No se pudo validar la actividad. ${RESPONSE_REASONS[error.reason]}` };
       }
       return fail(code);
-    } finally { session.busy = false; }
+    } finally {
+      if (session.requestAbort === requestAbort) session.requestAbort = null;
+      session.busy = false;
+    }
+  }
+  async function cancelGeneration(_request, event) {
+    const session = sessions.get(event.sender);
+    if (!session || session.closed) return { status: 'ok', cancelled: false };
+    const hadActive = Boolean(session.requestAbort || session.worker);
+    if (session.requestAbort) session.requestAbort.abort();
+    if (session.worker) Promise.resolve(session.worker.terminate()).catch(() => {});
+    return { status: 'ok', cancelled: hadActive };
   }
   async function saveH5PFile(request, event) {
     const session = sessions.get(event.sender);
@@ -159,6 +179,6 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
     } catch { return fail('SAVE_FAILED'); }
     finally { session.busy = false; }
   }
-  return { generateH5P, saveH5PFile };
+  return { generateH5P, cancelGeneration, saveH5PFile };
 }
 module.exports = { createH5PGeneration };

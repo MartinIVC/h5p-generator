@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('academicAPI', {
   assignProject: (projectId, courseId) => ipcRenderer.invoke('academic:assignProject', projectId, courseId),
 
   // Sistema de Archivos Local
+  revealProjectFile: (projectId) => ipcRenderer.invoke('academic:revealProjectFile', projectId),
   revealFile: (filePath) => ipcRenderer.invoke('academic:revealFile', filePath),
   verifyFileExists: (filePath) => ipcRenderer.invoke('academic:verifyFileExists', filePath),
 
@@ -49,6 +50,7 @@ contextBridge.exposeInMainWorld('academicAPI', {
   inspectDocument: (document) => ipcRenderer.invoke('h5p:inspect-document', document),
   releaseDocument: (documentId) => ipcRenderer.invoke('h5p:release-document', { documentId }),
   generateH5P: (request) => ipcRenderer.invoke('h5p:generate', request),
+  cancelGeneration: () => ipcRenderer.invoke('h5p:cancel-generation', {}),
   saveH5PFile: (request) => ipcRenderer.invoke('h5p:save-file', request),
 
   // Enlaces Externos

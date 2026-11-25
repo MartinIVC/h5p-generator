@@ -373,6 +373,7 @@
    */
   async function navigateToHome() {
     await window.uploadManager?.flushDraft?.();
+    window.uploadManager?.leaveWizard?.();
     state.activeCourseId = null;
 
     // Visibilidad de secciones
@@ -394,6 +395,7 @@
 
   async function navigateToTrash() {
     await window.uploadManager?.flushDraft?.();
+    window.uploadManager?.leaveWizard?.();
     state.activeCourseId = null;
     if (panelHome) panelHome.classList.add('hidden');
     if (panelCourseDetail) panelCourseDetail.classList.add('hidden');
@@ -417,6 +419,7 @@
    */
   async function navigateToCourseDetail(courseId, projectSearchQuery = '') {
     await window.uploadManager?.flushDraft?.();
+    window.uploadManager?.leaveWizard?.();
     state.activeCourseId = courseId;
     state.searchProjectsQuery = projectSearchQuery;
 
@@ -1164,6 +1167,7 @@
         if (!confirmed) return;
         try {
           await api.deleteDraft(draft.id);
+          window.uploadManager?.onDraftDeleted?.(draft.id);
           await loadDrafts();
           renderHomeView();
         } catch {
@@ -1256,7 +1260,7 @@
               ` : ''}
 
               <div class="project-card-footer">
-                <button type="button" class="btn-secondary btn-reveal-project" data-path="${escapeHTML(proj.filePath || '')}" title="Abrir carpeta donde se guardó el archivo .h5p" aria-label="Ver en carpeta: ${escapeHTML(proj.title)}">
+                <button type="button" class="btn-secondary btn-reveal-project" data-project-id="${escapeHTML(proj.id)}" title="Abrir carpeta donde se guardó el archivo .h5p" aria-label="Ver en carpeta: ${escapeHTML(proj.title)}">
                   <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                   </svg>
@@ -1410,21 +1414,36 @@
       input?.focus();
     });
 
-    // Abrir ubicación en carpeta
+    // Abrir ubicación en carpeta (resuelta por ID de proyecto en el proceso principal)
     const revealBtns = contentEl.querySelectorAll('.btn-reveal-project');
     revealBtns.forEach(btn => {
       btn.addEventListener('click', async () => {
-        const path = btn.getAttribute('data-path');
-        if (!path) {
+        const projectId = btn.getAttribute('data-project-id');
+        if (!projectId) {
           window.uiMessage?.('Este proyecto no tiene una carpeta registrada.', 'error');
           return;
         }
         try {
-          if (window.academicAPI?.verifyFileExists && !(await window.academicAPI.verifyFileExists(path))) {
-            window.uiMessage?.('No se encontró el archivo en esa ubicación.', 'error');
+          if (window.academicAPI?.revealProjectFile) {
+            const result = await window.academicAPI.revealProjectFile(projectId);
+            if (result?.status === 'ok') return;
+            if (result?.status === 'no_path') {
+              window.uiMessage?.('Este proyecto no tiene una carpeta registrada.', 'error');
+              return;
+            }
+            if (result?.status === 'missing') {
+              window.uiMessage?.('No se encontró el archivo en esa ubicación.', 'error');
+              return;
+            }
+            window.uiMessage?.('No se pudo abrir la carpeta del proyecto.', 'error');
             return;
           }
-          await api.revealFile(path);
+          const project = state.projects.find(item => item.id === projectId);
+          if (!project?.filePath) {
+            window.uiMessage?.('Este proyecto no tiene una carpeta registrada.', 'error');
+            return;
+          }
+          await api.revealFile(project.filePath);
         } catch {
           window.uiMessage?.('No se pudo abrir la carpeta del proyecto.', 'error');
         }
@@ -2188,6 +2207,7 @@
     refreshDrafts: loadDrafts,
     deleteDraft: async (draftId) => {
       await api.deleteDraft(draftId);
+      window.uploadManager?.onDraftDeleted?.(draftId);
       await loadDrafts();
       if (panelHome && !panelHome.classList.contains('hidden')) renderHomeView();
     }

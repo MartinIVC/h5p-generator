@@ -180,3 +180,37 @@ test('H5P-34 (BUG-14): distingue fallo de safeStorage, exige extensión .h5p con
   assert.match(saveResult.message, /\.h5p/);
   assert.equal(path.dirname(capturedDefaultPath), dir);
 });
+
+test('H5P-33 (BUG-08): cancelGeneration aborta la generación en curso, libera BUSY y permite reintentar', async () => {
+  let calls = 0;
+  let started;
+  const startedPromise = new Promise(resolve => { started = resolve; });
+  const { generation, owner } = setup({
+    generate: (_source, _key, _instructions, _count, options) => {
+      calls++;
+      if (calls === 1) {
+        return new Promise((_resolve, reject) => {
+          started();
+          options.signal.addEventListener('abort', () => reject(new Error('GENERATION_CANCELLED')), { once: true });
+        });
+      }
+      return Promise.resolve(questions);
+    }
+  });
+
+  // Sin operación activa devuelve cancelled: false
+  assert.deepEqual(await generation.cancelGeneration({}, { sender: owner }), { status: 'ok', cancelled: false });
+
+  const inFlight = generation.generateH5P(request, { sender: owner });
+  await startedPromise;
+  // Mientras corre, otra generación recibe BUSY
+  assert.equal((await generation.generateH5P(request, { sender: owner })).code, 'BUSY');
+  // Al cancelar, aborta limpiamente sin cerrar la sesión de la ventana
+  assert.deepEqual(await generation.cancelGeneration({}, { sender: owner }), { status: 'ok', cancelled: true });
+  assert.equal((await inFlight).code, 'GENERATION_CANCELLED');
+
+  // Inmediatamente después, una nueva generación en la misma ventana funciona sin BUSY
+  const retry = await generation.generateH5P(request, { sender: owner });
+  assert.equal(retry.status, 'ok');
+  assert.equal(retry.questionCount, 1);
+});

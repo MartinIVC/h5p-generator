@@ -615,6 +615,16 @@ button { -webkit-tap-highlight-color: transparent; }
   font-size: 13px;
   font-weight: 500;
 }
+.generation-progress-banner #generation-progress-step {
+  flex: 1;
+  min-width: 0;
+}
+.btn-cancel-generation {
+  min-height: 30px;
+  padding: 0.25rem 0.7rem;
+  font-size: 12px;
+  flex-shrink: 0;
+}
 .generation-spinner {
   width: 16px;
   height: 16px;
