@@ -85,18 +85,32 @@ test('el proceso principal valida el marco y captura errores de almacenamiento d
     },
     Notification: {}, dialog: {}
   };
-  const projects = [{ id: 'proj-1', filePath: '/tmp/registrado.h5p' }];
+  const projects = [
+    { id: 'proj-1', filePath: '/tmp/registrado.h5p' },
+    { id: 'proj-missing', filePath: '/tmp/eliminado.h5p' },
+    { id: 'proj-no-path', filePath: '' },
+    { id: 'proj-shell-error', filePath: '/tmp/error-shell.h5p' }
+  ];
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(mainFile, 'utf8'), {
     module, __dirname: path.dirname(mainFile), process, Buffer, AbortSignal, console,
     require: name => {
-      if (name === 'electron') return electron;
+      if (name === 'electron') return {
+        ...electron,
+        shell: {
+          ...electron.shell,
+          showItemInFolder: p => {
+            if (p === '/tmp/error-shell.h5p') throw new Error('fallo del gestor de archivos');
+            revealedPaths.push(p);
+          }
+        }
+      };
       if (name.endsWith('backend/storage.js')) return {
         academicStorage: {
           getApiKey() { throw new Error('clave privada'); },
           getAllCourses: () => [],
           getProjects: () => projects,
-          verifyFileExists: p => p === '/tmp/registrado.h5p'
+          verifyFileExists: p => p === '/tmp/registrado.h5p' || p === '/tmp/error-shell.h5p'
         }
       };
       return require(name);
@@ -117,6 +131,9 @@ test('el proceso principal valida el marco y captura errores de almacenamiento d
   assert.equal(revealedPaths.length, 0);
   assert.equal((await handlers.get('academic:revealProjectFile')({ sender, senderFrame: frame }, 'proj-1')).status, 'ok');
   assert.deepEqual(revealedPaths, ['/tmp/registrado.h5p']);
+  assert.equal((await handlers.get('academic:revealProjectFile')({ sender, senderFrame: frame }, 'proj-missing')).status, 'missing');
+  assert.equal((await handlers.get('academic:revealProjectFile')({ sender, senderFrame: frame }, 'proj-no-path')).status, 'no_path');
+  assert.equal((await handlers.get('academic:revealProjectFile')({ sender, senderFrame: frame }, 'proj-shell-error')).status, 'error');
   assert.equal((await handlers.get('academic:revealProjectFile')({ sender, senderFrame: frame }, 'desconocido')).status, 'not_found');
   // URLs externas inválidas o de esquema peligroso son rechazadas sin lanzar excepción.
   assert.equal(await handlers.get('app:openExternalUrl')({ sender, senderFrame: frame }, 'file:///etc/passwd'), false);

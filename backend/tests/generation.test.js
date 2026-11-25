@@ -214,3 +214,82 @@ test('H5P-33 (BUG-08): cancelGeneration aborta la generación en curso, libera B
   assert.equal(retry.status, 'ok');
   assert.equal(retry.questionCount, 1);
 });
+
+test('H5P-22: registra sourceFiles (solo nombres), devuelve projectId opaco y no crea registro si falla la escritura', async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'h5p-22-save-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const destination = path.join(dir, 'evaluacion-u1.h5p');
+  const secondDocId = '11234567-89ab-4cde-8fab-0123456789ab';
+  const owner = sender();
+  const docs = new Map([
+    [documentId, { name: 'guia-unidad-1.pdf', text: 'Contenido secreto del apunte 1' }],
+    [secondDocId, { name: 'lectura-complementaria.docx', text: 'Contenido secreto del apunte 2' }]
+  ]);
+  const projects = [];
+  let dialogChoice = { canceled: false, filePath: destination };
+  const generation = createH5PGeneration({
+    inspection: { getDocument: (s, id) => s === owner ? docs.get(id) : undefined },
+    storage: {
+      getApiKey: () => 'clave-privada',
+      getCourseById: id => id === 'curso-bio' ? { id: 'curso-bio' } : null,
+      saveProject: project => {
+        const record = { id: 'proj-h5p22-1', ...project };
+        projects.push(record);
+        return record;
+      }
+    },
+    dialog: { showSaveDialog: async () => dialogChoice },
+    BrowserWindow: { fromWebContents: () => ({}) },
+    app: { getPath: () => dir },
+    generate: async () => questions
+  });
+
+  const generated = await generation.generateH5P({
+    documentIds: [documentId, secondDocId],
+    activityType: 'questionset',
+    questionCount: 1,
+    instructions: 'Instrucciones privadas del docente'
+  }, { sender: owner });
+  assert.equal(generated.status, 'ok');
+
+  // Ramo inexistente rechaza antes de abrir diálogo o escribir archivo
+  const invalidCourse = await generation.saveH5PFile({
+    packageId: generated.packageId,
+    suggestedName: 'evaluacion-u1',
+    courseId: 'ramo-inexistente'
+  }, { sender: owner });
+  assert.equal(invalidCourse.code, 'INVALID_COURSE');
+  assert.equal(projects.length, 0);
+  assert.deepEqual(await fs.readdir(dir), []);
+
+  // Guardado confirmado escribe .h5p, registra sourceFiles sin texto/instrucciones y retorna projectId
+  const saved = await generation.saveH5PFile({
+    packageId: generated.packageId,
+    suggestedName: 'evaluacion-u1.h5p',
+    courseId: 'curso-bio'
+  }, { sender: owner });
+  assert.equal(saved.status, 'ok');
+  assert.equal(saved.fileName, 'evaluacion-u1.h5p');
+  assert.equal(saved.projectSaved, true);
+  assert.equal(saved.projectId, 'proj-h5p22-1');
+  assert.equal(projects.length, 1);
+  assert.equal(projects[0].courseId, 'curso-bio');
+  assert.equal(projects[0].filePath, destination);
+  assert.equal(projects[0].h5pType, 'Cuestionario (H5P.QuestionSet)');
+  assert.deepEqual(projects[0].sourceFiles, [
+    { name: 'guia-unidad-1.pdf' },
+    { name: 'lectura-complementaria.docx' }
+  ]);
+  assert.equal(JSON.stringify(projects[0]).includes('secreto'), false);
+  assert.equal(JSON.stringify(projects[0]).includes('Instrucciones privadas'), false);
+
+  // Cancelación posterior no genera un segundo registro
+  dialogChoice = { canceled: true };
+  const cancelled = await generation.saveH5PFile({
+    packageId: generated.packageId,
+    suggestedName: 'evaluacion-u1',
+    courseId: 'curso-bio'
+  }, { sender: owner });
+  assert.equal(cancelled.status, 'cancelled');
+  assert.equal(projects.length, 1);
+});

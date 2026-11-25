@@ -82,3 +82,63 @@ test('H5P-34 (BUG-13): protege integridad de cursos, proyectos, papelera, borrad
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('H5P-22: deduplica proyectos al sobrescribir la misma ruta y expone fileExists solo en lectura', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'h5p-22-storage-'));
+  const storeFile = path.join(directory, 'academic_store.json');
+  const exportedFile = path.join(directory, 'quiz-unidad-1.h5p');
+  const fakeDirAsH5p = path.join(directory, 'carpeta.h5p');
+
+  try {
+    fs.writeFileSync(exportedFile, Buffer.from('PK\x03\x04dummy'));
+    fs.mkdirSync(fakeDirAsH5p);
+    const storage = new AcademicStorage(storeFile);
+    const courseA = storage.saveCourse({ name: 'Biología', code: 'BIO-101', term: '2026-1', section: '1' });
+    const courseB = storage.saveCourse({ name: 'Química', code: 'QUI-101', term: '2026-1', section: '1' });
+
+    // Primer guardado en courseA
+    const first = storage.saveProject({
+      title: 'Quiz U1',
+      courseId: courseA.id,
+      h5pType: 'Cuestionario',
+      filePath: exportedFile,
+      sourceFiles: [{ name: 'apunte-1.pdf' }],
+      fileSizeBytes: 1024
+    });
+
+    // Sobrescritura confirmada sobre la misma ruta física (sin id explícito) actualiza el registro sin duplicarlo
+    const updated = storage.saveProject({
+      title: 'Quiz U1 Actualizado',
+      courseId: courseB.id,
+      h5pType: 'Tarjetas didácticas',
+      filePath: exportedFile,
+      sourceFiles: [{ name: 'apunte-1.pdf' }, { name: 'guia-2.docx' }],
+      fileSizeBytes: 2048
+    });
+    assert.equal(updated.id, first.id);
+    assert.equal(storage.getProjects().length, 1);
+    assert.equal(storage.getProjects(courseA.id).length, 0);
+
+    const [listed] = storage.getProjects(courseB.id);
+    assert.equal(listed.title, 'Quiz U1 Actualizado');
+    assert.equal(listed.h5pType, 'Tarjetas didácticas');
+    assert.deepEqual(listed.sourceFiles, [{ name: 'apunte-1.pdf' }, { name: 'guia-2.docx' }]);
+    assert.equal(listed.fileExists, true);
+
+    // fileExists nunca se persiste en academic_store.json ni en copias de seguridad
+    const persisted = JSON.parse(fs.readFileSync(storeFile, 'utf8'));
+    assert.equal(Object.hasOwn(persisted.projects[0], 'fileExists'), false);
+    const backup = storage.createBackupPayload();
+    assert.equal(Object.hasOwn(backup.data.projects[0], 'fileExists'), false);
+
+    // Un directorio con nombre .h5p no cuenta como archivo existente
+    assert.equal(storage.verifyFileExists(fakeDirAsH5p), false);
+
+    // Al eliminar el archivo en disco, getProjects refleja fileExists: false
+    fs.unlinkSync(exportedFile);
+    assert.equal(storage.verifyFileExists(exportedFile), false);
+    assert.equal(storage.getProjects(courseB.id)[0].fileExists, false);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

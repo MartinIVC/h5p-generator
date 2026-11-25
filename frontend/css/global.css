@@ -1594,6 +1594,28 @@ body {
   gap: 0.35rem;
 }
 
+.project-card.is-file-missing {
+  border-color: color-mix(in srgb, var(--md-sys-color-error) 45%, var(--md-sys-color-outline-variant));
+}
+
+.project-missing-notice {
+  margin: 0;
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+  background-color: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.35;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.project-missing-notice .icon-svg {
+  flex-shrink: 0;
+}
+
 .project-prompt-preview {
   margin: 0;
   font-size: 0.825rem;
