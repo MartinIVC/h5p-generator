@@ -324,6 +324,15 @@ test('H5P-15: validateH5PPackage detecta ZIP corrupto, traversal, faltantes, hu√
   const badCwBuf = await cwZip.generateAsync({ type: 'nodebuffer' });
   await assert.rejects(() => validateH5PPackage(badCwBuf), { code: 'INVALID_CONTENT_JSON' });
 
+  // H5P-34 (BUG-15): SortParagraphs requiere al menos 3 p√°rrafos
+  const spTpl = await loadTemplate(TEMPLATE_TYPES.SORTPARAGRAPHS);
+  const spZip = await createBasePackageZip(TEMPLATE_TYPES.SORTPARAGRAPHS);
+  spTpl.content.paragraphs = ['<p>Paso 1</p>', '<p>Paso 2</p>'];
+  spZip.file('h5p.json', JSON.stringify(spTpl.metadata));
+  spZip.file('content/content.json', JSON.stringify(spTpl.content));
+  const badSpBuf = await spZip.generateAsync({ type: 'nodebuffer' });
+  await assert.rejects(() => validateH5PPackage(badSpBuf), { code: 'INVALID_CONTENT_JSON' });
+
   // Path traversal en ZIP
   const traversalZip = new JSZip();
   traversalZip.file('../escape.txt', 'x');

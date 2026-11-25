@@ -80,3 +80,40 @@ test('cancelar durante la espera impide otro envío y diferencia timeout', async
     assert.equal(calls, 1);
   }
 });
+
+test('H5P-34 (BUG-22): rechaza claves malformadas sin reintentar y rota al respaldo tras timeout por intento', async t => {
+  for (const badKey of ['AIza con espacio', 'AIza\nlinea', 'AIza—guion']) {
+    let calls = 0;
+    await assert.rejects(
+      generateQuestionsFromChunk('texto sintético', badKey, '', 1, {
+        fetch: async () => { calls++; return success(); },
+        wait: async () => assert.fail('no debe esperar con clave malformada')
+      }),
+      { message: 'API_KEY_INVALID' }
+    );
+    assert.equal(calls, 0);
+  }
+
+  const nativeTimeout = AbortSignal.timeout;
+  const attempts = [];
+  t.mock.method(AbortSignal, 'timeout', ms => {
+    if (ms !== 45000) return nativeTimeout(ms);
+    const attempt = new AbortController();
+    attempts.push(attempt);
+    return attempt.signal;
+  });
+  const paths = [];
+  const data = await generate({
+    fetch: async url => {
+      paths.push(new URL(url).pathname.slice('/v1beta'.length));
+      if (paths.length === 1) {
+        attempts.at(-1).abort(new DOMException('tiempo', 'TimeoutError'));
+        throw new Error('interrumpido');
+      }
+      return success();
+    },
+    wait: async () => {}
+  });
+  assert.deepEqual(data, questions);
+  assert.deepEqual(paths, [primary, backup]);
+});

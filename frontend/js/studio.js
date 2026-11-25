@@ -7,10 +7,13 @@
   const main = document.getElementById('main-content');
 
   function updateNavigation() {
-    const isTrash = !document.getElementById('panel-trash').classList.contains('hidden');
-    const selected = isTrash ? 'trash' : 'home';
+    const panelTrash = document.getElementById('panel-trash');
+    const panelHome = document.getElementById('panel-home');
+    const isTrash = Boolean(panelTrash && !panelTrash.classList.contains('hidden'));
+    const isHome = Boolean(panelHome && !panelHome.classList.contains('hidden'));
+    const selected = isTrash ? 'trash' : (isHome ? 'home' : null);
     sidebar.querySelectorAll('.studio-nav-item').forEach(button => {
-      const active = button.dataset.studioAction === selected;
+      const active = selected !== null && button.dataset.studioAction === selected;
       button.classList.toggle('is-active', active);
       if (active) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
@@ -54,5 +57,10 @@
     document.getElementById('sidebar-draft-count').textContent = event.detail.drafts;
     updateNavigation();
   });
-  new MutationObserver(updateNavigation).observe(document.getElementById('panel-trash'), { attributes: true, attributeFilter: ['class'] });
+  const navObserver = new MutationObserver(updateNavigation);
+  const trashEl = document.getElementById('panel-trash');
+  const homeEl = document.getElementById('panel-home');
+  if (trashEl) navObserver.observe(trashEl, { attributes: true, attributeFilter: ['class'] });
+  if (homeEl) navObserver.observe(homeEl, { attributes: true, attributeFilter: ['class'] });
+  updateNavigation();
 })();

@@ -46,12 +46,20 @@ function validGeneration(value) {
 }
 
 function validSave(value) {
-  return objectWithKeys(value, ['packageId', 'suggestedName'], ['courseId']) &&
-    typeof value.packageId === 'string' && UUID.test(value.packageId) &&
-    (value.courseId === undefined || (typeof value.courseId === 'string' && value.courseId.length > 0 && value.courseId.length <= 128)) &&
-    typeof value.suggestedName === 'string' && value.suggestedName.length > 0 &&
-    value.suggestedName.length <= 200 && !/[\\/\x00-\x1f\x7f]/.test(value.suggestedName) &&
-    value.suggestedName !== '.' && value.suggestedName !== '..';
+  if (!objectWithKeys(value, ['packageId', 'suggestedName'], ['courseId'])) return false;
+  if (typeof value.packageId !== 'string' || !UUID.test(value.packageId)) return false;
+  if (value.courseId !== undefined && (typeof value.courseId !== 'string' || value.courseId.length === 0 || value.courseId.length > 128)) {
+    return false;
+  }
+  if (typeof value.suggestedName !== 'string' || value.suggestedName.length === 0 || value.suggestedName.length > 200) {
+    return false;
+  }
+  const trimmed = value.suggestedName.trim();
+  const baseName = trimmed.replace(/\.h5p$/i, '').trim();
+  return baseName.length > 0 &&
+    !/[\\/:*?"<>|\x00-\x1f\x7f]/.test(trimmed) &&
+    trimmed !== '.' && trimmed !== '..' &&
+    baseName !== '.' && baseName !== '..';
 }
 
 // Un único límite de errores para los nuevos canales. Nunca serializa excepciones.

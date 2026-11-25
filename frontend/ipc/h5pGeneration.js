@@ -1,5 +1,6 @@
 'use strict';
 const fs = require('node:fs/promises');
+const os = require('node:os');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { Worker } = require('node:worker_threads');
@@ -11,6 +12,7 @@ const messages = {
   DOCUMENT_NOT_FOUND: 'Los documentos ya no están disponibles. Vuelve a seleccionarlos.',
   SOURCE_TOO_LARGE: 'El texto de los documentos supera el límite para una generación.',
   MISSING_KEY: 'Configura una clave de Gemini antes de generar.',
+  SECURE_STORAGE_UNAVAILABLE: 'No se pudo acceder al almacenamiento seguro de claves en este equipo.',
   API_KEY_INVALID: 'La clave de Gemini no es válida.',
   API_ACCESS_DENIED: 'Gemini denegó el acceso. Revisa los permisos del proyecto en Google AI Studio.',
   MODEL_UNAVAILABLE: 'No hay un modelo de Gemini disponible para generar la actividad.',
@@ -39,6 +41,16 @@ function resolveGenerationConfig(rawActivityType) {
     ? 'Cuestionario de opción múltiple'
     : spec.projectLabel;
   return { workerType: canonical, projectLabel, spec };
+}
+
+function resolveDefaultSaveDirectory(app) {
+  for (const key of ['documents', 'home']) {
+    try {
+      const dir = app?.getPath?.(key);
+      if (typeof dir === 'string' && dir) return dir;
+    } catch {}
+  }
+  return os.homedir();
 }
 
 function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, generate = generateQuestionsFromChunk, WorkerClass = Worker, fileSystem = fs }) {
@@ -93,10 +105,10 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
     session.requestAbort = requestAbort;
     try {
       let key;
-      try { key = storage.getApiKey(); } catch { return fail('MISSING_KEY'); }
+      try { key = storage.getApiKey(); } catch { return fail('SECURE_STORAGE_UNAVAILABLE'); }
       if (!key) return fail('MISSING_KEY');
       const items = await generate(source, key, request.instructions, request.questionCount, {
-        signal: AbortSignal.any([session.abort.signal, requestAbort.signal, AbortSignal.timeout(90000)]),
+        signal: AbortSignal.any([session.abort.signal, requestAbort.signal]),
         activityType: activityConfig.workerType
       });
       if (requestAbort.signal.aborted && !session.closed) return fail('GENERATION_CANCELLED');
@@ -141,14 +153,16 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
     session.busy = true;
     const pkg = session.package;
     try {
-      const proposed = request.suggestedName.replace(/\.h5p$/i, '') + '.h5p';
+      const proposed = request.suggestedName.trim().replace(/\.h5p$/i, '').trim() + '.h5p';
       const choice = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
-        title: 'Guardar actividad H5P', defaultPath: path.join(app.getPath('documents'), proposed),
+        title: 'Guardar actividad H5P', defaultPath: path.join(resolveDefaultSaveDirectory(app), proposed),
         filters: [{ name: 'Actividad H5P', extensions: ['h5p'] }]
       });
       if (choice.canceled || !choice.filePath) return { status: 'cancelled' };
       if (session.closed || event.sender.isDestroyed() || session.package?.id !== request.packageId) return fail('NOT_FOUND');
-      if (!/\.h5p$/i.test(choice.filePath)) return fail('SAVE_FAILED');
+      if (!/\.h5p$/i.test(choice.filePath)) {
+        return { status: 'error', code: 'SAVE_FAILED', message: 'El archivo debe conservar la extensión .h5p.' };
+      }
       const filePath = choice.filePath;
       try {
         await writeH5PFile(pkg.bytes, filePath, {

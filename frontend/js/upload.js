@@ -367,13 +367,18 @@
 
         <!-- Sección de Prompt e instrucciones adicionales -->
         <div class="upload-prompt-section">
-          <label for="upload-prompt-input" class="upload-prompt-label">
-            Instrucciones para la actividad (opcional):
-          </label>
+          <div class="upload-prompt-header">
+            <label for="upload-prompt-input" class="upload-prompt-label">
+              Instrucciones para la actividad (opcional):
+            </label>
+            <span id="upload-prompt-counter" class="upload-prompt-counter" aria-live="polite">0 / 10.000 caracteres</span>
+          </div>
           <textarea
             id="upload-prompt-input"
             class="upload-prompt-textarea"
             rows="3"
+            maxlength="10000"
+            aria-describedby="upload-prompt-counter"
             placeholder="Ejemplo: Evalúa los conceptos principales con preguntas de dificultad media..."></textarea>
         </div>
 
@@ -522,7 +527,24 @@
     const btnClearAll = container.querySelector('#btn-clear-all');
     const fileListContent = container.querySelector('#file-list-content');
     const promptInput = container.querySelector('#upload-prompt-input');
+    const promptCounter = container.querySelector('#upload-prompt-counter');
     const summaryInfo = container.querySelector('#upload-summary-info');
+
+    function updatePromptCounter() {
+      if (!promptCounter) return;
+      const len = state.prompt.length;
+      promptCounter.textContent = `${len.toLocaleString('es-CL')} / 10.000 caracteres`;
+      promptCounter.classList.toggle('is-limit', len >= 10000);
+    }
+
+    function formatDraftTime(iso, includeDate = false) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return '';
+      return includeDate
+        ? d.toLocaleString('es-CL')
+        : d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+    }
     const btnNextStep = container.querySelector('#btn-next-step');
     const resumeNotice = container.querySelector('#draft-resume-notice');
     const resumeFiles = container.querySelector('#draft-resume-files');
@@ -562,7 +584,10 @@
         });
         if (contextToken === draftContextToken && state.courseId === courseId) {
           state.draftId = saved.id;
-          if (draftStatus) draftStatus.textContent = `Borrador guardado · ${new Date(saved.updatedAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}. Los documentos no se copiaron.`;
+          const savedTime = formatDraftTime(saved.updatedAt, false);
+          if (draftStatus) draftStatus.textContent = savedTime
+            ? `Borrador guardado · ${savedTime}. Los documentos no se copiaron.`
+            : 'Borrador guardado. Los documentos no se copiaron.';
         }
       } catch (err) {
         if (contextToken === draftContextToken && draftStatus) {
@@ -666,7 +691,10 @@
             ? 'Los archivos siguen disponibles en esta sesión.'
             : 'Las instrucciones se conservaron.';
         resumeNotice.classList.toggle('hidden', isSameLiveDraft && state.files.length > 0);
-        if (draftStatus) draftStatus.textContent = `Borrador de ${draft.courseName || getCourseName()} · guardado ${new Date(draft.updatedAt).toLocaleString('es-CL')}.`;
+        const restoredTime = formatDraftTime(draft.updatedAt, true);
+        if (draftStatus) draftStatus.textContent = restoredTime
+          ? `Borrador de ${draft.courseName || getCourseName()} · guardado ${restoredTime}.`
+          : `Borrador de ${draft.courseName || getCourseName()}.`;
       } else {
         state.activityType = null;
         state.activeCategory = 'all';
@@ -678,6 +706,7 @@
       }
 
       promptInput.value = state.prompt;
+      updatePromptCounter();
       updateUI();
     }
 
@@ -845,13 +874,18 @@
 
     // Delegación de eventos para la lista de archivos (previsualizar o remover archivo)
     fileListContent.addEventListener('click', (e) => {
-      // Acción de previsualizar
+      // Acción de previsualizar (solo sobre archivos con formato admitido)
       const previewBtn = e.target.closest('[data-action="preview"]');
       if (previewBtn) {
         e.stopPropagation();
         const idx = parseInt(previewBtn.getAttribute('data-index'), 10);
         if (!isNaN(idx) && window.previewManager) {
-          window.previewManager.open(state.files, idx);
+          const clickedFile = state.files[idx];
+          const validFiles = state.files.filter(f => isFormatAllowed(f.name));
+          const validIdx = validFiles.indexOf(clickedFile);
+          if (validIdx >= 0) {
+            window.previewManager.open(validFiles, validIdx);
+          }
         }
         return;
       }
@@ -875,7 +909,9 @@
 
     // Input de prompt
     promptInput.addEventListener('input', (e) => {
-      state.prompt = e.target.value;
+      state.prompt = e.target.value.slice(0, 10000);
+      if (e.target.value.length > 10000) e.target.value = state.prompt;
+      updatePromptCounter();
       scheduleDraftSave();
     });
 
@@ -988,6 +1024,11 @@
             ${categoryTabsHtml}
           </div>
 
+          <div id="selected-format-hidden-notice" class="selected-format-hidden-notice hidden" role="status" aria-live="polite">
+            <span id="selected-format-hidden-text"></span>
+            <button type="button" class="btn-text-subtle" id="btn-show-selected-format">Mostrar categoría</button>
+          </div>
+
           <div class="activity-selector-grid" role="group" aria-label="Formatos H5P disponibles">
             ${activeCardsHtml}
           </div>
@@ -1034,6 +1075,9 @@
       const countInput = document.getElementById('question-count');
       const countHint = document.getElementById('question-count-hint');
       const nameInput = document.getElementById('h5p-name');
+      const hiddenFormatNotice = document.getElementById('selected-format-hidden-notice');
+      const hiddenFormatText = document.getElementById('selected-format-hidden-text');
+      const showSelectedFormatBtn = document.getElementById('btn-show-selected-format');
       const categoryTabButtons = Array.from(panelSelector.querySelectorAll('.activity-category-tab'));
       const activeCardButtons = Array.from(panelSelector.querySelectorAll('.activity-type-card'));
       const quickCountButtons = Array.from(panelSelector.querySelectorAll('.btn-quick-count'));
@@ -1078,6 +1122,17 @@
           card.setAttribute('aria-pressed', String(isSelected));
           card.disabled = isGenerating;
         });
+
+        const selectedHiddenByFilter = Boolean(
+          selectedCard && state.activeCategory !== 'all' && selectedCard.category !== state.activeCategory
+        );
+        if (hiddenFormatNotice && hiddenFormatText) {
+          hiddenFormatNotice.classList.toggle('hidden', !selectedHiddenByFilter);
+          if (selectedHiddenByFilter) {
+            hiddenFormatText.textContent = `Formato seleccionado: ${selectedCard.label} (en ${selectedCard.categoryLabel}).`;
+          }
+        }
+        if (showSelectedFormatBtn) showSelectedFormatBtn.disabled = isGenerating;
 
         if (countLabel) {
           countLabel.textContent = selectedCard
@@ -1159,6 +1214,13 @@
         });
       });
 
+      showSelectedFormatBtn?.addEventListener('click', () => {
+        const selectedCard = getActivityCard(state.activityType);
+        if (isGenerating || !selectedCard) return;
+        state.activeCategory = selectedCard.category;
+        syncSelectorUI();
+      });
+
       activeCardButtons.forEach(cardBtn => {
         cardBtn.addEventListener('click', () => {
           if (isGenerating) return;
@@ -1218,7 +1280,14 @@
         const minCount = selectedCard ? selectedCard.minCount : 1;
         const maxCount = selectedCard ? selectedCard.maxCount : 20;
         const unitLabel = selectedCard ? selectedCard.unitPlural : 'elementos';
-        const value = Number(countInput.value);
+        const rawValue = countInput.value.trim();
+        if (rawValue === '') {
+          showStatus('');
+          invalidatePreparedPackage();
+          syncSelectorUI();
+          return;
+        }
+        const value = Number(rawValue);
         if (Number.isInteger(value) && value >= minCount && value <= maxCount) {
           state.questionCount = value;
           state.lastVariableCount = value;
@@ -1229,6 +1298,19 @@
         }
         invalidatePreparedPackage();
         syncSelectorUI();
+      });
+
+      countInput.addEventListener('blur', () => {
+        const selectedCard = getActivityCard(state.activityType);
+        if (isGenerating || (selectedCard && selectedCard.fixedCount !== null)) return;
+        const minCount = selectedCard ? selectedCard.minCount : 1;
+        const maxCount = selectedCard ? selectedCard.maxCount : 20;
+        const unitLabel = selectedCard ? selectedCard.unitPlural : 'elementos';
+        const rawValue = countInput.value.trim();
+        const value = Number(rawValue);
+        if (!rawValue || !Number.isInteger(value) || value < minCount || value > maxCount) {
+          showStatus(`Elige entre ${minCount} y ${maxCount} ${unitLabel}.`, true);
+        }
       });
 
       syncSelectorUI();
@@ -1293,8 +1375,9 @@
       });
       saveButton.addEventListener('click', async () => {
         const suggestedName = nameInput.value.trim();
-        if (!suggestedName || /[\\/\x00-\x1f\x7f]/.test(suggestedName) || suggestedName === '.' || suggestedName === '..') {
-          showStatus('Escribe un nombre de archivo válido, sin barras.', true); nameInput.focus(); return;
+        const baseName = suggestedName.replace(/\.h5p$/i, '').trim();
+        if (!baseName || /[\\/:*?"<>|\x00-\x1f\x7f]/.test(suggestedName) || suggestedName === '.' || suggestedName === '..' || baseName === '.' || baseName === '..') {
+          showStatus('Escribe un nombre de archivo válido (sin barras ni caracteres especiales como : * ? " < > |).', true); nameInput.focus(); return;
         }
         if (!packageId) return;
         saveButton.disabled = true; generateButton.disabled = true;

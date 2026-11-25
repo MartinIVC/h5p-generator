@@ -73,6 +73,106 @@ function normalizeSpanishWord(raw, { uppercase = false } = {}) {
   return re.test(cased) ? cased : null;
 }
 
+function canPlaceCrosswordGrid(words) {
+  const ordered = [...words].sort((a, b) => b.length - a.length);
+  const grid = new Map();
+  const dirs = new Map();
+  let steps = 0;
+  const MAX_STEPS = 5000;
+
+  const keyOf = (r, c) => `${r},${c}`;
+
+  const canPlace = (word, startR, startC, dir) => {
+    const dr = dir === 'V' ? 1 : 0;
+    const dc = dir === 'H' ? 1 : 0;
+    if (grid.has(keyOf(startR - dr, startC - dc))) return false;
+    if (grid.has(keyOf(startR + word.length * dr, startC + word.length * dc))) return false;
+    let intersections = 0;
+    for (let i = 0; i < word.length; i++) {
+      const r = startR + i * dr;
+      const c = startC + i * dc;
+      const key = keyOf(r, c);
+      const existing = grid.get(key);
+      if (existing !== undefined) {
+        if (existing !== word[i]) return false;
+        if (dirs.get(key)?.includes(dir)) return false;
+        intersections++;
+      } else {
+        if (grid.has(keyOf(r + dc, c + dr)) || grid.has(keyOf(r - dc, c - dr))) return false;
+      }
+    }
+    return intersections > 0;
+  };
+
+  const applyPlacement = (word, startR, startC, dir) => {
+    const dr = dir === 'V' ? 1 : 0;
+    const dc = dir === 'H' ? 1 : 0;
+    const changes = [];
+    for (let i = 0; i < word.length; i++) {
+      const r = startR + i * dr;
+      const c = startC + i * dc;
+      const key = keyOf(r, c);
+      changes.push([key, grid.get(key), dirs.get(key)]);
+      grid.set(key, word[i]);
+      const prevDir = dirs.get(key) || '';
+      dirs.set(key, prevDir.includes(dir) ? prevDir : prevDir + dir);
+    }
+    return changes;
+  };
+
+  const undoPlacement = (changes) => {
+    for (let i = changes.length - 1; i >= 0; i--) {
+      const [key, prevChar, prevDir] = changes[i];
+      if (prevChar === undefined) grid.delete(key);
+      else grid.set(key, prevChar);
+      if (prevDir === undefined) dirs.delete(key);
+      else dirs.set(key, prevDir);
+    }
+  };
+
+  applyPlacement(ordered[0], 0, 0, 'H');
+  const remaining = ordered.slice(1);
+
+  const solve = (pending) => {
+    if (pending.length === 0) return true;
+    if (steps >= MAX_STEPS) return true;
+
+    for (let idx = 0; idx < pending.length; idx++) {
+      const word = pending[idx];
+      const placements = [];
+      for (const [cellKey, ch] of grid.entries()) {
+        const cellDir = dirs.get(cellKey);
+        if (cellDir === 'HV' || cellDir === 'VH') continue;
+        const targetDir = cellDir === 'H' ? 'V' : 'H';
+        const [rStr, cStr] = cellKey.split(',');
+        const r = Number(rStr);
+        const c = Number(cStr);
+        for (let pos = 0; pos < word.length; pos++) {
+          if (word[pos] !== ch) continue;
+          const startR = targetDir === 'V' ? r - pos : r;
+          const startC = targetDir === 'H' ? c - pos : c;
+          if (canPlace(word, startR, startC, targetDir)) {
+            placements.push([startR, startC, targetDir]);
+          }
+        }
+      }
+      if (placements.length === 0) continue;
+
+      const nextPending = pending.slice(0, idx).concat(pending.slice(idx + 1));
+      for (const [startR, startC, targetDir] of placements) {
+        steps++;
+        if (steps >= MAX_STEPS) return true;
+        const changes = applyPlacement(word, startR, startC, targetDir);
+        if (solve(nextPending)) return true;
+        undoPlacement(changes);
+      }
+    }
+    return false;
+  };
+
+  return solve(remaining);
+}
+
 function areWordsConnected(words) {
   if (!Array.isArray(words) || words.length < 2) return false;
   const charSets = words.map(word => new Set(word));
@@ -91,7 +191,8 @@ function areWordsConnected(words) {
       }
     }
   }
-  return visited.size === words.length;
+  if (visited.size !== words.length) return false;
+  return canPlaceCrosswordGrid(words);
 }
 
 function stripCompleteOptionPrefixes(options) {
@@ -536,7 +637,8 @@ async function generateQuestionsFromChunk(text, apiKey, instructions = '', count
       return parseActivityResponse(payload, canonicalType, count);
     } catch (error) {
       if (signal.aborted) throw new Error(signal.reason?.name === 'TimeoutError' ? 'GENERATION_TIMEOUT' : 'GENERATION_CANCELLED');
-      if (attemptSignal.aborted) error = new Error('GENERATION_TIMEOUT');
+      const attemptTimedOut = attemptSignal.aborted;
+      if (attemptTimedOut) error = new Error('GENERATION_TIMEOUT');
       if (error.message === 'INVALID_RESPONSE') {
         if (error.reason === 'BLOCKED' || correctionsUsed >= 1 || lastAttempt) throw error;
         correctionsUsed++;
@@ -545,7 +647,7 @@ async function generateQuestionsFromChunk(text, apiKey, instructions = '', count
         correction = buildCorrectionInstruction(canonicalType, error.reason, count);
         continue;
       }
-      if (canSwitchModel(error) && !lastAttempt && modelIndex + 1 < MODELS.length) {
+      if ((canSwitchModel(error) || attemptTimedOut) && !lastAttempt && modelIndex + 1 < MODELS.length) {
         modelIndex++;
         if (error.message === 'MODEL_UNAVAILABLE') continue;
       }

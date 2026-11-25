@@ -167,8 +167,9 @@ class AcademicStorage {
         throw new Error('La estructura de los datos locales no es válida.');
       }
       const courses = parsed.courses.map(c => {
+        if (!c || typeof c !== 'object') return c;
         if (!c.section) {
-          const secFromDesc = c.description && /^s\d+$/i.test(c.description.trim())
+          const secFromDesc = typeof c.description === 'string' && /^s\d+$/i.test(c.description.trim())
             ? c.description.trim().replace(/^s/i, '')
             : '1';
           return { ...c, section: secFromDesc };
@@ -193,10 +194,15 @@ class AcademicStorage {
    * @param {{ courses: Array<any>, projects: Array<any> }} data
    */
   _writeData(data) {
-    const tempPath = `${this.filePath}.tmp.${Date.now()}`;
+    const tempPath = `${this.filePath}.tmp.${crypto.randomUUID()}`;
     const payload = JSON.stringify(data, null, 2);
-    fs.writeFileSync(tempPath, payload, 'utf-8');
-    fs.renameSync(tempPath, this.filePath);
+    try {
+      fs.writeFileSync(tempPath, payload, { encoding: 'utf-8', mode: 0o600 });
+      fs.renameSync(tempPath, this.filePath);
+    } catch (error) {
+      try { fs.rmSync(tempPath, { force: true }); } catch {}
+      throw error;
+    }
   }
 
   // ==========================================
@@ -312,35 +318,60 @@ class AcademicStorage {
    * @returns {object} Ramo guardado
    */
   saveCourse(courseInput) {
-    if (!courseInput.name || !courseInput.name.trim()) {
+    if (!courseInput || typeof courseInput !== 'object' || Array.isArray(courseInput)) {
+      throw new Error('Los datos de la asignatura no son válidos.');
+    }
+    if (typeof courseInput.name !== 'string' || !courseInput.name.trim()) {
       throw new Error('El nombre de la asignatura es obligatorio');
     }
+    const safeName = courseInput.name.trim().slice(0, 240);
+    const safeCode = typeof courseInput.code === 'string' ? courseInput.code.trim().toUpperCase().slice(0, 80) : '';
+    const safeTerm = typeof courseInput.term === 'string' ? courseInput.term.trim().slice(0, 120) : '';
+    const safeSection = typeof courseInput.section === 'string' && courseInput.section.trim()
+      ? courseInput.section.trim().slice(0, 80)
+      : '1';
+    const safeColorTag = typeof courseInput.colorTag === 'string' && courseInput.colorTag.trim()
+      ? courseInput.colorTag.trim().slice(0, 40)
+      : '';
+    const safeDescription = typeof courseInput.description === 'string'
+      ? courseInput.description.trim().slice(0, 2000)
+      : '';
+
+    const normalizedInput = {
+      ...courseInput,
+      code: safeCode,
+      name: safeName,
+      term: safeTerm,
+      section: safeSection
+    };
+
     const data = this._readData();
     const now = new Date().toISOString();
 
     // Validación de duplicados (mismo código/nombre + semestre + sección)
-    const duplicate = this._findDuplicateCourse(courseInput, data.courses, courseInput.id || null);
+    const courseId = typeof courseInput.id === 'string' && courseInput.id.trim() ? courseInput.id.trim() : null;
+    const duplicate = this._findDuplicateCourse(normalizedInput, data.courses, courseId);
     if (duplicate) {
       const secDetail = duplicate.section ? `, sección "${duplicate.section}"` : '';
       const termDetail = duplicate.term ? ` (${duplicate.term})` : '';
       throw new Error(`Ya existe un ramo registrado para "${duplicate.name}"${termDetail}${secDetail}. Modifica la sección o el periodo para evitar duplicados.`);
     }
 
-    if (courseInput.id) {
+    if (courseId) {
       // Actualización de ramo existente
-      const index = data.courses.findIndex(c => c.id === courseInput.id);
+      const index = data.courses.findIndex(c => c.id === courseId);
       if (index === -1) {
-        throw new Error(`Ramo con id ${courseInput.id} no encontrado`);
+        throw new Error(`Ramo con id ${courseId} no encontrado`);
       }
       const existing = data.courses[index];
       const updated = {
         ...existing,
-        code: (courseInput.code || '').trim().toUpperCase(),
-        name: courseInput.name.trim(),
-        term: (courseInput.term || '').trim(),
-        section: (courseInput.section || '1').trim(),
-        colorTag: courseInput.colorTag || existing.colorTag || 'primary',
-        description: (courseInput.description || '').trim(),
+        code: safeCode,
+        name: safeName,
+        term: safeTerm,
+        section: safeSection,
+        colorTag: safeColorTag || existing.colorTag || 'primary',
+        description: safeDescription,
         updatedAt: now
       };
       data.courses[index] = updated;
@@ -351,12 +382,15 @@ class AcademicStorage {
     // Creación de nuevo ramo
     const newCourse = {
       id: crypto.randomUUID(),
-      code: (courseInput.code || '').trim().toUpperCase(),
-      name: courseInput.name.trim(),
-      term: (courseInput.term || '').trim(),
-      section: (courseInput.section || '1').trim(),
-      colorTag: courseInput.colorTag || 'primary',
-      description: (courseInput.description || '').trim(),
+      code: safeCode,
+      name: safeName,
+      term: safeTerm,
+      section: safeSection,
+      colorTag: safeColorTag || 'primary',
+      description: safeDescription,
+      isFavorite: false,
+      archivedAt: null,
+      lastOpenedAt: null,
       createdAt: now,
       updatedAt: now
     };
@@ -400,7 +434,7 @@ class AcademicStorage {
       id: typeof draftInput.id === 'string' && draftInput.id ? draftInput.id : crypto.randomUUID(),
       courseId: draftInput.courseId,
       courseName: typeof draftInput.courseName === 'string' ? draftInput.courseName.slice(0, 240) : '',
-      prompt: typeof draftInput.prompt === 'string' ? draftInput.prompt.slice(0, 12000) : '',
+      prompt: typeof draftInput.prompt === 'string' ? draftInput.prompt.slice(0, 10000) : '',
       activityType,
       questionCount,
       files: Array.isArray(draftInput.files)
@@ -459,6 +493,10 @@ class AcademicStorage {
     if (!payload.data || !Array.isArray(payload.data.courses) || !Array.isArray(payload.data.projects)) {
       throw new Error('La copia no contiene listas válidas de ramos y proyectos.');
     }
+    if ((payload.data.drafts !== undefined && !Array.isArray(payload.data.drafts)) ||
+        (payload.data.trash !== undefined && !Array.isArray(payload.data.trash))) {
+      throw new Error('La copia contiene listas de borradores o papelera con formato no válido.');
+    }
     const drafts = Array.isArray(payload.data.drafts) ? payload.data.drafts : [];
     const trash = Array.isArray(payload.data.trash) ? payload.data.trash : [];
     const hasInvalidCourse = payload.data.courses.some(course => !course || typeof course.id !== 'string' || !course.id.trim() || typeof course.name !== 'string' || !course.name.trim());
@@ -500,7 +538,7 @@ class AcademicStorage {
           courseId: draft.courseId.slice(0, 120),
           previousCourseId: typeof draft.previousCourseId === 'string' ? draft.previousCourseId.slice(0, 120) : undefined,
           courseName: typeof draft.courseName === 'string' ? draft.courseName.slice(0, 240) : '',
-          prompt: typeof draft.prompt === 'string' ? draft.prompt.slice(0, 12000) : '',
+          prompt: typeof draft.prompt === 'string' ? draft.prompt.slice(0, 10000) : '',
           activityType,
           questionCount: normalizeDraftQuestionCount(draft.questionCount, activityType),
           files: Array.isArray(draft.files)
@@ -553,7 +591,8 @@ class AcademicStorage {
     const directory = path.join(path.dirname(this.filePath), 'backups');
     fs.mkdirSync(directory, { recursive: true });
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupPath = path.join(directory, `academic_store-before-restore-${timestamp}.json`);
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const backupPath = path.join(directory, `academic_store-before-restore-${timestamp}-${suffix}.json`);
     fs.writeFileSync(backupPath, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
     return backupPath;
   }
@@ -603,6 +642,9 @@ class AcademicStorage {
     const [item] = data.trash.splice(index, 1);
     if (item.type === 'course') {
       if (data.courses.some(course => course.id === item.record.id)) throw new Error('Ese ramo ya existe y no se puede duplicar.');
+      if (this._findDuplicateCourse(item.record, data.courses)) {
+        throw new Error('Ya existe un ramo equivalente (mismo código o nombre, período y sección).');
+      }
       data.courses.push(item.record);
       data.projects = data.projects.map(project => {
         if (project.courseId !== 'unassigned' || project.previousCourseId !== item.record.id) return project;
@@ -681,23 +723,45 @@ class AcademicStorage {
    * @returns {object} Proyecto registrado
    */
   saveProject(projectInput) {
-    if (!projectInput.title || !projectInput.title.trim()) {
+    if (!projectInput || typeof projectInput !== 'object' || Array.isArray(projectInput)) {
+      throw new Error('Los datos del proyecto no son válidos.');
+    }
+    if (typeof projectInput.title !== 'string' || !projectInput.title.trim()) {
       throw new Error('El título del proyecto es obligatorio');
     }
 
     const data = this._readData();
     const now = new Date().toISOString();
+    const rawId = typeof projectInput.id === 'string' && projectInput.id.trim()
+      ? projectInput.id.trim().slice(0, 120)
+      : '';
+    if (rawId && data.projects.some(existing => existing.id === rawId)) {
+      throw new Error('Ya existe un proyecto con ese identificador.');
+    }
+
+    const rawCourseId = typeof projectInput.courseId === 'string' && projectInput.courseId.trim()
+      ? projectInput.courseId.trim().slice(0, 120)
+      : 'unassigned';
+    if (rawCourseId !== 'unassigned' && !data.courses.some(course => course.id === rawCourseId)) {
+      throw new Error('El ramo seleccionado para el proyecto no existe.');
+    }
 
     const newProject = {
-      id: projectInput.id || crypto.randomUUID(),
-      courseId: projectInput.courseId || 'unassigned',
-      title: projectInput.title.trim(),
-      h5pType: projectInput.h5pType || 'H5P General',
-      filePath: projectInput.filePath || '',
-      sourceFiles: Array.isArray(projectInput.sourceFiles) ? projectInput.sourceFiles : [],
-      promptSummary: (projectInput.promptSummary || '').trim(),
-      fileSizeBytes: projectInput.fileSizeBytes || 0,
-      exportedAt: projectInput.exportedAt || now
+      id: rawId || crypto.randomUUID(),
+      courseId: rawCourseId,
+      title: projectInput.title.trim().slice(0, 240),
+      h5pType: typeof projectInput.h5pType === 'string' && projectInput.h5pType.trim()
+        ? projectInput.h5pType.trim().slice(0, 120)
+        : 'H5P General',
+      filePath: typeof projectInput.filePath === 'string' ? projectInput.filePath.slice(0, 4096) : '',
+      sourceFiles: Array.isArray(projectInput.sourceFiles)
+        ? projectInput.sourceFiles.slice(0, 50).map(file => ({
+          name: typeof file === 'string' ? file.slice(0, 255) : (typeof file?.name === 'string' ? file.name.slice(0, 255) : '')
+        })).filter(file => file.name)
+        : [],
+      promptSummary: typeof projectInput.promptSummary === 'string' ? projectInput.promptSummary.trim().slice(0, 10000) : '',
+      fileSizeBytes: Number.isFinite(projectInput.fileSizeBytes) && projectInput.fileSizeBytes > 0 ? projectInput.fileSizeBytes : 0,
+      exportedAt: typeof projectInput.exportedAt === 'string' && projectInput.exportedAt ? projectInput.exportedAt : now
     };
 
     data.projects.unshift(newProject);

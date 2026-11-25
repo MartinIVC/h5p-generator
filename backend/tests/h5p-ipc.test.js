@@ -57,6 +57,9 @@ test('rechaza emisores y argumentos inválidos antes de acceder a servicios', as
   ]) assert.equal((await generate({ trusted: true }, value)).code, 'INVALID_ARGUMENT');
   assert.equal((await generate({ trusted: true }, { ...requests['h5p:generate'], title: 'Evaluación Unidad 1' })).code, 'NOT_AVAILABLE');
   assert.equal((await handlers.get('h5p:save-file')({ trusted: true }, { packageId: id, suggestedName: '../secret' })).code, 'INVALID_ARGUMENT');
+  for (const badName of ['.h5p', '   ', '   .h5p', 'actividad:1', 'actividad?1', 'actividad*1', 'actividad<1>']) {
+    assert.equal((await handlers.get('h5p:save-file')({ trusted: true }, { packageId: id, suggestedName: badName })).code, 'INVALID_ARGUMENT');
+  }
 });
 test('captura errores sin revelar excepciones ni datos privados', async () => {
   const wrapped = handler(() => true, () => true, async () => { throw new Error('clave y documento privado'); });

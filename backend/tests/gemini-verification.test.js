@@ -44,3 +44,42 @@ test('informa ausencia de modelos y respeta el presupuesto total de verificació
   } }), 'error');
   assert.equal(calls, 1);
 });
+
+test('H5P-34 (BUG-22): 503 o timeout en ambos modelos devuelve error (no unavailable) y rechaza claves malformadas sin red', async t => {
+  for (const invalidKey of ['AIza con espacio', 'AIza\nlinea', 'AIza—guion', 'clave🔑']) {
+    let calls = 0;
+    const status = await verifyGeminiKey(invalidKey, { fetch: async () => { calls++; return new Response('{}'); } });
+    assert.equal(status, 'invalid');
+    assert.equal(calls, 0);
+  }
+
+  let calls = 0;
+  assert.equal(await verifyGeminiKey('clave-sintética', { fetch: async () => {
+    calls++;
+    return new Response(null, { status: 503 });
+  } }), 'error');
+  assert.equal(calls, 2);
+
+  calls = 0;
+  assert.equal(await verifyGeminiKey('clave-sintética', { fetch: async () => {
+    calls++;
+    return new Response(null, { status: calls === 1 ? 404 : 503 });
+  } }), 'error');
+  assert.equal(calls, 2);
+
+  const nativeTimeout = AbortSignal.timeout;
+  const attempts = [];
+  t.mock.method(AbortSignal, 'timeout', ms => {
+    if (ms !== 7500) return nativeTimeout(ms);
+    const attempt = new AbortController();
+    attempts.push(attempt);
+    return attempt.signal;
+  });
+  calls = 0;
+  assert.equal(await verifyGeminiKey('clave-sintética', { fetch: async () => {
+    calls++;
+    attempts.at(-1).abort(new DOMException('tiempo', 'TimeoutError'));
+    throw new Error('interrumpido');
+  } }), 'error');
+  assert.equal(calls, 2);
+});

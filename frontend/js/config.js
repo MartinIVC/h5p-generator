@@ -24,6 +24,7 @@
     currentTheme: localStorage.getItem(THEME_STORAGE_KEY) || THEMES.SYSTEM,
     hasKey: false,
     maskedKey: '',
+    storageError: false,
     isEditingKey: false,
     isConfirmingRemoveKey: false,
     onSuccessCallback: null,
@@ -150,11 +151,14 @@
       const status = await api.getApiKeyStatus();
       state.hasKey = Boolean(status.hasKey);
       state.maskedKey = status.maskedKey || '';
+      state.storageError = false;
       notifyListeners();
     } catch (err) {
       console.error('[config.js] Error consultando API key status:', err);
       state.hasKey = false;
       state.maskedKey = '';
+      state.storageError = true;
+      notifyListeners();
     }
   }
 
@@ -403,6 +407,11 @@
               : 'La clave API se utiliza localmente en tu equipo para analizar tus apuntes docentes y generar preguntas y actividades interactivas H5P con IA.'}
           </p>
         </div>
+        ${state.storageError ? `
+          <p class="api-key-verification-error" role="alert">
+            No se pudo acceder al almacenamiento seguro de claves en este equipo. Comprueba que el llavero del sistema esté desbloqueado e inténtalo de nuevo.
+          </p>
+        ` : ''}
         ${keyContentHTML}
         <p id="api-key-verification" role="status" aria-live="polite"></p>
       </section>
@@ -556,7 +565,11 @@
         if (!result) throw new Error('La función de restauración no está disponible.');
         if (result.canceled) return;
         pendingBackupId = result.backupId;
-        backupPreviewSummary.textContent = `${formatBackupCounts(result.counts)} Fecha de la copia: ${result.exportedAt ? new Date(result.exportedAt).toLocaleString('es-CL') : 'no indicada'}.`;
+        const exportedDate = result.exportedAt ? new Date(result.exportedAt) : null;
+        const formattedExportDate = exportedDate && !Number.isNaN(exportedDate.getTime())
+          ? exportedDate.toLocaleString('es-CL')
+          : 'no indicada';
+        backupPreviewSummary.textContent = `${formatBackupCounts(result.counts)} Fecha de la copia: ${formattedExportDate}.`;
         backupPreview.classList.remove('hidden');
         replaceConfirm.classList.add('hidden');
         document.getElementById('btn-merge-backup')?.focus();
@@ -665,7 +678,7 @@
         } catch (err) {
           btnConfirmRemove.disabled = false;
           btnConfirmRemove.textContent = 'Eliminar clave';
-          window.uiMessage?.(`No se pudo eliminar la clave: ${err.message}`, 'error');
+          window.uiMessage?.('No se pudo eliminar la clave. Inténtalo de nuevo.', 'error');
         }
       });
     }
@@ -679,10 +692,12 @@
       verifyButton.addEventListener('click', async () => {
         const candidate = inputKey ? inputKey.value.trim() : null;
         if (inputKey && !candidate) {
+          verification.className = 'api-key-verification-error';
           verification.textContent = 'Ingresa una clave para probarla.';
           return;
         }
         verifyButton.disabled = true;
+        verification.className = '';
         verification.textContent = 'Comprobando clave…';
         try {
           const result = await window.academicAPI?.verifyApiKey?.(candidate);
@@ -698,12 +713,16 @@
           verification.textContent = messages[result?.status] || messages.error;
           verification.className = result?.status === 'valid' ? 'api-key-verification-success' : 'api-key-verification-error';
         } catch {
+          verification.className = 'api-key-verification-error';
           verification.textContent = 'No se pudo comprobar la clave. Revisa la conexión e inténtalo de nuevo.';
         } finally {
           verifyButton.disabled = false;
         }
       });
-      inputKey?.addEventListener('input', () => { verification.textContent = ''; });
+      inputKey?.addEventListener('input', () => {
+        verification.textContent = '';
+        verification.className = '';
+      });
     }
     if (btnTogglePwd && inputKey) {
       btnTogglePwd.addEventListener('click', () => {
@@ -739,10 +758,19 @@
           return;
         }
 
+        const saveBtn = document.getElementById('btn-save-api-key');
+        const originalLabel = saveBtn ? saveBtn.textContent : '';
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Guardando…';
+        }
+
         try {
           const res = await api.saveApiKey(rawKey);
+          inputKey.value = '';
           state.hasKey = res.hasKey;
           state.maskedKey = res.maskedKey;
+          state.storageError = false;
           state.isEditingKey = false;
           notifyListeners();
 
@@ -755,6 +783,11 @@
           }
         } catch (err) {
           window.uiMessage?.('No se pudo guardar la clave API de forma segura.', 'error');
+        } finally {
+          if (saveBtn?.isConnected) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = originalLabel;
+          }
         }
       });
     }

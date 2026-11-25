@@ -9,8 +9,9 @@
   'use strict';
 
   // Extensiones clasificadas por tipo de visor
-  const TEXT_EXTENSIONS = ['txt', 'md', 'csv', 'json', 'log', 'rtf'];
-  const OFFICE_EXTENSIONS = ['docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'odt', 'ods', 'odp'];
+  const TEXT_EXTENSIONS = ['txt', 'md', 'csv', 'json', 'log'];
+  const OFFICE_EXTENSIONS = ['docx', 'doc', 'pptx', 'xlsx', 'xls', 'odt', 'ods', 'odp', 'rtf'];
+  const MAX_TEXT_PREVIEW_BYTES = 512 * 1024;
 
   // Estado interno del visor
   const state = {
@@ -85,6 +86,7 @@
   function formatDate(timestamp) {
     if (!timestamp) return 'Desconocida';
     const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return 'Desconocida';
     return date.toLocaleDateString('es-CL', {
       year: 'numeric',
       month: 'short',
@@ -345,6 +347,10 @@
     `;
 
     const reader = new FileReader();
+    const isTruncated = typeof file.size === 'number' && file.size > MAX_TEXT_PREVIEW_BYTES;
+    const targetBlob = isTruncated && typeof file.slice === 'function'
+      ? file.slice(0, MAX_TEXT_PREVIEW_BYTES)
+      : file;
 
     reader.onload = function (event) {
       if (!state.isOpen || token !== loadToken) return;
@@ -352,6 +358,14 @@
 
       const wrapper = document.createElement('div');
       wrapper.className = 'preview-text-wrapper';
+
+      if (isTruncated) {
+        const notice = document.createElement('p');
+        notice.className = 'preview-text-notice';
+        notice.setAttribute('role', 'status');
+        notice.textContent = `Vista previa parcial: se muestran los primeros 512 KB de ${formatBytes(file.size)}. El archivo completo se analizará al generar.`;
+        wrapper.appendChild(notice);
+      }
 
       const pre = document.createElement('pre');
       pre.className = 'preview-text-content';
@@ -365,7 +379,7 @@
 
       bodyEl.innerHTML = '';
       bodyEl.appendChild(wrapper);
-      setLoadStatus('Vista previa lista.');
+      setLoadStatus(isTruncated ? 'Vista previa parcial lista.' : 'Vista previa lista.');
     };
 
     reader.onerror = function () {
@@ -380,7 +394,7 @@
       setLoadStatus('No se pudo cargar la vista previa.', true);
     };
 
-    reader.readAsText(file, 'utf-8');
+    reader.readAsText(targetBlob, 'utf-8');
   }
 
   /**
