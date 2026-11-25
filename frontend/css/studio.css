@@ -410,8 +410,16 @@ button { -webkit-tap-highlight-color: transparent; }
   background: var(--md-sys-color-surface-container);
 }
 .activity-selector-card {
-  width: min(100%, 54rem);
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 28px;
   text-align: left;
+}
+@media (max-width: 900px) {
+  .activity-selector-card {
+    padding: 20px;
+  }
 }
 .activity-selector-card .selector-intro {
   margin: 0.35rem 0 0.75rem;

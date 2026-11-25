@@ -295,9 +295,21 @@ async function run() {
     const input = document.getElementById('upload-file-input');
     input.files = transfer.files;
     input.dispatchEvent(new Event('change', {bubbles:true}));
-    document.getElementById('btn-next-step').click();
   })()`);
+  await waitFor('!document.getElementById("btn-next-step").disabled');
+  // Verificar que el ancho del panel de Paso 1 y Paso 2 coinciden tanto en escritorio (1280x800) como en 840x600
+  const step1Width840 = await evaluate('document.querySelector("#panel-upload .upload-card-wrapper").getBoundingClientRect().width');
+  window.setSize(1280, 800);
+  await new Promise(resolve => setTimeout(resolve, 60));
+  const step1Width1280 = await evaluate('document.querySelector("#panel-upload .upload-card-wrapper").getBoundingClientRect().width');
+  await evaluate(`document.getElementById('btn-next-step').click()`);
   await waitFor('Boolean(document.getElementById("question-count"))');
+  const step2Width1280 = await evaluate('document.getElementById("activity-selector-card").getBoundingClientRect().width');
+  assert.ok(Math.abs(step1Width1280 - step2Width1280) <= 1, `Ancho Paso 1 (${step1Width1280}) != Paso 2 (${step2Width1280}) en 1280x800`);
+  window.setSize(840, 600);
+  await new Promise(resolve => setTimeout(resolve, 60));
+  const step2Width840 = await evaluate('document.getElementById("activity-selector-card").getBoundingClientRect().width');
+  assert.ok(Math.abs(step1Width840 - step2Width840) <= 1, `Ancho Paso 1 (${step1Width840}) != Paso 2 (${step2Width840}) en 840x600`);
   assert.equal(await evaluate('document.activeElement.id'), 'selector-title');
   assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true);
   // CA-4 + H5P-16: botón Generar Evaluación deshabilitado antes de elegir formato y 12 formatos activos con filtros por categoría
