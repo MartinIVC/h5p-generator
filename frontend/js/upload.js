@@ -1,6 +1,6 @@
 /**
  * upload.js
- * Componente modular para el panel de subida de archivos y prompt (Paso 1).
+ * Componente modular para la carga de documentos (Paso 1) y la configuración de actividad e instrucciones (Paso 2).
  * Inserta la interfaz dinámicamente y gestiona la lista enumerada de archivos.
  * Valida los formatos que el extractor del backend puede procesar.
  */
@@ -28,6 +28,8 @@
     { id: 'study', label: 'Estudio' }
   ];
 
+  const DEFAULT_PROMPT_PLACEHOLDER = 'Ejemplo: Enfoca la actividad en los conceptos clave de la unidad con dificultad intermedia y lenguaje claro…';
+
   const ACTIVITY_CARDS = [
     {
       type: 'questionset',
@@ -43,7 +45,8 @@
       unitPlural: 'preguntas',
       scopeBadge: '1 a 20 preguntas',
       defaultFileName: 'cuestionario',
-      description: 'Secuencia evaluativa con navegación, progreso y puntaje final.'
+      description: 'Secuencia evaluativa con navegación, progreso y puntaje final.',
+      promptPlaceholder: 'Ejemplo: Evalúa los conceptos principales de la unidad con preguntas de aplicación de dificultad media…'
     },
     {
       type: 'multichoice',
@@ -59,7 +62,8 @@
       unitPlural: 'preguntas',
       scopeBadge: '1 pregunta individual',
       defaultFileName: 'opcion-multiple',
-      description: 'Reactivo individual autónomo con cuatro alternativas y retroalimentación.'
+      description: 'Reactivo individual autónomo con cuatro alternativas y retroalimentación.',
+      promptPlaceholder: 'Ejemplo: Plantea un caso práctico breve sobre el tema central y explica por qué la alternativa correcta lo resuelve…'
     },
     {
       type: 'truefalse',
@@ -75,7 +79,8 @@
       unitPlural: 'afirmaciones',
       scopeBadge: '1 afirmación',
       defaultFileName: 'verdadero-falso',
-      description: 'Afirmación conceptual con retroalimentación diferenciada según la respuesta.'
+      description: 'Afirmación conceptual con retroalimentación diferenciada según la respuesta.',
+      promptPlaceholder: 'Ejemplo: Redacta una afirmación conceptual frecuente donde los estudiantes suelen confundirse y aclara el fundamento…'
     },
     {
       type: 'singlechoiceset',
@@ -91,7 +96,8 @@
       unitPlural: 'preguntas',
       scopeBadge: '1 a 20 preguntas',
       defaultFileName: 'seleccion-unica',
-      description: 'Ronda ágil de preguntas breves con respuesta inmediata y avance continuo.'
+      description: 'Ronda ágil de preguntas breves con respuesta inmediata y avance continuo.',
+      promptPlaceholder: 'Ejemplo: Crea una ronda rápida de repaso sobre definiciones clave antes de la evaluación sumativa…'
     },
     {
       type: 'blanks',
@@ -107,7 +113,8 @@
       unitPlural: 'enunciados',
       scopeBadge: '1 a 20 enunciados',
       defaultFileName: 'rellenar-espacios',
-      description: 'Oraciones con espacios para escribir términos clave del material.'
+      description: 'Oraciones con espacios para escribir términos clave del material.',
+      promptPlaceholder: 'Ejemplo: Prioriza los términos técnicos clave del capítulo con oraciones claras y contexto suficiente…'
     },
     {
       type: 'dragtext',
@@ -123,7 +130,8 @@
       unitPlural: 'enunciados',
       scopeBadge: '1 a 20 enunciados',
       defaultFileName: 'arrastrar-palabras',
-      description: 'Enunciados interactivos para arrastrar conceptos a su posición correcta.'
+      description: 'Enunciados interactivos para arrastrar conceptos a su posición correcta.',
+      promptPlaceholder: 'Ejemplo: Usa enunciados breves para asociar cada concepto principal con su función o característica…'
     },
     {
       type: 'summary',
@@ -139,7 +147,8 @@
       unitPlural: 'bloques',
       scopeBadge: '1 a 20 bloques',
       defaultFileName: 'resumen-interactivo',
-      description: 'Construcción guiada de un resumen eligiendo la afirmación correcta.'
+      description: 'Construcción guiada de un resumen eligiendo la afirmación correcta.',
+      promptPlaceholder: 'Ejemplo: Sintetiza las ideas centrales en orden progresivo para repasar al cierre de la clase…'
     },
     {
       type: 'sortparagraphs',
@@ -155,7 +164,8 @@
       unitPlural: 'párrafos',
       scopeBadge: '3 a 20 párrafos',
       defaultFileName: 'ordenar-parrafos',
-      description: 'Secuencia de pasos o procesos para ordenar lógica o cronológicamente.'
+      description: 'Secuencia de pasos o procesos para ordenar lógica o cronológicamente.',
+      promptPlaceholder: 'Ejemplo: Secuencia las etapas del proceso descrito en los apuntes desde el inicio hasta el resultado final…'
     },
     {
       type: 'crossword',
@@ -171,7 +181,8 @@
       unitPlural: 'palabras',
       scopeBadge: '2 a 20 palabras',
       defaultFileName: 'crucigrama',
-      description: 'Cuadrícula interactiva de vocabulario técnico generado con pistas.'
+      description: 'Cuadrícula interactiva de vocabulario técnico generado con pistas.',
+      promptPlaceholder: 'Ejemplo: Selecciona vocabulario técnico esencial de la unidad con pistas directas para primer año…'
     },
     {
       type: 'findthewords',
@@ -187,7 +198,8 @@
       unitPlural: 'palabras',
       scopeBadge: '3 a 20 palabras',
       defaultFileName: 'sopa-de-letras',
-      description: 'Cuadrícula para localizar conceptos fundamentales del documento.'
+      description: 'Cuadrícula para localizar conceptos fundamentales del documento.',
+      promptPlaceholder: 'Ejemplo: Incluye los términos fundamentales del glosario principal, evitando palabras demasiado largas…'
     },
     {
       type: 'accordion',
@@ -203,7 +215,8 @@
       unitPlural: 'paneles',
       scopeBadge: '1 a 20 paneles',
       defaultFileName: 'acordeon-conceptos',
-      description: 'Paneles desplegables de consulta y síntesis estructurada por tema.'
+      description: 'Paneles desplegables de consulta y síntesis estructurada por tema.',
+      promptPlaceholder: 'Ejemplo: Organiza los conceptos clave en paneles concisos con un ejemplo práctico en cada explicación…'
     },
     {
       type: 'flashcards',
@@ -219,7 +232,8 @@
       unitPlural: 'tarjetas',
       scopeBadge: '1 a 20 tarjetas',
       defaultFileName: 'tarjetas-didacticas',
-      description: 'Tarjetas de repaso activo con pregunta, pista y comprobación directa.'
+      description: 'Tarjetas de repaso activo con pregunta, pista y comprobación directa.',
+      promptPlaceholder: 'Ejemplo: Genera tarjetas de estudio con preguntas directas, respuestas cortas y pistas útiles para autoevaluación…'
     }
   ];
 
@@ -308,7 +322,7 @@
           <span class="home-kicker">PASO 01 / EL PUNTO DE PARTIDA</span>
           <h2 class="upload-panel-title">Dale forma a tu próxima actividad.</h2>
           <p class="upload-panel-subtitle">
-            Añade apuntes y documentos en los formatos compatibles, y orienta la actividad con instrucciones breves.
+            Añade apuntes y documentos en los formatos compatibles para inspeccionar el material base de tu actividad.
           </p>
           <div class="draft-resume-notice hidden" id="draft-resume-notice" role="status" aria-live="polite">
             <strong>Estás retomando un borrador.</strong>
@@ -363,23 +377,6 @@
               </div>
             </div>
           </div>
-        </div>
-
-        <!-- Sección de Prompt e instrucciones adicionales -->
-        <div class="upload-prompt-section">
-          <div class="upload-prompt-header">
-            <label for="upload-prompt-input" class="upload-prompt-label">
-              Instrucciones para la actividad (opcional):
-            </label>
-            <span id="upload-prompt-counter" class="upload-prompt-counter" aria-live="polite">0 / 10.000 caracteres</span>
-          </div>
-          <textarea
-            id="upload-prompt-input"
-            class="upload-prompt-textarea"
-            rows="3"
-            maxlength="10000"
-            aria-describedby="upload-prompt-counter"
-            placeholder="Ejemplo: Evalúa los conceptos principales con preguntas de dificultad media..."></textarea>
         </div>
 
         <!-- Acciones del pie del panel -->
@@ -526,15 +523,21 @@
     const fileCountBadge = container.querySelector('#file-count-badge');
     const btnClearAll = container.querySelector('#btn-clear-all');
     const fileListContent = container.querySelector('#file-list-content');
-    const promptInput = container.querySelector('#upload-prompt-input');
-    const promptCounter = container.querySelector('#upload-prompt-counter');
     const summaryInfo = container.querySelector('#upload-summary-info');
 
-    function updatePromptCounter() {
-      if (!promptCounter) return;
+    function updatePromptCounter(counterEl = document.getElementById('upload-prompt-counter')) {
+      if (!counterEl) return;
       const len = state.prompt.length;
-      promptCounter.textContent = `${len.toLocaleString('es-CL')} / 10.000 caracteres`;
-      promptCounter.classList.toggle('is-limit', len >= 10000);
+      counterEl.textContent = `${len.toLocaleString('es-CL')} / 10.000 caracteres`;
+      counterEl.classList.toggle('is-limit', len >= 10000);
+    }
+
+    function syncPromptDom() {
+      const activePromptInput = document.getElementById('upload-prompt-input');
+      if (activePromptInput && activePromptInput.value !== state.prompt) {
+        activePromptInput.value = state.prompt;
+      }
+      updatePromptCounter();
     }
 
     function formatDraftTime(iso, includeDate = false) {
@@ -641,7 +644,7 @@
       state.activeCategory = 'all';
       state.questionCount = 5;
       state.lastVariableCount = 5;
-      promptInput.value = '';
+      syncPromptDom();
       resumeNotice.classList.add('hidden');
       updateUI();
     };
@@ -685,11 +688,14 @@
         state.restoredFiles = isSameLiveDraft && state.files.length
           ? []
           : (Array.isArray(draft.files) ? draft.files : []);
+        const hasSavedPrompt = Boolean(state.prompt.trim());
         resumeFiles.textContent = state.restoredFiles.length
-          ? `Selecciona de nuevo ${state.restoredFiles.length} ${state.restoredFiles.length === 1 ? 'documento' : 'documentos'} para continuar. Puedes elegir archivos de reemplazo.`
+          ? `Selecciona de nuevo ${state.restoredFiles.length} ${state.restoredFiles.length === 1 ? 'documento' : 'documentos'} para continuar. Puedes elegir archivos de reemplazo.${hasSavedPrompt ? ' Tus instrucciones guardadas estarán en el Paso 2.' : ''}`
           : isSameLiveDraft && state.files.length
             ? 'Los archivos siguen disponibles en esta sesión.'
-            : 'Las instrucciones se conservaron.';
+            : hasSavedPrompt
+              ? 'Tus instrucciones y configuración se conservaron para el Paso 2.'
+              : 'Tu configuración se conservó para el Paso 2.';
         resumeNotice.classList.toggle('hidden', isSameLiveDraft && state.files.length > 0);
         const restoredTime = formatDraftTime(draft.updatedAt, true);
         if (draftStatus) draftStatus.textContent = restoredTime
@@ -705,8 +711,7 @@
         if (draftStatus) draftStatus.textContent = 'Los borradores se guardan en este equipo; los documentos no se copian.';
       }
 
-      promptInput.value = state.prompt;
-      updatePromptCounter();
+      syncPromptDom();
       updateUI();
     }
 
@@ -907,14 +912,6 @@
       clearAllFiles();
     });
 
-    // Input de prompt
-    promptInput.addEventListener('input', (e) => {
-      state.prompt = e.target.value.slice(0, 10000);
-      if (e.target.value.length > 10000) e.target.value = state.prompt;
-      updatePromptCounter();
-      scheduleDraftSave();
-    });
-
     document.addEventListener('h5p:start-project-creation', event => applyDraftContext(event.detail));
 
     function updateStepIndicators(activeStep) {
@@ -1001,11 +998,13 @@
         <button type="button" class="activity-type-card" data-activity-type="${card.type}" data-category="${card.category}" aria-pressed="false">
           <div class="activity-card-top">
             <span class="activity-card-library">${escapeHtml(card.library)}</span>
-            <span class="activity-card-scope">${escapeHtml(card.scopeBadge)}</span>
+            <span class="activity-card-check" aria-hidden="true">✓ Elegido</span>
           </div>
           <strong class="activity-card-title">${escapeHtml(card.label)}</strong>
           <span class="activity-card-desc">${escapeHtml(card.description)}</span>
-          <span class="activity-card-check" aria-hidden="true">Seleccionado</span>
+          <div class="activity-card-footer">
+            <span class="activity-card-scope">${escapeHtml(card.scopeBadge)}</span>
+          </div>
         </button>`).join('');
 
       const quickButtonsHtml = QUICK_COUNTS.map(num => `
@@ -1016,12 +1015,17 @@
 
       panelSelector.innerHTML = `
         <section class="upcoming-step-card activity-selector-card" id="activity-selector-card" aria-labelledby="selector-title">
-          <span class="home-kicker">Paso 2 · Configuración de actividad</span>
-          <h2 id="selector-title" tabindex="-1">Configura tu actividad H5P</h2>
-          <p class="selector-intro">Elige entre los 12 formatos interactivos y define su extensión. Al generar, el texto de los documentos y tus instrucciones se enviarán a Gemini.</p>
+          <header class="selector-panel-header">
+            <span class="home-kicker">PASO 02 / CONFIGURACIÓN DE ACTIVIDAD</span>
+            <h2 id="selector-title" class="selector-panel-title" tabindex="-1">Configura tu actividad H5P</h2>
+            <p class="selector-intro">Elige entre los 12 formatos interactivos, define su extensión e incluye instrucciones opcionales. Al generar, el texto de los documentos y tus instrucciones se enviarán a Gemini.</p>
+          </header>
 
-          <div class="activity-category-tabs" role="group" aria-label="Filtrar formatos H5P por categoría">
-            ${categoryTabsHtml}
+          <div class="selector-section-bar">
+            <h3 class="selector-section-title">1. Formato interactivo</h3>
+            <div class="activity-category-tabs" role="group" aria-label="Filtrar formatos H5P por categoría">
+              ${categoryTabsHtml}
+            </div>
           </div>
 
           <div id="selected-format-hidden-notice" class="selected-format-hidden-notice hidden" role="status" aria-live="polite">
@@ -1034,16 +1038,40 @@
           </div>
 
           <div class="generation-fields">
-            <div class="question-count-header">
-              <label for="question-count" id="question-count-label">Cantidad de elementos</label>
-              <div class="quick-count-group" role="group" aria-label="Selección rápida de cantidad">
-                ${quickButtonsHtml}
+            <h3 class="selector-section-title">2. Parámetros e instrucciones</h3>
+            <div class="generation-fields-row">
+              <div class="generation-field-group">
+                <label for="question-count" id="question-count-label">Cantidad de elementos</label>
+                <div class="question-count-control">
+                  <div class="quick-count-group" role="group" aria-label="Selección rápida de cantidad">
+                    ${quickButtonsHtml}
+                  </div>
+                  <input id="question-count" type="number" min="1" max="20" value="${state.questionCount}" inputmode="numeric">
+                </div>
+                <p id="question-count-hint" class="generation-field-hint">Selecciona un formato para ajustar su extensión o usa un botón rápido.</p>
+              </div>
+              <div class="generation-field-group">
+                <label for="h5p-name">Nombre y título de la actividad</label>
+                <input id="h5p-name" type="text" maxlength="180" value="${initialFileName}" autocomplete="off">
+                <p class="generation-field-hint">Se usará como título en H5P y nombre sugerido al guardar.</p>
               </div>
             </div>
-            <input id="question-count" type="number" min="1" max="20" value="${state.questionCount}" inputmode="numeric">
-            <p id="question-count-hint" class="generation-field-hint">Selecciona un formato para ajustar su extensión o usa un botón rápido.</p>
-            <label for="h5p-name">Nombre y título de la actividad</label>
-            <input id="h5p-name" type="text" maxlength="180" value="${initialFileName}" autocomplete="off">
+
+            <div class="upload-prompt-section">
+              <div class="upload-prompt-header">
+                <label for="upload-prompt-input" class="upload-prompt-label">
+                  Instrucciones para la actividad (opcional)
+                </label>
+                <span id="upload-prompt-counter" class="upload-prompt-counter" aria-live="polite">0 / 10.000 caracteres</span>
+              </div>
+              <textarea
+                id="upload-prompt-input"
+                class="upload-prompt-textarea"
+                rows="3"
+                maxlength="10000"
+                aria-describedby="upload-prompt-counter"
+                placeholder="${escapeHtml(initialCard?.promptPlaceholder || DEFAULT_PROMPT_PLACEHOLDER)}"></textarea>
+            </div>
           </div>
 
           <div id="generation-progress" class="generation-progress-banner hidden" aria-hidden="true">
@@ -1053,12 +1081,20 @@
           </div>
           <p id="generation-status" role="status" aria-live="polite"></p>
 
-          <div class="upcoming-step-actions">
-            <button type="button" class="btn-secondary" id="btn-back-to-material">Volver al material</button>
-            <button type="button" class="btn-primary" id="btn-generate-h5p" disabled>Generar Evaluación</button>
-            <button type="button" class="btn-primary hidden" id="btn-save-h5p">Guardar archivo H5P</button>
-            <button type="button" class="btn-secondary hidden" id="btn-reveal-saved-h5p">Ver en carpeta</button>
-          </div>
+          <footer class="upcoming-step-actions selector-footer-actions">
+            <button type="button" class="btn-secondary" id="btn-back-to-material">
+              <svg class="icon-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+              <span>Volver al material</span>
+            </button>
+            <div class="selector-primary-actions">
+              <button type="button" class="btn-secondary hidden" id="btn-reveal-saved-h5p">Ver en carpeta</button>
+              <button type="button" class="btn-primary hidden" id="btn-save-h5p">Guardar archivo H5P</button>
+              <button type="button" class="btn-primary" id="btn-generate-h5p" disabled>Generar Evaluación</button>
+            </div>
+          </footer>
         </section>`;
       panelUpload.classList.add('hidden');
       panelSelector.classList.remove('hidden');
@@ -1077,6 +1113,8 @@
       const countInput = document.getElementById('question-count');
       const countHint = document.getElementById('question-count-hint');
       const nameInput = document.getElementById('h5p-name');
+      const promptInput = document.getElementById('upload-prompt-input');
+      const promptCounter = document.getElementById('upload-prompt-counter');
       const hiddenFormatNotice = document.getElementById('selected-format-hidden-notice');
       const hiddenFormatText = document.getElementById('selected-format-hidden-text');
       const showSelectedFormatBtn = document.getElementById('btn-show-selected-format');
@@ -1173,6 +1211,10 @@
         });
 
         nameInput.disabled = isGenerating;
+        if (promptInput) {
+          promptInput.disabled = isGenerating;
+          promptInput.placeholder = selectedCard?.promptPlaceholder || DEFAULT_PROMPT_PLACEHOLDER;
+        }
         if (backButton) backButton.disabled = isGenerating;
         if (revealSavedButton) revealSavedButton.disabled = isGenerating;
         generateButton.disabled = isGenerating || !selectedCard || !countValid;
@@ -1318,6 +1360,20 @@
           showStatus(`Elige entre ${minCount} y ${maxCount} ${unitLabel}.`, true);
         }
       });
+
+      if (promptInput) {
+        promptInput.value = state.prompt;
+        updatePromptCounter(promptCounter);
+        promptInput.addEventListener('input', (e) => {
+          if (isGenerating) return;
+          const nextPrompt = e.target.value.slice(0, 10000);
+          if (e.target.value.length > 10000) e.target.value = nextPrompt;
+          state.prompt = nextPrompt;
+          updatePromptCounter(promptCounter);
+          invalidatePreparedPackage();
+          scheduleDraftSave();
+        });
+      }
 
       syncSelectorUI();
 
