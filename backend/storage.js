@@ -713,12 +713,18 @@ class AcademicStorage {
     if (courseId) {
       list = list.filter(p => p.courseId === courseId);
     }
-    // Ordenar de más reciente a más antiguo
-    return list.sort((a, b) => new Date(b.exportedAt).getTime() - new Date(a.exportedAt).getTime());
+    // Ordenar de más reciente a más antiguo y reflejar presencia en disco sin mutar el almacén
+    return list
+      .slice()
+      .sort((a, b) => new Date(b.exportedAt).getTime() - new Date(a.exportedAt).getTime())
+      .map(project => ({
+        ...project,
+        fileExists: Boolean(project.filePath && this.verifyFileExists(project.filePath))
+      }));
   }
 
   /**
-   * Registra un nuevo proyecto exportado
+   * Registra un nuevo proyecto exportado o actualiza el existente si se sobrescribió la misma ruta
    * @param {object} projectInput
    * @returns {object} Proyecto registrado
    */
@@ -746,14 +752,15 @@ class AcademicStorage {
       throw new Error('El ramo seleccionado para el proyecto no existe.');
     }
 
-    const newProject = {
-      id: rawId || crypto.randomUUID(),
+    const normalizedFilePath = typeof projectInput.filePath === 'string' ? projectInput.filePath.slice(0, 4096) : '';
+    const comparableFilePath = normalizedFilePath ? path.resolve(normalizedFilePath) : '';
+    const sanitizedFields = {
       courseId: rawCourseId,
       title: projectInput.title.trim().slice(0, 240),
       h5pType: typeof projectInput.h5pType === 'string' && projectInput.h5pType.trim()
         ? projectInput.h5pType.trim().slice(0, 120)
         : 'H5P General',
-      filePath: typeof projectInput.filePath === 'string' ? projectInput.filePath.slice(0, 4096) : '',
+      filePath: normalizedFilePath,
       sourceFiles: Array.isArray(projectInput.sourceFiles)
         ? projectInput.sourceFiles.slice(0, 50).map(file => ({
           name: typeof file === 'string' ? file.slice(0, 255) : (typeof file?.name === 'string' ? file.name.slice(0, 255) : '')
@@ -762,6 +769,29 @@ class AcademicStorage {
       promptSummary: typeof projectInput.promptSummary === 'string' ? projectInput.promptSummary.trim().slice(0, 10000) : '',
       fileSizeBytes: Number.isFinite(projectInput.fileSizeBytes) && projectInput.fileSizeBytes > 0 ? projectInput.fileSizeBytes : 0,
       exportedAt: typeof projectInput.exportedAt === 'string' && projectInput.exportedAt ? projectInput.exportedAt : now
+    };
+
+    if (!rawId && comparableFilePath) {
+      const existingIndex = data.projects.findIndex(existing =>
+        typeof existing.filePath === 'string' && existing.filePath && path.resolve(existing.filePath) === comparableFilePath
+      );
+      if (existingIndex >= 0) {
+        const updatedProject = {
+          ...data.projects[existingIndex],
+          ...sanitizedFields
+        };
+        delete updatedProject.previousCourseId;
+        delete updatedProject.reallocatedAt;
+        data.projects.splice(existingIndex, 1);
+        data.projects.unshift(updatedProject);
+        this._writeData(data);
+        return updatedProject;
+      }
+    }
+
+    const newProject = {
+      id: rawId || crypto.randomUUID(),
+      ...sanitizedFields
     };
 
     data.projects.unshift(newProject);
@@ -806,7 +836,11 @@ class AcademicStorage {
    */
   verifyFileExists(filePath) {
     if (!filePath || typeof filePath !== 'string') return false;
-    return fs.existsSync(filePath);
+    try {
+      return fs.statSync(filePath).isFile();
+    } catch {
+      return false;
+    }
   }
 
   // ==========================================

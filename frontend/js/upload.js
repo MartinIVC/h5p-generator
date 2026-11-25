@@ -1057,6 +1057,7 @@
             <button type="button" class="btn-secondary" id="btn-back-to-material">Volver al material</button>
             <button type="button" class="btn-primary" id="btn-generate-h5p" disabled>Generar Evaluación</button>
             <button type="button" class="btn-primary hidden" id="btn-save-h5p">Guardar archivo H5P</button>
+            <button type="button" class="btn-secondary hidden" id="btn-reveal-saved-h5p">Ver en carpeta</button>
           </div>
         </section>`;
       panelUpload.classList.add('hidden');
@@ -1067,6 +1068,7 @@
       const backButton = document.getElementById('btn-back-to-material');
       const generateButton = document.getElementById('btn-generate-h5p');
       const saveButton = document.getElementById('btn-save-h5p');
+      const revealSavedButton = document.getElementById('btn-reveal-saved-h5p');
       const status = document.getElementById('generation-status');
       const progressBanner = document.getElementById('generation-progress');
       const progressStep = document.getElementById('generation-progress-step');
@@ -1083,6 +1085,7 @@
       const quickCountButtons = Array.from(panelSelector.querySelectorAll('.btn-quick-count'));
 
       let packageId = null;
+      let lastSavedProjectId = null;
       let isGenerating = false;
       let stageTimer = null;
 
@@ -1098,7 +1101,9 @@
 
       const invalidatePreparedPackage = () => {
         packageId = null;
+        lastSavedProjectId = null;
         saveButton.classList.add('hidden');
+        revealSavedButton?.classList.add('hidden');
       };
 
       const syncSelectorUI = () => {
@@ -1169,6 +1174,7 @@
 
         nameInput.disabled = isGenerating;
         if (backButton) backButton.disabled = isGenerating;
+        if (revealSavedButton) revealSavedButton.disabled = isGenerating;
         generateButton.disabled = isGenerating || !selectedCard || !countValid;
       };
 
@@ -1381,6 +1387,7 @@
         }
         if (!packageId) return;
         saveButton.disabled = true; generateButton.disabled = true;
+        if (revealSavedButton) revealSavedButton.disabled = true;
         showStatus('Elige dónde guardar el archivo…');
         try {
           const result = await window.academicAPI.saveH5PFile({ packageId, suggestedName, courseId: state.courseId || 'unassigned' });
@@ -1393,9 +1400,33 @@
             draftContextToken++;
             window.coursesManager?.deleteDraft?.(completedDraftId).catch(() => {});
           }
+          if (result.projectSaved && typeof result.projectId === 'string' && result.projectId) {
+            lastSavedProjectId = result.projectId;
+            revealSavedButton?.classList.remove('hidden');
+          } else {
+            lastSavedProjectId = null;
+            revealSavedButton?.classList.add('hidden');
+          }
+          if (result.projectSaved) {
+            Promise.resolve(window.coursesManager?.onProjectExported?.(state.courseId || 'unassigned')).catch(() => {});
+          }
           showStatus(result.projectSaved ? `Archivo ${result.fileName} guardado y añadido a tus proyectos.` : `Archivo ${result.fileName} guardado. No se pudo añadir a tus proyectos.`, !result.projectSaved);
         } catch { showStatus('No se pudo guardar el archivo. Inténtalo nuevamente.', true); }
         finally { saveButton.disabled = false; syncSelectorUI(); }
+      });
+      revealSavedButton?.addEventListener('click', async () => {
+        if (!lastSavedProjectId || !window.academicAPI?.revealProjectFile) return;
+        try {
+          const result = await window.academicAPI.revealProjectFile(lastSavedProjectId);
+          if (result?.status === 'ok') return;
+          if (result?.status === 'missing') {
+            showStatus('El archivo .h5p ya no se encuentra en esa ubicación. Pudo moverse o eliminarse.', true);
+            return;
+          }
+          showStatus('No se pudo abrir la carpeta del archivo guardado.', true);
+        } catch {
+          showStatus('No se pudo abrir la carpeta del archivo guardado.', true);
+        }
       });
       document.getElementById('selector-title')?.focus();
     });

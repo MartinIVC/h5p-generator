@@ -208,7 +208,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .projects-count-pill { font-size: 12px; border-radius: 5px; }
 .project-card { border-radius: 10px; box-shadow: none; }
 .project-title { font-size: 17px; }
-.project-type-badge, .project-date-badge, .project-sources-info, .project-prompt-preview { font-size: 12px; }
+.project-type-badge, .project-date-badge, .project-sources-info, .project-missing-notice, .project-prompt-preview { font-size: 12px; }
 .projects-empty-state { padding: 40px 24px; border: 1px dashed var(--md-sys-color-outline-variant); background: var(--studio-paper); border-radius: 10px; }
 .projects-empty-state h4 { font-family: var(--studio-serif); font-weight: 400; font-size: 25px; }
 .projects-empty-state p { font-size: 14px; }
@@ -410,8 +410,16 @@ button { -webkit-tap-highlight-color: transparent; }
   background: var(--md-sys-color-surface-container);
 }
 .activity-selector-card {
-  width: min(100%, 54rem);
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 28px;
   text-align: left;
+}
+@media (max-width: 900px) {
+  .activity-selector-card {
+    padding: 20px;
+  }
 }
 .activity-selector-card .selector-intro {
   margin: 0.35rem 0 0.75rem;

@@ -122,8 +122,11 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
       }
       if (requestAbort.signal.aborted && !session.closed) return fail('GENERATION_CANCELLED');
       if (session.closed || sender.isDestroyed() || request.documentIds.some((id, i) => inspection.getDocument(sender, id) !== documents[i])) return fail('DOCUMENT_NOT_FOUND');
+      const sourceFiles = documents
+        .map(doc => (typeof doc?.name === 'string' && doc.name.trim() ? { name: doc.name.trim().slice(0, 255) } : null))
+        .filter(Boolean);
       const packageId = randomUUID();
-      session.package = { id: packageId, bytes, h5pType: activityConfig.projectLabel };
+      session.package = { id: packageId, bytes, h5pType: activityConfig.projectLabel, sourceFiles };
       return { status: 'ok', kind: 'package', packageId, questionCount: items.length };
     } catch (error) {
       const code = ['API_KEY_INVALID', 'API_ACCESS_DENIED', 'MODEL_UNAVAILABLE', 'QUOTA', 'INVALID_RESPONSE', 'NETWORK_ERROR', 'SERVICE_UNAVAILABLE', 'API_REQUEST_FAILED', 'GENERATION_TIMEOUT', 'GENERATION_CANCELLED'].includes(error?.message) ? error.message : 'GENERATION_FAILED';
@@ -174,8 +177,19 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
         return fail('SAVE_FAILED');
       }
       let projectSaved = true;
-      try { storage.saveProject({ title: path.basename(filePath, path.extname(filePath)), courseId, h5pType: pkg.h5pType || 'Cuestionario de opción múltiple', filePath, fileSizeBytes: pkg.bytes.length }); } catch { projectSaved = false; }
-      return { status: 'ok', fileName: path.basename(filePath), projectSaved };
+      let projectId = null;
+      try {
+        const savedProject = storage.saveProject({
+          title: path.basename(filePath, path.extname(filePath)),
+          courseId,
+          h5pType: pkg.h5pType || 'Cuestionario de opción múltiple',
+          filePath,
+          sourceFiles: Array.isArray(pkg.sourceFiles) ? pkg.sourceFiles : [],
+          fileSizeBytes: pkg.bytes.length
+        });
+        if (typeof savedProject?.id === 'string' && savedProject.id) projectId = savedProject.id;
+      } catch { projectSaved = false; }
+      return { status: 'ok', fileName: path.basename(filePath), projectSaved, projectId };
     } catch { return fail('SAVE_FAILED'); }
     finally { session.busy = false; }
   }

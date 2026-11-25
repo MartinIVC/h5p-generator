@@ -1,6 +1,6 @@
 'use strict';
 // Se ejecuta únicamente en una copia temporal del paquete, nunca se distribuye.
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, shell } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -16,6 +16,8 @@ let dialogMode = 'cancel';
 let fetchCalls = 0;
 let transientFailures = 0;
 let invalidResponses = 0;
+const revealedFiles = [];
+shell.showItemInFolder = target => { revealedFiles.push(target); };
 const questions = [{ pregunta: '¿Qué conserva la integridad?', opciones: ['A) Exactitud', 'B) Publicidad', 'C) Velocidad', 'D) Color'], respuestaCorrecta: 'A) Exactitud', retroalimentacion: 'La integridad protege la exactitud de la información.' }];
 global.fetch = async (url, options) => {
   assert.match(url, /^https:\/\/generativelanguage.googleapis.com\//);
@@ -180,6 +182,7 @@ async function run() {
   const saved = await invoke('saveH5PFile', save);
   assert.equal(saved.status, 'ok');
   assert.equal(saved.projectSaved, true);
+  assert.equal(typeof saved.projectId, 'string');
   const JSZip = require('./backend/node_modules/jszip');
   const zip = await JSZip.loadAsync(fs.readFileSync(path.join(directory, 'output.h5p')));
   const content = JSON.parse(await zip.file('content/content.json').async('string'));
@@ -187,13 +190,19 @@ async function run() {
   assert.equal(content.questions[0].params.answers[0].text, '<div>Exactitud</div>');
   assert.equal(content.questions[0].params.answers[0].correct, true);
   assert.deepEqual(content.questions[0].params.overallFeedback, [{ from: 0, to: 100, feedback: `${questions[0].retroalimentacion} Pregunta 1.` }]);
-  assert.equal((await invoke('getProjects', 'unassigned')).length, 1);
+  const unassignedAfterFirstSave = await invoke('getProjects', 'unassigned');
+  assert.equal(unassignedAfterFirstSave.length, 1);
+  assert.equal(unassignedAfterFirstSave[0].id, saved.projectId);
+  assert.equal(unassignedAfterFirstSave[0].fileExists, true);
+  assert.deepEqual(unassignedAfterFirstSave[0].sourceFiles, [{ name: 'sample.txt' }]);
   networkMode = 'invalid';
   const beforeCorrection = fetchCalls;
   const twenty = await invoke('generateH5P', { ...request, questionCount: 20 });
   assert.equal(twenty.status, 'ok'); assert.equal(twenty.questionCount, 20);
   assert.equal(fetchCalls - beforeCorrection, 2);
   assert.equal((await invoke('saveH5PFile', { packageId: twenty.packageId, suggestedName: 'veinte' })).status, 'ok');
+  // H5P-22: sobrescribir la misma ruta actualiza el registro sin duplicar proyectos
+  assert.equal((await invoke('getProjects', 'unassigned')).length, 1);
   const recoveredZip = await JSZip.loadAsync(fs.readFileSync(path.join(directory, 'output.h5p')));
   const recoveredContent = JSON.parse(await recoveredZip.file('content/content.json').async('string'));
   assert.equal(recoveredContent.questions.length, 20);
@@ -286,9 +295,21 @@ async function run() {
     const input = document.getElementById('upload-file-input');
     input.files = transfer.files;
     input.dispatchEvent(new Event('change', {bubbles:true}));
-    document.getElementById('btn-next-step').click();
   })()`);
+  await waitFor('!document.getElementById("btn-next-step").disabled');
+  // Verificar que el ancho del panel de Paso 1 y Paso 2 coinciden tanto en escritorio (1280x800) como en 840x600
+  const step1Width840 = await evaluate('document.querySelector("#panel-upload .upload-card-wrapper").getBoundingClientRect().width');
+  window.setSize(1280, 800);
+  await new Promise(resolve => setTimeout(resolve, 60));
+  const step1Width1280 = await evaluate('document.querySelector("#panel-upload .upload-card-wrapper").getBoundingClientRect().width');
+  await evaluate(`document.getElementById('btn-next-step').click()`);
   await waitFor('Boolean(document.getElementById("question-count"))');
+  const step2Width1280 = await evaluate('document.getElementById("activity-selector-card").getBoundingClientRect().width');
+  assert.ok(Math.abs(step1Width1280 - step2Width1280) <= 1, `Ancho Paso 1 (${step1Width1280}) != Paso 2 (${step2Width1280}) en 1280x800`);
+  window.setSize(840, 600);
+  await new Promise(resolve => setTimeout(resolve, 60));
+  const step2Width840 = await evaluate('document.getElementById("activity-selector-card").getBoundingClientRect().width');
+  assert.ok(Math.abs(step1Width840 - step2Width840) <= 1, `Ancho Paso 1 (${step1Width840}) != Paso 2 (${step2Width840}) en 840x600`);
   assert.equal(await evaluate('document.activeElement.id'), 'selector-title');
   assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true);
   // CA-4 + H5P-16: botón Generar Evaluación deshabilitado antes de elegir formato y 12 formatos activos con filtros por categoría
@@ -375,6 +396,18 @@ async function run() {
   dialogMode = 'ok';
   await evaluate('document.getElementById("btn-save-h5p").click()');
   await waitFor('document.getElementById("generation-status").textContent.includes("guardado y añadido")');
+  // H5P-22: botón directo "Ver en carpeta" en Paso 2 localiza el archivo recién guardado y se oculta al cambiar formato
+  assert.equal(await evaluate('document.getElementById("btn-reveal-saved-h5p").classList.contains("hidden")'), false);
+  const revealsBeforeDirect = revealedFiles.length;
+  await evaluate('document.getElementById("btn-reveal-saved-h5p").click()');
+  await waitFor(`true`);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  assert.equal(revealedFiles.length, revealsBeforeDirect + 1);
+  assert.equal(revealedFiles[revealedFiles.length - 1], path.join(directory, 'output.h5p'));
+  const savedAfterUi = await invoke('getProjects', 'unassigned');
+  assert.equal(savedAfterUi.length, 1);
+  assert.deepEqual(savedAfterUi[0].sourceFiles, [{ name: 'ui.txt' }]);
+  assert.equal(savedAfterUi[0].fileExists, true);
   const flashcardsZip = await JSZip.loadAsync(fs.readFileSync(path.join(directory, 'output.h5p')));
   const flashcardsMeta = JSON.parse(await flashcardsZip.file('h5p.json').async('string'));
   const flashcardsContent = JSON.parse(await flashcardsZip.file('content/content.json').async('string'));
@@ -384,6 +417,7 @@ async function run() {
   assert.equal(fs.readdirSync(directory).some(name => name.startsWith('.h5p-work-')), false);
   // CA-1/CA-2/CA-3: Cuestionario habilita botones rápidos 3/5/10 y selector 1..20
   await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="questionset"]\').click()');
+  assert.equal(await evaluate('document.getElementById("btn-reveal-saved-h5p").classList.contains("hidden")'), true);
   assert.equal(await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="questionset"]\').classList.contains("selected")'), true);
   assert.equal(await evaluate('document.getElementById("question-count").disabled'), false);
   await evaluate('document.querySelector(\'.btn-quick-count[data-count="3"]\').click()');
@@ -413,6 +447,50 @@ async function run() {
   dialogMode = 'ok';
   await evaluate('document.getElementById("btn-save-h5p").click()');
   await waitFor('document.getElementById("generation-status").textContent.includes("guardado y añadido")');
+  // H5P-22: tarjeta de proyecto muestra material fuente, "Ver en carpeta" localiza el archivo y comunica su ausencia posterior
+  await evaluate(`window.coursesManager.navigateToCourseDetail('unassigned')`);
+  await waitFor('Boolean(document.querySelector(".project-card .btn-reveal-project"))');
+  assert.match(await evaluate('document.querySelector(".project-sources-info")?.textContent || ""'), /1 documento base/);
+  assert.equal(await evaluate('document.querySelector(".project-sources-info")?.getAttribute("title")'), 'ui.txt');
+  assert.equal(await evaluate('document.querySelectorAll(".project-missing-notice").length'), 0);
+  const revealsBeforeCard = revealedFiles.length;
+  await evaluate('document.querySelector(".project-card .btn-reveal-project").click()');
+  await new Promise(resolve => setTimeout(resolve, 100));
+  assert.equal(revealedFiles.length, revealsBeforeCard + 1);
+  // Eliminar el archivo en disco y verificar detección reactiva, aviso accesible, foco y contraste WCAG AA
+  fs.unlinkSync(path.join(directory, 'output.h5p'));
+  await evaluate('document.querySelector(".project-card .btn-reveal-project").click()');
+  await waitFor('Boolean(document.querySelector(".project-card.is-file-missing .project-missing-notice"))');
+  assert.equal(revealedFiles.length, revealsBeforeCard + 1);
+  assert.equal(await evaluate('document.activeElement?.classList.contains("btn-reveal-project")'), true);
+  assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true);
+  const missingContrast = await evaluate(`(() => {
+    const parseRgb = str => {
+      const nums = str.match(/\\d+(\\.\\d+)?/g).slice(0, 3).map(Number);
+      return str.startsWith('color(srgb') ? nums.map(n => n * 255) : nums;
+    };
+    const lum = rgb => {
+      const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+      return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+    };
+    const ratio = (a, b) => {
+      const l1 = lum(a), l2 = lum(b);
+      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    };
+    const measure = mode => {
+      document.documentElement.classList.remove('light', 'dark');
+      document.documentElement.classList.add(mode);
+      const notice = document.querySelector('.project-missing-notice');
+      return ratio(parseRgb(getComputedStyle(notice).color), parseRgb(getComputedStyle(notice).backgroundColor));
+    };
+    document.documentElement.classList.add('motion-reduced');
+    const dark = measure('dark');
+    const light = measure('light');
+    document.documentElement.classList.remove('motion-reduced');
+    return { light, dark };
+  })()`);
+  assert.ok(missingContrast.light >= 4.5, `Contraste insuficiente en .project-missing-notice (light): ${missingContrast.light}`);
+  assert.ok(missingContrast.dark >= 4.5, `Contraste insuficiente en .project-missing-notice (dark): ${missingContrast.dark}`);
   assertNoListeners();
   console.log('PASS: paquete Linux, aislamiento, preload/IPC, workers, prompt vacío, errores de red/lectura/escritura, cancelación, guardado, registro, permisos por ventana y ausencia de puertos TCP de escucha. Interfaz a 840 × 600 y foco por teclado comprobados. Gemini y diálogo simulados.');
   app.exit(0);

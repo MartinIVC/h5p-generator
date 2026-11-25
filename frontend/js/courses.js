@@ -1237,8 +1237,9 @@
     return `
       <div class="projects-grid" role="list" aria-label="Lista de proyectos del ramo">
         ${filteredProjects.map(proj => {
+          const isFileMissing = proj.fileExists === false;
           return `
-            <div class="project-card" data-project-id="${escapeHTML(proj.id)}" role="listitem">
+            <div class="project-card${isFileMissing ? ' is-file-missing' : ''}" data-project-id="${escapeHTML(proj.id)}" role="listitem">
               <div class="project-card-header">
                 <div class="project-type-badge">${escapeHTML(proj.h5pType || 'H5P')}</div>
                 <span class="project-date-badge">${formatDate(proj.exportedAt)}</span>
@@ -1253,6 +1254,17 @@
                   </svg>
                   <span>${proj.sourceFiles.length} ${proj.sourceFiles.length === 1 ? 'documento base' : 'documentos base'}</span>
                 </div>
+              ` : ''}
+
+              ${isFileMissing ? `
+                <p class="project-missing-notice" role="note">
+                  <svg class="icon-svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  <span>Archivo no encontrado en su ubicación original</span>
+                </p>
               ` : ''}
 
               ${proj.promptSummary ? `
@@ -1426,13 +1438,31 @@
         try {
           if (window.academicAPI?.revealProjectFile) {
             const result = await window.academicAPI.revealProjectFile(projectId);
-            if (result?.status === 'ok') return;
+            const project = state.projects.find(item => item.id === projectId);
+            const restoreRevealFocus = () => {
+              const updated = Array.from(contentEl.querySelectorAll('.btn-reveal-project'))
+                .find(el => el.getAttribute('data-project-id') === projectId);
+              updated?.focus();
+            };
+            if (result?.status === 'ok') {
+              if (project && project.fileExists === false) {
+                project.fileExists = true;
+                updateCourseProjectsContent(isUnassigned);
+                restoreRevealFocus();
+              }
+              return;
+            }
             if (result?.status === 'no_path') {
               window.uiMessage?.('Este proyecto no tiene una carpeta registrada.', 'error');
               return;
             }
             if (result?.status === 'missing') {
-              window.uiMessage?.('No se encontró el archivo en esa ubicación.', 'error');
+              if (project && project.fileExists !== false) {
+                project.fileExists = false;
+                updateCourseProjectsContent(isUnassigned);
+                restoreRevealFocus();
+              }
+              window.uiMessage?.('El archivo .h5p ya no se encuentra en su ubicación original. Pudo moverse o eliminarse.', 'error');
               return;
             }
             window.uiMessage?.('No se pudo abrir la carpeta del proyecto.', 'error');
@@ -2196,6 +2226,17 @@
       const saved = await api.saveProject(payload);
       await loadCourses();
       return saved;
+    },
+    onProjectExported: async (courseId) => {
+      await Promise.all([loadCourses(), loadUnassignedProjects()]);
+      if (state.activeCourseId && (!courseId || state.activeCourseId === courseId)) {
+        await loadProjectsForActiveCourse();
+        if (panelCourseDetail && !panelCourseDetail.classList.contains('hidden')) {
+          renderCourseDetailView();
+        }
+      } else if (panelHome && !panelHome.classList.contains('hidden')) {
+        renderHomeView();
+      }
     },
     saveDraft: async (draftData) => {
       const saved = await api.saveDraft(draftData);
