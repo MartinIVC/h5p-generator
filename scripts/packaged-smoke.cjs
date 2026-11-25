@@ -21,6 +21,13 @@ global.fetch = async (url, options) => {
   assert.match(url, /^https:\/\/generativelanguage.googleapis.com\//);
   assert.equal(options.headers['x-goog-api-key'], 'synthetic-test-key');
   fetchCalls++;
+  if (networkMode === 'slow') {
+    await new Promise((_, reject) => {
+      const abort = () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+      if (options.signal?.aborted) abort();
+      else options.signal?.addEventListener('abort', abort, { once: true });
+    });
+  }
   if (networkMode === 'fallback' && url.includes('/gemini-3.5-flash-lite:')) return { ok: false, status: 404 };
   if (networkMode === 'unavailable') return { ok: false, status: 404 };
   if (networkMode === 'transient' && transientFailures++ < 2) return { ok: false, status: 503 };
@@ -66,6 +73,29 @@ function assertNoListeners() {
     }
   }
 }
+function buildSyntheticPdfBytes() {
+  const stream = 'BT /F1 18 Tf 24 120 Td (Hola PDF Canvas) Tj ET\n';
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n',
+    '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+    `5 0 obj\n<< /Length ${Buffer.byteLength(stream, 'utf8')} >>\nstream\n${stream}endstream\nendobj\n`
+  ];
+  let out = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const obj of objects) {
+    offsets.push(Buffer.byteLength(out, 'utf8'));
+    out += obj;
+  }
+  const xrefPos = Buffer.byteLength(out, 'utf8');
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i < offsets.length; i++) {
+    out += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF\n`;
+  return Array.from(Buffer.from(out, 'utf8'));
+}
 let window;
 app.once('browser-window-created', (_event, win) => {
   window = win;
@@ -78,6 +108,7 @@ async function run() {
   const preferences = window.webContents.getLastWebPreferences();
   assert.equal(preferences.contextIsolation, true);
   assert.equal(preferences.nodeIntegration, false);
+  assert.equal(preferences.sandbox, true);
   const evaluate = expression => window.webContents.executeJavaScript(expression);
   const invoke = (method, request) => evaluate(`window.academicAPI.${method}(${JSON.stringify(request)})`);
   const waitFor = async expression => {
@@ -88,6 +119,8 @@ async function run() {
     }
   };
   assert.deepEqual(await evaluate('[typeof require, typeof process, typeof window.academicAPI.ipcRenderer]'), ['undefined', 'undefined', 'undefined']);
+  assert.equal(await invoke('verifyFileExists', '/etc/passwd'), false);
+  assert.equal(await invoke('openExternalUrl', 'file:///etc/passwd'), false);
   assert.equal((await invoke('verifyApiKey', 'synthetic-test-key')).status, 'valid');
   networkMode = 'fallback';
   const beforeVerify = fetchCalls;
@@ -103,6 +136,10 @@ async function run() {
   assert.equal((await inspect('   ')).code, 'INSPECTION_FAILED');
   const inspected = await inspect('Material sintético: integridad significa exactitud de la información.');
   assert.equal(inspected.status, 'ok');
+  // Navegación in-place vía skip-link (#main-content): no debe invalidar confianza IPC ni limpiar documentos.
+  await evaluate('document.querySelector(".skip-link").click()');
+  await waitFor('window.location.hash === "#main-content"');
+  assert.equal(Array.isArray(await invoke('getCourses')), true);
   const request = { documentIds: [inspected.documentId], activityType: 'multiple-choice', questionCount: 1, instructions: '' };
   const before = fetchCalls;
   assert.equal((await invoke('generateH5P', { ...request, extra: 'invalid' })).code, 'INVALID_ARGUMENT');
@@ -164,10 +201,33 @@ async function run() {
   await other.loadURL('data:text/html,untrusted');
   assert.equal((await other.webContents.executeJavaScript('window.academicAPI.verifyApiKey("synthetic-test-key")')).status, 'error');
   assert.equal((await other.webContents.executeJavaScript(`window.academicAPI.saveH5PFile(${JSON.stringify(save)})`)).code, 'INVALID_SENDER');
+  await assert.rejects(() => other.webContents.executeJavaScript('window.academicAPI.getCourses()'));
   other.destroy();
-  // Recorre también la interfaz real con un archivo sintético.
+  // Recorre también la interfaz real: visor PDF en <canvas>, aislamiento de borradores y flujo de creación.
   window.setSize(840, 600);
   await evaluate(`window.coursesManager.startProjectCreation('unassigned')`);
+  assert.equal(await evaluate('document.getElementById("btn-next-step").disabled'), true);
+  const pdfBytes = buildSyntheticPdfBytes();
+  await evaluate(`(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array(${JSON.stringify(pdfBytes)})], 'guia.pdf', { type: 'application/pdf' }));
+    const input = document.getElementById('upload-file-input');
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    const prompt = document.getElementById('upload-prompt-input');
+    prompt.value = 'Instrucciones de borrador previo';
+    prompt.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('[data-action="preview"]').click();
+  })()`);
+  await waitFor('Boolean(document.querySelector(".preview-pdf-canvas")?.width > 0) && document.getElementById("pdf-page-indicator")?.textContent?.includes("1 / 1")');
+  assert.equal(await evaluate('document.querySelectorAll(".preview-iframe").length'), 0);
+  window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+  window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+  await waitFor('!window.previewManager.isOpen() && document.getElementById("preview-body").innerHTML === ""');
+  // H5P-33 (BUG-06): iniciar un nuevo proyecto en el mismo ramo no hereda archivos ni prompt del borrador anterior.
+  await evaluate(`window.coursesManager.startProjectCreation('unassigned')`);
+  assert.equal(await evaluate('window.uploadManager.getAllFiles().length'), 0);
+  assert.equal(await evaluate('window.uploadManager.getPrompt()'), '');
   assert.equal(await evaluate('document.getElementById("btn-next-step").disabled'), true);
   await evaluate(`(() => {
     const transfer = new DataTransfer();
@@ -236,6 +296,12 @@ async function run() {
   networkMode = 'offline';
   await evaluate('document.getElementById("question-count").value = 1; document.getElementById("btn-generate-h5p").click()');
   await waitFor('document.getElementById("generation-status").getAttribute("role") === "alert"');
+  // H5P-33 (BUG-08): cancelar generación en curso y reintentar de inmediato sin bloqueo BUSY.
+  networkMode = 'slow';
+  await evaluate('document.getElementById("btn-generate-h5p").click()');
+  await waitFor('!document.getElementById("generation-progress").classList.contains("hidden") && Boolean(document.getElementById("btn-cancel-generation"))');
+  await evaluate('document.getElementById("btn-cancel-generation").click()');
+  await waitFor('document.getElementById("generation-status").textContent.includes("cancelada")');
   networkMode = 'ok';
   await evaluate('document.getElementById("btn-generate-h5p").click()');
   await waitFor('!document.getElementById("btn-save-h5p").classList.contains("hidden")');
