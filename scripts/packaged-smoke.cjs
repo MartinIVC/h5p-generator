@@ -328,6 +328,21 @@ async function run() {
   })()`);
   assert.match(await evaluate('document.getElementById("upload-prompt-counter").textContent'), /37 \/ 10\.000/);
   assert.equal(await evaluate('window.uploadManager.getPrompt()'), 'Enfoca las preguntas en arquitectura.');
+  // Verificar alineación horizontal de Cantidad y Nombre (en ancho > 700 px) y uniformidad de cabecera en las 12 tarjetas
+  const step2Alignment = await evaluate(`(() => {
+    const countRect = document.getElementById('question-count').getBoundingClientRect();
+    const nameRect = document.getElementById('h5p-name').getBoundingClientRect();
+    const topHeights = Array.from(document.querySelectorAll('.activity-card-top')).map(el => el.getBoundingClientRect().height);
+    return {
+      innerWidth: window.innerWidth,
+      inputTopDiff: Math.abs(countRect.top - nameRect.top),
+      cardTopSpread: Math.max(...topHeights) - Math.min(...topHeights)
+    };
+  })()`);
+  if (step2Alignment.innerWidth > 700) {
+    assert.ok(step2Alignment.inputTopDiff <= 1, `Desalineación entre #question-count y #h5p-name: ${step2Alignment.inputTopDiff}px`);
+  }
+  assert.ok(step2Alignment.cardTopSpread <= 2, `Alturas irregulares en .activity-card-top: ${step2Alignment.cardTopSpread}px`);
   // CA-4 + H5P-16: botón Generar Evaluación deshabilitado antes de elegir formato y 12 formatos activos con filtros por categoría
   assert.equal(await evaluate('document.getElementById("btn-generate-h5p").disabled'), true);
   assert.equal(await evaluate('document.querySelectorAll(".activity-type-card").length'), 12);

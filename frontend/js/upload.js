@@ -998,11 +998,13 @@
         <button type="button" class="activity-type-card" data-activity-type="${card.type}" data-category="${card.category}" aria-pressed="false">
           <div class="activity-card-top">
             <span class="activity-card-library">${escapeHtml(card.library)}</span>
-            <span class="activity-card-scope">${escapeHtml(card.scopeBadge)}</span>
+            <span class="activity-card-check" aria-hidden="true">✓ Elegido</span>
           </div>
           <strong class="activity-card-title">${escapeHtml(card.label)}</strong>
           <span class="activity-card-desc">${escapeHtml(card.description)}</span>
-          <span class="activity-card-check" aria-hidden="true">Seleccionado</span>
+          <div class="activity-card-footer">
+            <span class="activity-card-scope">${escapeHtml(card.scopeBadge)}</span>
+          </div>
         </button>`).join('');
 
       const quickButtonsHtml = QUICK_COUNTS.map(num => `
@@ -1013,12 +1015,17 @@
 
       panelSelector.innerHTML = `
         <section class="upcoming-step-card activity-selector-card" id="activity-selector-card" aria-labelledby="selector-title">
-          <span class="home-kicker">Paso 2 · Configuración de actividad</span>
-          <h2 id="selector-title" tabindex="-1">Configura tu actividad H5P</h2>
-          <p class="selector-intro">Elige entre los 12 formatos interactivos, define su extensión e incluye instrucciones opcionales. Al generar, el texto de los documentos y tus instrucciones se enviarán a Gemini.</p>
+          <header class="selector-panel-header">
+            <span class="home-kicker">PASO 02 / CONFIGURACIÓN DE ACTIVIDAD</span>
+            <h2 id="selector-title" class="selector-panel-title" tabindex="-1">Configura tu actividad H5P</h2>
+            <p class="selector-intro">Elige entre los 12 formatos interactivos, define su extensión e incluye instrucciones opcionales. Al generar, el texto de los documentos y tus instrucciones se enviarán a Gemini.</p>
+          </header>
 
-          <div class="activity-category-tabs" role="group" aria-label="Filtrar formatos H5P por categoría">
-            ${categoryTabsHtml}
+          <div class="selector-section-bar">
+            <h3 class="selector-section-title">1. Formato interactivo</h3>
+            <div class="activity-category-tabs" role="group" aria-label="Filtrar formatos H5P por categoría">
+              ${categoryTabsHtml}
+            </div>
           </div>
 
           <div id="selected-format-hidden-notice" class="selected-format-hidden-notice hidden" role="status" aria-live="polite">
@@ -1031,15 +1038,16 @@
           </div>
 
           <div class="generation-fields">
+            <h3 class="selector-section-title">2. Parámetros e instrucciones</h3>
             <div class="generation-fields-row">
               <div class="generation-field-group">
-                <div class="question-count-header">
-                  <label for="question-count" id="question-count-label">Cantidad de elementos</label>
+                <label for="question-count" id="question-count-label">Cantidad de elementos</label>
+                <div class="question-count-control">
                   <div class="quick-count-group" role="group" aria-label="Selección rápida de cantidad">
                     ${quickButtonsHtml}
                   </div>
+                  <input id="question-count" type="number" min="1" max="20" value="${state.questionCount}" inputmode="numeric">
                 </div>
-                <input id="question-count" type="number" min="1" max="20" value="${state.questionCount}" inputmode="numeric">
                 <p id="question-count-hint" class="generation-field-hint">Selecciona un formato para ajustar su extensión o usa un botón rápido.</p>
               </div>
               <div class="generation-field-group">
@@ -1073,12 +1081,20 @@
           </div>
           <p id="generation-status" role="status" aria-live="polite"></p>
 
-          <div class="upcoming-step-actions">
-            <button type="button" class="btn-secondary" id="btn-back-to-material">Volver al material</button>
-            <button type="button" class="btn-primary" id="btn-generate-h5p" disabled>Generar Evaluación</button>
-            <button type="button" class="btn-primary hidden" id="btn-save-h5p">Guardar archivo H5P</button>
-            <button type="button" class="btn-secondary hidden" id="btn-reveal-saved-h5p">Ver en carpeta</button>
-          </div>
+          <footer class="upcoming-step-actions selector-footer-actions">
+            <button type="button" class="btn-secondary" id="btn-back-to-material">
+              <svg class="icon-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+              <span>Volver al material</span>
+            </button>
+            <div class="selector-primary-actions">
+              <button type="button" class="btn-secondary hidden" id="btn-reveal-saved-h5p">Ver en carpeta</button>
+              <button type="button" class="btn-primary hidden" id="btn-save-h5p">Guardar archivo H5P</button>
+              <button type="button" class="btn-primary" id="btn-generate-h5p" disabled>Generar Evaluación</button>
+            </div>
+          </footer>
         </section>`;
       panelUpload.classList.add('hidden');
       panelSelector.classList.remove('hidden');
