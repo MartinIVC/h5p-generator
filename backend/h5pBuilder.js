@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 const { TEMPLATE_TYPES, loadTemplate, validateH5PMetadata } = require('./h5pTemplates');
-const { validateActivityItems } = require('./llmClient');
+const { validateActivityItems, validateReviewedActivityItems } = require('./activityValidation');
 const { resolveActivityType } = require('./prompts');
 
 const HTML_ENTITIES = Object.freeze({
@@ -97,6 +97,7 @@ function buildMultiChoiceParams(baseContent, question, behaviourOverrides) {
 /**
  * Construye los objetos `h5p.json` (metadata) y `content/content.json` (content)
  * para cualquiera de los 12 formatos H5P registrados en `backend/templates/manifest.json`.
+ * `options.reviewed` conserva los prefijos de opciones escritos durante la revisión.
  */
 async function buildH5PContent(activityType, items, options = {}) {
   const canonical = resolveActivityType(activityType);
@@ -107,7 +108,8 @@ async function buildH5PContent(activityType, items, options = {}) {
   const expectedCount = (canonical === TEMPLATE_TYPES.MULTICHOICE || canonical === TEMPLATE_TYPES.TRUEFALSE)
     ? 1
     : (Array.isArray(items) ? items.length : 0);
-  const validated = validateActivityItems(canonical, items, expectedCount);
+  const validateItems = options.reviewed === true ? validateReviewedActivityItems : validateActivityItems;
+  const validated = validateItems(canonical, items, expectedCount);
 
   const loadOpts = options.templatesDir ? { templatesDir: options.templatesDir } : {};
   const nextId = typeof options.idGenerator === 'function' ? options.idGenerator : () => crypto.randomUUID();

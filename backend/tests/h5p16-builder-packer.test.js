@@ -487,3 +487,26 @@ test('H5P-32 (BUG-01): Flashcards escapa HTML y barras "/" en card.answer para e
   const content = JSON.parse(await zip.file('content/content.json').async('string'));
   assert.equal(content.cards[0].answer, 'HTTP\\/2 &lt;script&gt;alert(1)&lt;\\/script&gt;');
 });
+
+test('el paquete revisado conserva los prefijos escritos por el docente y la opción correcta', async () => {
+  const [question] = SAMPLE_ITEMS_BY_TYPE.questionset;
+  const answers = async (type, options) => {
+    const packed = await packH5PPackage(type, [question], options);
+    const zip = await JSZip.loadAsync(packed.bytes);
+    const content = JSON.parse(await zip.file('content/content.json').async('string'));
+    return type === 'questionset' ? content.questions[0].params.answers : content.answers;
+  };
+
+  for (const type of ['questionset', 'multichoice']) {
+    const reviewed = await answers(type, { reviewed: true });
+    assert.deepEqual(reviewed.map(answer => answer.text), question.opciones.map(text => `<div>${text}</div>`));
+    assert.deepEqual(reviewed.map(answer => answer.correct), [true, false, false, false]);
+    const generated = await answers(type);
+    assert.equal(generated[0].text, '<div>Aislamiento de contexto</div>');
+    assert.equal(generated[0].correct, true);
+  }
+
+  await assert.rejects(packH5PPackage('questionset', [{ ...question, respuestaCorrecta: 'Aislamiento de contexto' }], {
+    reviewed: true
+  }), { message: 'INVALID_RESPONSE', reason: 'CORRECT_ANSWER' });
+});
