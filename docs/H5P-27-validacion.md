@@ -17,7 +17,7 @@ La auditoría del 26 de noviembre de 2026 partió de `2272ea5` en `develop`. El 
 |---|---|---|
 | Carga, generación, cancelación, éxito, error, guardado y copias | Parcial | La integración recorre carga, PDF y vista parcial, autoguardado, ramos y proyectos, cancelación antes de Gemini y durante su respuesta, guardado tardío y copia desde Opciones. Un fallo de registro confirma la presencia del archivo y muestra advertencia. |
 | Emisión nativa útil, compatible y privada | Comprobado con simulación | Los tests cuentan avisos en primer y segundo plano, con preferencia deshabilitada y sin soporte. Comprueban texto genérico, clic simulado y resultado de copia conservado si falla el notificador. |
-| Accesibilidad y caducidad | Parcial | La prueba empaquetada verifica Tab, Mayús+Tab y Enter en el modal, foco al cerrar, tres avisos como máximo y contraste mínimo 4,5:1 en claro y oscuro. El test con temporizadores simulados verifica la pausa y la limpieza. El anuncio audible queda pendiente. |
+| Accesibilidad y caducidad | Parcial | La prueba empaquetada verifica Tab, Mayús+Tab y Enter en el modal, foco al cerrar, tres avisos como máximo y contraste mínimo 4,5:1 en claro y oscuro. El test con temporizadores simulados verifica la pausa y la limpieza. |
 | Pruebas actuales y coordinación con H5P-9 | Parcial | El seguimiento documenta la auditoría y corrige el aviso basado en tiempo. H5P-9 conserva las etapas detalladas y el flujo de exportación. |
 
 ## Ejecución
@@ -38,10 +38,5 @@ npm test --prefix backend
 npm run package:linux --prefix frontend
 npm run test:packaged --prefix frontend
 ```
-
-## Verificación manual pendiente
-
-- En el escritorio real, habilitar los avisos, dejar una generación en segundo plano y comprobar que llega un solo aviso genérico. Hacer clic y confirmar que se restaura o enfoca la ventana. Repetir con el aviso deshabilitado y comprobar el estado dentro de la aplicación.
-- Con el lector de pantalla del entorno de destino, verificar un anuncio por cambio de estado. Recorrer la generación, la advertencia de registro y el error de copia, y cerrar el aviso con Tab y Enter con Opciones abierto.
 
 La publicación de etapas específicas y el flujo dedicado de exportación corresponden a [H5P-9](https://h5p-rag-generator.atlassian.net/browse/H5P-9).
