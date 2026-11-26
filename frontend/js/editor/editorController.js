@@ -310,9 +310,10 @@
       const flushed = await autosave.flush();
       if (token !== contextToken) return;
       if (!flushed.ok) {
+        // El aviso accesible único ya está visible en #editor-save-error-banner con "Reintentar guardado".
         state.exportState = 'idle';
-        state.exportTone = 'error';
-        state.exportMessage = state.saveError || 'No se pudieron guardar los últimos cambios antes de preparar la actividad.';
+        state.exportTone = 'info';
+        state.exportMessage = '';
         syncIncremental();
         focusControl('#btn-editor-retry-save');
         return;

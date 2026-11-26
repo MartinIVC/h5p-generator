@@ -95,7 +95,7 @@
               ${optIssue ? `aria-describedby="${escapeHtml(errId)}"` : ''}
               ${disabledAttr}
             />
-            <p class="editor-field-error${optIssue ? '' : ' hidden'}" id="${escapeHtml(errId)}" role="status">${escapeHtml(State.getIssueMessage(optIssue))}</p>
+            <p class="editor-field-error${optIssue ? '' : ' hidden'}" id="${escapeHtml(errId)}">${escapeHtml(State.getIssueMessage(optIssue))}</p>
           </div>
         </div>
       `;
@@ -133,7 +133,7 @@
             placeholder="Escribe el enunciado claro de la pregunta…"
             ${disabledAttr}
           >${escapeHtml(item.question)}</textarea>
-          <p class="editor-field-error${questionIssue ? '' : ' hidden'}" id="editor-question-error" role="status">${escapeHtml(State.getIssueMessage(questionIssue))}</p>
+          <p class="editor-field-error${questionIssue ? '' : ' hidden'}" id="editor-question-error">${escapeHtml(State.getIssueMessage(questionIssue))}</p>
         </div>
 
         <fieldset class="editor-options-fieldset${correctIssue ? ' has-error' : ''}">
@@ -142,7 +142,7 @@
           <div class="editor-options-list">
             ${optionsHtml}
           </div>
-          <p class="editor-field-error${correctIssue ? '' : ' hidden'}" id="editor-correct-error" role="status">${escapeHtml(State.getIssueMessage(correctIssue))}</p>
+          <p class="editor-field-error${correctIssue ? '' : ' hidden'}" id="editor-correct-error">${escapeHtml(State.getIssueMessage(correctIssue))}</p>
         </fieldset>
 
         <div class="editor-field-group${feedbackIssue ? ' has-error' : ''}">
@@ -162,7 +162,7 @@
             placeholder="Explica por qué la alternativa correcta responde al enunciado…"
             ${disabledAttr}
           >${escapeHtml(item.feedback)}</textarea>
-          <p class="editor-field-error${feedbackIssue ? '' : ' hidden'}" id="editor-feedback-error" role="status">${escapeHtml(State.getIssueMessage(feedbackIssue))}</p>
+          <p class="editor-field-error${feedbackIssue ? '' : ' hidden'}" id="editor-feedback-error">${escapeHtml(State.getIssueMessage(feedbackIssue))}</p>
         </div>
       </div>
     `;
@@ -210,7 +210,7 @@
             placeholder="Escribe una afirmación precisa que pueda evaluarse como verdadera o falsa…"
             ${disabledAttr}
           >${escapeHtml(item.statement)}</textarea>
-          <p class="editor-field-error${statementIssue ? '' : ' hidden'}" id="editor-statement-error" role="status">${escapeHtml(State.getIssueMessage(statementIssue))}</p>
+          <p class="editor-field-error${statementIssue ? '' : ' hidden'}" id="editor-statement-error">${escapeHtml(State.getIssueMessage(statementIssue))}</p>
         </div>
 
         <fieldset class="editor-tf-fieldset${answerIssue ? ' has-error' : ''}">
@@ -241,7 +241,7 @@
               <span>Falso</span>
             </label>
           </div>
-          <p class="editor-field-error${answerIssue ? '' : ' hidden'}" id="editor-tf-error" role="status">${escapeHtml(State.getIssueMessage(answerIssue))}</p>
+          <p class="editor-field-error${answerIssue ? '' : ' hidden'}" id="editor-tf-error">${escapeHtml(State.getIssueMessage(answerIssue))}</p>
         </fieldset>
 
         <div class="editor-field-group${correctFbIssue ? ' has-error' : ''}">
@@ -261,7 +261,7 @@
             placeholder="Mensaje que verá el estudiante cuando elija la respuesta correcta…"
             ${disabledAttr}
           >${escapeHtml(item.feedbackOnCorrect)}</textarea>
-          <p class="editor-field-error${correctFbIssue ? '' : ' hidden'}" id="editor-feedback-correct-error" role="status">${escapeHtml(State.getIssueMessage(correctFbIssue))}</p>
+          <p class="editor-field-error${correctFbIssue ? '' : ' hidden'}" id="editor-feedback-correct-error">${escapeHtml(State.getIssueMessage(correctFbIssue))}</p>
         </div>
 
         <div class="editor-field-group${incorrectFbIssue ? ' has-error' : ''}">
@@ -281,7 +281,7 @@
             placeholder="Aclaración pedagógica cuando el estudiante responde de forma incorrecta…"
             ${disabledAttr}
           >${escapeHtml(item.feedbackOnIncorrect)}</textarea>
-          <p class="editor-field-error${incorrectFbIssue ? '' : ' hidden'}" id="editor-feedback-incorrect-error" role="status">${escapeHtml(State.getIssueMessage(incorrectFbIssue))}</p>
+          <p class="editor-field-error${incorrectFbIssue ? '' : ' hidden'}" id="editor-feedback-incorrect-error">${escapeHtml(State.getIssueMessage(incorrectFbIssue))}</p>
         </div>
       </div>
     `;
@@ -462,16 +462,16 @@
             placeholder="Nombre y título de la actividad H5P…"
             ${fieldsLocked ? 'disabled' : ''}
           />
-          <p class="editor-field-error${titleIssue ? '' : ' hidden'}" id="editor-title-error" role="status">${escapeHtml(State.getIssueMessage(titleIssue))}</p>
+          <p class="editor-field-error${titleIssue ? '' : ' hidden'}" id="editor-title-error">${escapeHtml(State.getIssueMessage(titleIssue))}</p>
         </div>
 
-        <div class="editor-issues-banner${issues.length > 0 ? '' : ' hidden'}" id="editor-issues-banner" role="status" aria-live="polite">
-          <span id="editor-issues-summary">${issues.length === 1 ? 'Hay 1 campo por corregir antes de confirmar y exportar.' : `Hay ${issues.length} campos por corregir antes de confirmar y exportar.`}</span>
+        <div class="editor-issues-banner${issues.length > 0 ? '' : ' hidden'}" id="editor-issues-banner" role="status" aria-live="polite" aria-hidden="${issues.length > 0 ? 'false' : 'true'}">
+          <span id="editor-issues-summary">${issues.length === 0 ? '' : (issues.length === 1 ? 'Hay 1 campo por corregir antes de confirmar y exportar.' : `Hay ${issues.length} campos por corregir antes de confirmar y exportar.`)}</span>
           <button type="button" class="btn-secondary btn-sm" id="btn-editor-first-error" data-action="go-first-error">Ir al primer error</button>
         </div>
 
-        <div class="editor-save-error-banner${state.saveState === 'error' ? '' : ' hidden'}" id="editor-save-error-banner" role="alert" aria-live="assertive">
-          <span id="editor-save-error-text">${escapeHtml(state.saveError || 'No se pudo guardar el borrador editable.')}</span>
+        <div class="editor-save-error-banner${state.saveState === 'error' ? '' : ' hidden'}" id="editor-save-error-banner" role="alert" aria-live="assertive" aria-hidden="${state.saveState === 'error' ? 'false' : 'true'}">
+          <span id="editor-save-error-text">${state.saveState === 'error' ? escapeHtml(state.saveError || 'No se pudo guardar el borrador editable.') : ''}</span>
           <button type="button" class="btn-secondary btn-sm" id="btn-editor-retry-save" data-action="retry-save">Reintentar guardado</button>
         </div>
 
@@ -622,18 +622,24 @@
     const issuesBanner = container.querySelector('#editor-issues-banner');
     const issuesSummary = container.querySelector('#editor-issues-summary');
     if (issuesBanner && issuesSummary) {
-      issuesBanner.classList.toggle('hidden', issues.length === 0);
-      issuesSummary.textContent = issues.length === 1
-        ? 'Hay 1 campo por corregir antes de confirmar y exportar.'
-        : `Hay ${issues.length} campos por corregir antes de confirmar y exportar.`;
+      const hasIssues = issues.length > 0;
+      issuesBanner.classList.toggle('hidden', !hasIssues);
+      issuesBanner.setAttribute('aria-hidden', String(!hasIssues));
+      issuesSummary.textContent = !hasIssues
+        ? ''
+        : (issues.length === 1
+          ? 'Hay 1 campo por corregir antes de confirmar y exportar.'
+          : `Hay ${issues.length} campos por corregir antes de confirmar y exportar.`);
     }
 
     // Save error banner
     const saveErrBanner = container.querySelector('#editor-save-error-banner');
     const saveErrText = container.querySelector('#editor-save-error-text');
     if (saveErrBanner && saveErrText) {
-      saveErrBanner.classList.toggle('hidden', state.saveState !== 'error');
-      saveErrText.textContent = state.saveError || 'No se pudo guardar el borrador editable.';
+      const hasSaveErr = state.saveState === 'error';
+      saveErrBanner.classList.toggle('hidden', !hasSaveErr);
+      saveErrBanner.setAttribute('aria-hidden', String(!hasSaveErr));
+      saveErrText.textContent = hasSaveErr ? (state.saveError || 'No se pudo guardar el borrador editable.') : '';
     }
 
     // Active item fields
