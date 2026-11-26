@@ -8,6 +8,8 @@ const directory = process.env.H5P_TEST_DIRECTORY;
 assert.ok(directory);
 app.setPath('userData', path.join(directory, 'profile'));
 app.setPath('sessionData', path.join(directory, 'session'));
+// En gestores de ventanas en mosaico, otra ventana puede cubrir el proceso de prueba.
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 const storage = require('./backend/storage').academicStorage;
 storage.getApiKey = () => 'synthetic-test-key';
 storage.getApiKeyStatus = () => ({ hasKey: true, maskedKey: 'test' });
@@ -37,6 +39,7 @@ Notification.prototype.show = function () {
   nativeNotifications.push({ title: this.title, body: this.body });
 };
 shell.showItemInFolder = target => { revealedFiles.push(target); };
+let saveTargetFileName = 'output.h5p';
 const questions = [{ pregunta: '¿Qué conserva la integridad?', opciones: ['A) Exactitud', 'B) Publicidad', 'C) Velocidad', 'D) Color'], respuestaCorrecta: 'A) Exactitud', retroalimentacion: 'La integridad protege la exactitud de la información.' }];
 global.fetch = async (url, options) => {
   assert.match(url, /^https:\/\/generativelanguage.googleapis.com\//);
@@ -59,17 +62,73 @@ global.fetch = async (url, options) => {
   const count = schema?.minItems || 1;
   const required = schema?.items?.required || [];
   const effectiveCount = networkMode === 'invalid' && invalidResponses++ === 0 ? count - 1 : count;
-  const values = required.includes('respuesta') && required.includes('pista')
-    ? Array.from({ length: effectiveCount }, (_, i) => ({
+  let values;
+  if (required.includes('afirmacion') && required.includes('esVerdadera')) {
+    values = Array.from({ length: effectiveCount }, () => ({
+      afirmacion: 'La integridad exige exactitud de los datos.',
+      esVerdadera: true,
+      retroalimentacionCorrecta: 'Retroalimentación inicial correcta.',
+      retroalimentacionIncorrecta: 'Retroalimentación inicial incorrecta.'
+    }));
+  } else if (required.includes('respuesta') && required.includes('pista') && !required.includes('textoAntes')) {
+    values = Array.from({ length: effectiveCount }, (_, i) => ({
       pregunta: `¿Qué garantiza la integridad ${i + 1}?`,
       respuesta: `Exactitud ${i + 1}`,
       pista: `Pista ${i + 1}`
-    }))
-    : Array.from({ length: effectiveCount }, (_, i) => ({
+    }));
+  } else if (required.includes('textoAntes') && required.includes('respuesta')) {
+    values = Array.from({ length: effectiveCount }, (_, i) => ({
+      textoAntes: `Enunciado ${i + 1} sobre`,
+      respuesta: 'exactitud',
+      textoDespues: 'en sistemas.',
+      pista: 'Clave'
+    }));
+  } else if (required.includes('textoAntes') && required.includes('palabra')) {
+    values = Array.from({ length: effectiveCount }, (_, i) => ({
+      textoAntes: `El principio ${i + 1} protege la`,
+      palabra: 'integridad',
+      textoDespues: 'de los datos.',
+      pista: 'Concepto'
+    }));
+  } else if (required.includes('afirmacionCorrecta')) {
+    values = Array.from({ length: effectiveCount }, (_, i) => ({
+      afirmacionCorrecta: `Idea correcta ${i + 1}`,
+      distractores: [`Distractor A ${i + 1}`, `Distractor B ${i + 1}`],
+      pista: ''
+    }));
+  } else if (required.includes('parrafo')) {
+    values = Array.from({ length: effectiveCount }, (_, i) => ({
+      parrafo: `Paso ${i + 1} del procedimiento.`
+    }));
+  } else if (required.includes('pista') && required.includes('palabra')) {
+    values = [
+      { pista: 'Conjunto de información', palabra: 'DATOS' },
+      { pista: 'Conexiones entre nodos', palabra: 'REDES' }
+    ].slice(0, effectiveCount);
+  } else if (required.length === 1 && required[0] === 'palabra') {
+    values = [
+      { palabra: 'datos' },
+      { palabra: 'redes' },
+      { palabra: 'clave' }
+    ].slice(0, effectiveCount);
+  } else if (required.includes('titulo') && required.includes('explicacion')) {
+    values = Array.from({ length: effectiveCount }, (_, i) => ({
+      titulo: `Concepto ${i + 1}`,
+      explicacion: `Explicación detallada del concepto ${i + 1}.`
+    }));
+  } else if (required.includes('pregunta') && required.includes('opciones') && !required.includes('retroalimentacion')) {
+    values = Array.from({ length: effectiveCount }, (_, i) => ({
+      pregunta: `Pregunta ${i + 1}`,
+      opciones: ['A) Exactitud', 'B) Publicidad', 'C) Velocidad', 'D) Color'],
+      respuestaCorrecta: 'A) Exactitud'
+    }));
+  } else {
+    values = Array.from({ length: effectiveCount }, (_, i) => ({
       ...questions[0],
       pregunta: `Pregunta ${i + 1}`,
       retroalimentacion: `${questions[0].retroalimentacion} Pregunta ${i + 1}.`
     }));
+  }
   return { ok: true, json: async () => ({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(values) }] } }] }) };
 };
 const backupPath = path.join(directory, 'private-backup-name.json');
@@ -79,7 +138,7 @@ dialog.showSaveDialog = async (_window, options) => {
   if (saveDialogGate) return saveDialogGate;
   if (dialogMode === 'cancel') return { canceled: true };
   if (options.defaultPath.endsWith('.json')) return { filePath: backupPath };
-  return { filePath: path.join(directory, dialogMode === 'failure' ? 'missing/output.h5p' : 'output.h5p') };
+  return { filePath: path.join(directory, dialogMode === 'failure' ? `missing/${saveTargetFileName}` : saveTargetFileName) };
 };
 
 function assertNoListeners() {
@@ -219,7 +278,15 @@ async function run() {
   await evaluate('document.querySelector(".skip-link").click()');
   await waitFor('window.location.hash === "#main-content"');
   assert.equal(Array.isArray(await invoke('getCourses')), true);
-  const request = { documentIds: [inspected.documentId], activityType: 'multiple-choice', questionCount: 1, instructions: '' };
+  // H5P-30: los tres formatos MVP y sus alias sin sesión editorial no generan ni empaquetan.
+  const callsBeforeMvpGuard = fetchCalls;
+  for (const [mvpType, mvpCount] of [['questionset', 1], ['multichoice', 1], ['truefalse', 1], ['question-set', 1], ['multiple-choice', 1]]) {
+    assert.equal((await invoke('generateH5P', { documentIds: [inspected.documentId], activityType: mvpType, questionCount: mvpCount, instructions: '' })).code, 'EDITOR_SESSION_REQUIRED', mvpType);
+  }
+  assert.equal(fetchCalls, callsBeforeMvpGuard);
+
+  // Ruta directa (9 formatos no-MVP): reintentos, respaldo de modelo, cuota, 20 ítems y guardado.
+  const request = { documentIds: [inspected.documentId], activityType: 'singlechoiceset', questionCount: 1, instructions: '' };
   const before = fetchCalls;
   assert.equal((await invoke('generateH5P', { ...request, extra: 'invalid' })).code, 'INVALID_ARGUMENT');
   assert.equal(fetchCalls, before);
@@ -237,6 +304,7 @@ async function run() {
   const beforeFallback = fetchCalls;
   const generated = await invoke('generateH5P', request);
   assert.equal(generated.status, 'ok');
+  assert.equal(generated.kind, 'package');
   assert.equal(fetchCalls - beforeFallback, 2);
   networkMode = 'ok';
   const save = { packageId: generated.packageId, suggestedName: 'actividad' };
@@ -254,10 +322,7 @@ async function run() {
   const JSZip = require('./backend/node_modules/jszip');
   const zip = await JSZip.loadAsync(fs.readFileSync(path.join(directory, 'output.h5p')));
   const content = JSON.parse(await zip.file('content/content.json').async('string'));
-  assert.equal(content.questions[0].params.behaviour.randomAnswers, false);
-  assert.equal(content.questions[0].params.answers[0].text, '<div>Exactitud</div>');
-  assert.equal(content.questions[0].params.answers[0].correct, true);
-  assert.deepEqual(content.questions[0].params.overallFeedback, [{ from: 0, to: 100, feedback: `${questions[0].retroalimentacion} Pregunta 1.` }]);
+  assert.equal(content.choices[0].answers[0], '<p>Exactitud</p>');
   const unassignedAfterFirstSave = await invoke('getProjects', 'unassigned');
   assert.equal(unassignedAfterFirstSave.length, 1);
   assert.equal(unassignedAfterFirstSave[0].id, saved.projectId);
@@ -273,13 +338,26 @@ async function run() {
   assert.equal((await invoke('getProjects', 'unassigned')).length, 1);
   const recoveredZip = await JSZip.loadAsync(fs.readFileSync(path.join(directory, 'output.h5p')));
   const recoveredContent = JSON.parse(await recoveredZip.file('content/content.json').async('string'));
-  assert.equal(recoveredContent.questions.length, 20);
-  for (const [i, question] of recoveredContent.questions.entries()) {
-    assert.equal(question.params.answers.length, 4);
-    assert.equal(question.params.answers.filter(answer => answer.correct).length, 1);
-    assert.deepEqual(question.params.overallFeedback, [{ from: 0, to: 100, feedback: `${questions[0].retroalimentacion} Pregunta ${i + 1}.` }]);
+  assert.equal(recoveredContent.choices.length, 20);
+  for (const choice of recoveredContent.choices) {
+    assert.equal(choice.answers.length, 4);
   }
+  // H5P-30 Fase 14: los 9 formatos no-MVP siguen operando en ruta directa con worker de producción.
   networkMode = 'ok';
+  for (const [directType, directCount] of [
+    ['singlechoiceset', 2], ['blanks', 2], ['dragtext', 2], ['summary', 2],
+    ['sortparagraphs', 3], ['crossword', 2], ['findthewords', 3], ['accordion', 2], ['flashcards', 2]
+  ]) {
+    const directRes = await invoke('generateH5P', {
+      documentIds: [inspected.documentId],
+      activityType: directType,
+      questionCount: directCount,
+      instructions: ''
+    });
+    assert.equal(directRes.status, 'ok', directType);
+    assert.equal(directRes.kind, 'package', directType);
+    assert.equal(directRes.questionCount, directCount, directType);
+  }
   assert.equal((await invoke('releaseDocument', inspected.documentId)).status, 'ok');
   assert.equal((await invoke('generateH5P', request)).code, 'DOCUMENT_NOT_FOUND');
   // Segundo renderer local: los UUID de otro propietario no son utilizables.
@@ -526,6 +604,8 @@ async function run() {
   window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
   window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
   await waitFor('document.activeElement.id === "upload-prompt-input"');
+  // Usar singlechoiceset para las comprobaciones de ruta directa en Paso 2 (H5P-27, H5P-33, H5P-36).
+  await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="singlechoiceset"]\').click()');
   // Cancelar antes de enviar la solicitud no llama a Gemini.
   const callsBeforeEarlyCancel = fetchCalls;
   let resolveKeyStatus;
@@ -630,7 +710,7 @@ async function run() {
     courseId: 'unassigned',
     courseName: 'Proyecto sin ramo',
     prompt: 'Instrucciones restauradas desde borrador',
-    activityType: 'questionset',
+    activityType: 'singlechoiceset',
     questionCount: 3,
     files: [{ name: 'ui.txt', size: 36, lastModified: Date.now() }]
   })`);
@@ -732,7 +812,10 @@ async function run() {
 
   await evaluate('window.configManager.openSettingsModal()');
   const press = (keyCode, modifiers = []) => {
-    for (const type of ['keyDown', 'keyUp']) window.webContents.sendInputEvent({ type, keyCode, modifiers });
+    const resolved = keyCode === 'Enter' ? 'Return' : keyCode;
+    window.webContents.sendInputEvent({ type: 'keyDown', keyCode: resolved, modifiers });
+    if (resolved === 'Return') window.webContents.sendInputEvent({ type: 'char', keyCode: '\r', modifiers });
+    window.webContents.sendInputEvent({ type: 'keyUp', keyCode: resolved, modifiers });
   };
   await evaluate("document.querySelectorAll('.ui-message-close').forEach(btn => btn.click())");
   await waitFor('!document.querySelector(".ui-message")');
@@ -774,7 +857,254 @@ async function run() {
   await evaluate('document.getElementById("btn-merge-backup").click()');
   await waitFor('document.getElementById("modal-settings").classList.contains("hidden") && Array.from(document.querySelectorAll(".ui-message-success")).some(el => el.textContent.includes("Copia restaurada"))');
 
+  // =========================================================================
+  // H5P-30 FASE 13: Integración Electron real de QuestionSet, MultiChoice y TrueFalse
+  // =========================================================================
+  const uploadSyntheticTxtToStep2 = async (fileName = 'h5p30.txt') => {
+    await evaluate(`window.coursesManager.startProjectCreation('unassigned')`);
+    await waitFor('!document.getElementById("panel-upload").classList.contains("hidden")');
+    await evaluate(`(() => {
+      const file = new File(['Material sintético para editor H5P-30.'], ${JSON.stringify(fileName)}, { type: 'text/plain', lastModified: 1700000001000 });
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      const input = document.getElementById('upload-file-input');
+      input.files = transfer.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await waitFor('!document.getElementById("btn-next-step").disabled');
+    await evaluate('document.getElementById("btn-next-step").click()');
+    await waitFor('!document.getElementById("panel-selector").classList.contains("hidden") && Boolean(document.getElementById("question-count"))');
+  };
+
+  // 1) QuestionSet: generar 2 preguntas, editar, reordenar, reiniciar ventana, recuperar desde borrador y exportar
+  window.setSize(840, 600);
+  await uploadSyntheticTxtToStep2('qs-material.txt');
+  await evaluate(`(() => {
+    document.querySelector('.activity-type-card[data-activity-type="questionset"]').click();
+    const count = document.getElementById('question-count');
+    count.value = '2';
+    count.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('h5p-name').value = 'Cuestionario H5P-30';
+    document.getElementById('btn-generate-h5p').click();
+  })()`);
+  await waitFor('!document.getElementById("panel-export").classList.contains("hidden") && Boolean(document.getElementById("editor-title-input"))');
+  assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true);
+  // Verificar modo compacto (< 760 px de panel) y modo amplio (>= 760 px de panel)
+  const layoutCheck = await evaluate(`(() => {
+    const panel = document.getElementById('panel-export');
+    const card = document.getElementById('editor-panel-card');
+    const initialWidth = panel.getBoundingClientRect().width;
+    const initialMatches = card.classList.contains('is-compact') === (initialWidth < 760);
+    panel.style.maxWidth = '700px';
+    window.editorManager.syncCompactMode();
+    const compactActive = card.classList.contains('is-compact');
+    const compactNavVisible = getComputedStyle(card.querySelector('.editor-compact-nav')).display !== 'none';
+    const sidebarHiddenInCompact = getComputedStyle(card.querySelector('.editor-question-sidebar')).display === 'none';
+    panel.style.maxWidth = '';
+    window.editorManager.syncCompactMode();
+    return { initialMatches, compactActive, compactNavVisible, sidebarHiddenInCompact };
+  })()`);
+  assert.equal(layoutCheck.initialMatches, true);
+  assert.equal(layoutCheck.compactActive, true);
+  assert.equal(layoutCheck.compactNavVisible, true);
+  assert.equal(layoutCheck.sidebarHiddenInCompact, true);
+  const editorContrast = await measureContrast([
+    ['savePill', '#editor-save-pill'],
+    ['titleInput', '#editor-title-input'],
+    ['confirmBtn', '#btn-editor-confirm-prepare']
+  ]);
+  assert.ok(editorContrast.light.savePill >= 4.5, `Contraste #editor-save-pill (light): ${editorContrast.light.savePill}`);
+  assert.ok(editorContrast.dark.savePill >= 4.5, `Contraste #editor-save-pill (dark): ${editorContrast.dark.savePill}`);
+  assert.ok(editorContrast.light.titleInput >= 4.5, `Contraste #editor-title-input (light): ${editorContrast.light.titleInput}`);
+  assert.ok(editorContrast.dark.titleInput >= 4.5, `Contraste #editor-title-input (dark): ${editorContrast.dark.titleInput}`);
+
+  // Editar Pregunta 1 (enunciado, feedback y seleccionar opción B como correcta), luego pasar a Pregunta 2 y subirla al índice 0
+  await evaluate(`(() => {
+    const q = document.getElementById('editor-question');
+    q.value = 'Pregunta 1 editada por docente';
+    q.dispatchEvent(new Event('input', { bubbles: true }));
+    const fb = document.getElementById('editor-feedback');
+    fb.value = 'Retroalimentación corregida para P1.';
+    fb.dispatchEvent(new Event('input', { bubbles: true }));
+    const radios = document.querySelectorAll('input[name="editor-correct-option"]');
+    radios[1].checked = true;
+    radios[1].dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await evaluate('window.editorManager.flush()');
+  await evaluate(`(() => {
+    const navBtns = document.querySelectorAll('.editor-question-nav-btn');
+    if (navBtns.length >= 2 && getComputedStyle(document.querySelector('.editor-question-sidebar')).display !== 'none') {
+      navBtns[1].click();
+    } else {
+      document.getElementById('btn-editor-next-item').click();
+    }
+  })()`);
+  await waitFor('document.getElementById("editor-active-item-heading").textContent.includes("Pregunta 2 de 2")');
+  await evaluate('document.getElementById("btn-editor-move-up").click()');
+  await waitFor('document.getElementById("editor-active-item-heading").textContent.includes("Pregunta 1 de 2") && document.getElementById("editor-question").value === "Pregunta 2"');
+  await evaluate('window.editorManager.flush()');
+  await waitFor('document.getElementById("editor-save-pill").dataset.saveState === "saved"');
+
+  // Reiniciar el renderer (recarga real) y restaurar desde "Abrir editor" en Borradores guardados
+  await new Promise(resolve => {
+    window.webContents.once('did-finish-load', resolve);
+    window.webContents.reload();
+  });
+  await waitFor('Boolean(document.querySelector(".btn-open-draft-editor"))');
+  await evaluate('document.querySelector(".btn-open-draft-editor").click()');
+  await waitFor('!document.getElementById("panel-export").classList.contains("hidden") && document.getElementById("editor-question")?.value === "Pregunta 2"');
+  // Comprobar que tras reiniciar se conservaron el orden y la edición de la segunda pregunta
+  await evaluate(`(() => {
+    const navBtns = document.querySelectorAll('.editor-question-nav-btn');
+    if (navBtns.length >= 2 && getComputedStyle(document.querySelector('.editor-question-sidebar')).display !== 'none') {
+      navBtns[1].click();
+    } else {
+      document.getElementById('btn-editor-next-item').click();
+    }
+  })()`);
+  await waitFor('document.getElementById("editor-question")?.value === "Pregunta 1 editada por docente"');
+  assert.equal(await evaluate('document.getElementById("editor-feedback").value'), 'Retroalimentación corregida para P1.');
+
+  // Confirmar, preparar y guardar QuestionSet
+  saveTargetFileName = 'questionset-edited.h5p';
+  dialogMode = 'ok';
+  await evaluate('document.getElementById("btn-editor-confirm-prepare").click()');
+  await waitFor('!document.getElementById("btn-editor-save-file").classList.contains("hidden")');
+  await evaluate('document.getElementById("btn-editor-save-file").click()');
+  await waitFor('document.getElementById("editor-status-banner").dataset.state === "success" && document.getElementById("editor-status-banner").textContent.includes("guardado y añadido")');
+
+  const qsZipPath = path.join(directory, 'questionset-edited.h5p');
+  const qsZip = await JSZip.loadAsync(fs.readFileSync(qsZipPath));
+  const qsMeta = JSON.parse(await qsZip.file('h5p.json').async('string'));
+  const qsContent = JSON.parse(await qsZip.file('content/content.json').async('string'));
+  assert.equal(qsMeta.mainLibrary, 'H5P.QuestionSet');
+  assert.equal(qsMeta.title, 'Cuestionario H5P-30');
+  assert.equal(qsContent.questions.length, 2);
+  assert.equal(qsContent.questions[0].params.question, '<p>Pregunta 2</p>');
+  assert.equal(qsContent.questions[1].params.question, '<p>Pregunta 1 editada por docente</p>');
+  assert.deepEqual(qsContent.questions[1].params.answers.map(a => a.correct), [false, true, false, false]);
+  assert.equal(qsContent.questions[1].params.overallFeedback[0].feedback, 'Retroalimentación corregida para P1.');
+
+  // Eliminar el .h5p en disco y verificar que el proyecto sigue pudiendo reabrirse en el editor local
+  fs.unlinkSync(qsZipPath);
+  await evaluate('window.coursesManager.navigateToCourseDetail("unassigned")');
+  await waitFor('Boolean(document.querySelector(".project-card .btn-open-project-editor"))');
+  await evaluate('document.querySelector(".project-card .btn-open-project-editor").click()');
+  await waitFor('!document.getElementById("panel-export").classList.contains("hidden") && document.getElementById("editor-question")?.value === "Pregunta 2"');
+  await evaluate('window.coursesManager.navigateToHome()');
+  await waitFor('!document.getElementById("panel-home").classList.contains("hidden")');
+
+  // 2) MultiChoice: generar, renombrar la alternativa correcta conservando selección, restaurar y exportar
+  await uploadSyntheticTxtToStep2('mc-material.txt');
+  await evaluate(`(() => {
+    document.querySelector('.activity-type-card[data-activity-type="multichoice"]').click();
+    document.getElementById('h5p-name').value = 'Reactivo MultiChoice H5P-30';
+    document.getElementById('btn-generate-h5p').click();
+  })()`);
+  await waitFor('!document.getElementById("panel-export").classList.contains("hidden") && document.querySelector("[data-form-type=choice]") !== null');
+  assert.equal(await evaluate('document.querySelector(".editor-question-sidebar")'), null);
+  await evaluate(`(() => {
+    const checkedRadio = document.querySelector('input[name="editor-correct-option"]:checked');
+    const optInput = document.getElementById('editor-option-' + checkedRadio.value);
+    optInput.value = 'A) Exactitud verificada';
+    optInput.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await evaluate('window.editorManager.flush()');
+  await waitFor('document.getElementById("editor-save-pill").dataset.saveState === "saved"');
+  // Navegar a Home y recuperar desde borrador exacto
+  const mcDraftId = await evaluate('window.editorManager.getDraftId()');
+  await evaluate('window.coursesManager.navigateToHome()');
+  await waitFor(`Boolean(document.querySelector('.btn-open-draft-editor[data-draft-id="${mcDraftId}"]'))`);
+  await evaluate(`document.querySelector('.btn-open-draft-editor[data-draft-id="${mcDraftId}"]').click()`);
+  await waitFor('!document.getElementById("panel-export").classList.contains("hidden") && document.getElementById("editor-title-input")?.value === "Reactivo MultiChoice H5P-30"');
+
+  saveTargetFileName = 'multichoice-edited.h5p';
+  await evaluate('document.getElementById("btn-editor-confirm-prepare").click()');
+  await waitFor('!document.getElementById("btn-editor-save-file").classList.contains("hidden")');
+  dialogMode = 'cancel';
+  await evaluate('document.getElementById("btn-editor-save-file").click()');
+  await waitFor('document.getElementById("editor-status-banner").textContent.includes("cancelado")');
+  dialogMode = 'ok';
+  await evaluate('document.getElementById("btn-editor-save-file").click()');
+  await waitFor('document.getElementById("editor-status-banner").dataset.state === "success"');
+
+  const mcZip = await JSZip.loadAsync(fs.readFileSync(path.join(directory, 'multichoice-edited.h5p')));
+  const mcMeta = JSON.parse(await mcZip.file('h5p.json').async('string'));
+  const mcContent = JSON.parse(await mcZip.file('content/content.json').async('string'));
+  assert.equal(mcMeta.mainLibrary, 'H5P.MultiChoice');
+  assert.equal(mcMeta.title, 'Reactivo MultiChoice H5P-30');
+  assert.equal(mcContent.answers[0].text, '<div>A) Exactitud verificada</div>');
+  assert.equal(mcContent.answers[0].correct, true);
+  assert.equal(mcContent.answers.filter(a => a.correct).length, 1);
+
+  // 3) TrueFalse: cambiar a false, editar ambos feedbacks, probar "Ir al primer error", fallo de registro y exportar
+  await uploadSyntheticTxtToStep2('tf-material.txt');
+  await evaluate(`(() => {
+    document.querySelector('.activity-type-card[data-activity-type="truefalse"]').click();
+    document.getElementById('h5p-name').value = 'Afirmación TrueFalse H5P-30';
+    document.getElementById('btn-generate-h5p').click();
+  })()`);
+  await waitFor('!document.getElementById("panel-export").classList.contains("hidden") && document.querySelector("[data-form-type=truefalse]") !== null');
+  await evaluate(`(() => {
+    const stmt = document.getElementById('editor-statement');
+    stmt.value = 'Afirmación corregida como falsa.';
+    stmt.dispatchEvent(new Event('input', { bubbles: true }));
+    const radioFalse = document.getElementById('editor-tf-false');
+    radioFalse.checked = true;
+    radioFalse.dispatchEvent(new Event('change', { bubbles: true }));
+    const fbOk = document.getElementById('editor-feedback-correct');
+    fbOk.value = 'Bien: la afirmación es falsa.';
+    fbOk.dispatchEvent(new Event('input', { bubbles: true }));
+    const fbBad = document.getElementById('editor-feedback-incorrect');
+    fbBad.value = '';
+    fbBad.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  // Contenido inválido bloquea confirmación y "Ir al primer error" enfoca #editor-feedback-incorrect
+  assert.equal(await evaluate('document.getElementById("btn-editor-confirm-prepare").disabled'), true);
+  assert.equal(await evaluate('document.getElementById("editor-issues-banner").classList.contains("hidden")'), false);
+  await evaluate('document.getElementById("btn-editor-first-error").click()');
+  assert.equal(await evaluate('document.activeElement.id'), 'editor-feedback-incorrect');
+  await evaluate(`(() => {
+    const fbBad = document.getElementById('editor-feedback-incorrect');
+    fbBad.value = 'Error: revisa por qué es falsa.';
+    fbBad.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await evaluate('window.editorManager.flush()');
+  await waitFor('document.getElementById("editor-save-pill").dataset.saveState === "saved"');
+  // Navegar a Home y restaurar TrueFalse desde borrador exacto
+  const tfDraftId = await evaluate('window.editorManager.getDraftId()');
+  await evaluate('window.coursesManager.navigateToHome()');
+  await waitFor(`Boolean(document.querySelector('.btn-open-draft-editor[data-draft-id="${tfDraftId}"]'))`);
+  await evaluate(`document.querySelector('.btn-open-draft-editor[data-draft-id="${tfDraftId}"]').click()`);
+  await waitFor('!document.getElementById("panel-export").classList.contains("hidden") && document.getElementById("editor-tf-false")?.checked === true');
+
+  // Forzar fallo de registro tras escribir archivo -> archivo existe, aviso warning y borrador conservado
+  saveTargetFileName = 'truefalse-edited.h5p';
+  const origSaveExported = storage.saveExportedProject;
+  storage.saveExportedProject = () => { throw new Error('fallo simulado de registro'); };
+  await evaluate('document.getElementById("btn-editor-confirm-prepare").click()');
+  await waitFor('!document.getElementById("btn-editor-save-file").classList.contains("hidden")');
+  dialogMode = 'ok';
+  await evaluate('document.getElementById("btn-editor-save-file").click()');
+  await waitFor('document.getElementById("editor-status-banner").dataset.state === "warning"');
+  assert.equal(fs.existsSync(path.join(directory, 'truefalse-edited.h5p')), true);
+  storage.saveExportedProject = origSaveExported;
+  // Reintentar guardado y registro exitoso
+  await evaluate('document.getElementById("btn-editor-save-file").click()');
+  await waitFor('document.getElementById("editor-status-banner").dataset.state === "success"');
+
+  const tfZip = await JSZip.loadAsync(fs.readFileSync(path.join(directory, 'truefalse-edited.h5p')));
+  const tfMeta = JSON.parse(await tfZip.file('h5p.json').async('string'));
+  const tfContent = JSON.parse(await tfZip.file('content/content.json').async('string'));
+  assert.equal(tfMeta.mainLibrary, 'H5P.TrueFalse');
+  assert.equal(tfMeta.title, 'Afirmación TrueFalse H5P-30');
+  assert.equal(tfContent.correct, 'false');
+  assert.match(tfContent.question, /Afirmación corregida como falsa\./);
+  assert.equal(tfContent.behaviour.feedbackOnCorrect, 'Bien: la afirmación es falsa.');
+  assert.equal(tfContent.behaviour.feedbackOnWrong, 'Error: revisa por qué es falsa.');
+  saveTargetFileName = 'output.h5p';
+
   assertNoListeners();
-  console.log('PASS: paquete Linux, aislamiento, preload/IPC, workers, prompt vacío, errores de red/lectura/escritura, cancelación, guardado, registro, permisos por ventana y ausencia de puertos TCP de escucha. Interfaz a 840 × 600 y foco por teclado comprobados. Gemini y diálogo simulados.');
+  console.log('PASS: paquete Linux, aislamiento, preload/IPC, workers, editor H5P-30 (QuestionSet, MultiChoice, TrueFalse), 9 formatos directos, errores, recuperación tras reinicio, guardado, registro, permisos por ventana y ausencia de puertos TCP de escucha. Interfaz a 840 × 600 y contraste WCAG AA comprobados. Gemini y diálogo simulados.');
   app.exit(0);
 }

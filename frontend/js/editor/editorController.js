@@ -164,12 +164,12 @@
         onSynced: (response, batch) => {
           if (token !== contextToken) return;
           state.serverRevision = response.activity.revision;
-          state.issues = Array.isArray(response.issues) ? response.issues : State.computeLocalIssues(response.activity);
 
           const hadStructural = batch.some(op => op.type === 'addItem' || op.type === 'removeItem' || op.type === 'moveItem');
           if (hadStructural) {
             const prevIds = new Set((state.activity?.items || []).map(item => item.id));
             state.activity = State.cloneValue(response.activity);
+            state.issues = Array.isArray(response.issues) ? response.issues : State.computeLocalIssues(response.activity);
             if (batch.some(op => op.type === 'addItem')) {
               const added = state.activity.items.find(item => !prevIds.has(item.id));
               if (added) state.activeItemId = added.id;
@@ -181,9 +181,9 @@
               renderStructural({ preserveFocus: true });
             }
           } else {
-            // Conserva el valor en curso de los campos con ediciones pendientes o con foco,
-            // sincronizando revisión y estado de aprobación desde el proceso principal.
+            // Conserva el estado local mientras existan ediciones pendientes por enviar al proceso principal.
             if (!autosave.hasPending()) {
+              state.issues = Array.isArray(response.issues) ? response.issues : State.computeLocalIssues(response.activity);
               state.activity.revision = response.activity.revision;
               state.activity.reviewedRevision = response.activity.reviewedRevision;
               // Sincronizar marca reviewed por ítem sin sobrescribir espacios en blanco mientras el docente escribe.
@@ -194,6 +194,8 @@
                 if (srv.reviewed) localItem.reviewed = true;
                 else delete localItem.reviewed;
               });
+            } else {
+              state.issues = State.computeLocalIssues(state.activity);
             }
             syncIncremental();
           }
