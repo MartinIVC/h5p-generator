@@ -9,6 +9,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const { ACTIVITY_SPECS } = require('./prompts');
+const { EditorialStore, writePrivateFile } = require('./editor/editorialStore');
 
 const BACKUP_FORMAT = 'h5p-generator-backup';
 const BACKUP_VERSION = 1;
@@ -44,13 +45,74 @@ function backupCourse(course) {
   };
 }
 
-function backupProject(project) {
+function projectFiles(files) {
+  return Array.isArray(files) ? files.slice(0, 50).map(file => {
+    const name = typeof file === 'string' ? file : file?.name;
+    return { name: typeof name === 'string' ? name.slice(0, 255) : '' };
+  }).filter(file => file.name) : [];
+}
+
+function projectMetadata(project) {
   return {
-    ...project,
-    filePath: '',
-    sourceFiles: Array.isArray(project.sourceFiles)
-      ? project.sourceFiles.map(file => ({ name: typeof file === 'string' ? file : (file?.name || '') }))
-      : []
+    id: project.id,
+    courseId: project.courseId,
+    previousCourseId: project.previousCourseId,
+    reallocatedAt: project.reallocatedAt,
+    title: project.title,
+    h5pType: project.h5pType,
+    filePath: project.filePath,
+    fileSizeBytes: project.fileSizeBytes,
+    exportedAt: project.exportedAt,
+    sourceFiles: projectFiles(project.sourceFiles)
+  };
+}
+
+function draftFiles(files) {
+  return Array.isArray(files) ? files.slice(0, 50).map(file => ({
+    name: typeof file?.name === 'string' ? file.name.slice(0, 255) : '',
+    size: Number.isFinite(file?.size) && file.size > 0 ? file.size : 0,
+    lastModified: Number.isFinite(file?.lastModified) ? file.lastModified : 0
+  })).filter(file => file.name) : [];
+}
+
+function draftMetadata(draft) {
+  const activityType = normalizeDraftActivityType(draft.activityType);
+  return {
+    id: draft.id,
+    courseId: draft.courseId,
+    previousCourseId: draft.previousCourseId,
+    courseName: draft.courseName,
+    activityType,
+    questionCount: normalizeDraftQuestionCount(draft.questionCount, activityType),
+    files: draftFiles(draft.files),
+    updatedAt: draft.updatedAt
+  };
+}
+
+function publicDraft(draft) {
+  return { ...draftMetadata(draft), prompt: draft.prompt, hasEditable: Boolean(draft.editorialRef) };
+}
+
+function publicProject(project) {
+  return { ...projectMetadata(project), promptSummary: project.promptSummary, hasEditable: Boolean(project.editorialRef) };
+}
+
+function trashMetadata(item, projectProjection) {
+  return {
+    id: item.id,
+    type: item.type,
+    deletedAt: item.deletedAt,
+    record: item.type === 'course' ? backupCourse(item.record) : projectProjection(item.record)
+  };
+}
+
+function backupMetadata(data, keepLocalPaths = false) {
+  const projectProjection = keepLocalPaths ? projectMetadata : project => ({ ...projectMetadata(project), filePath: '' });
+  return {
+    courses: data.courses.map(backupCourse),
+    projects: data.projects.map(projectProjection),
+    drafts: data.drafts.map(draftMetadata),
+    trash: data.trash.map(item => trashMetadata(item, projectProjection))
   };
 }
 
@@ -80,9 +142,7 @@ function cleanBackupProject(project) {
     title: project.title.trim().slice(0, 240),
     h5pType: typeof project.h5pType === 'string' ? project.h5pType.slice(0, 120) : 'H5P General',
     filePath: '',
-    sourceFiles: Array.isArray(project.sourceFiles)
-      ? project.sourceFiles.slice(0, 50).map(file => ({ name: typeof file === 'string' ? file.slice(0, 255) : (typeof file?.name === 'string' ? file.name.slice(0, 255) : '') })).filter(file => file.name)
-      : [],
+    sourceFiles: projectFiles(project.sourceFiles),
     promptSummary: typeof project.promptSummary === 'string' ? project.promptSummary.slice(0, 12000) : '',
     fileSizeBytes: Number.isFinite(project.fileSizeBytes) && project.fileSizeBytes > 0 ? project.fileSizeBytes : 0,
     exportedAt: typeof project.exportedAt === 'string' ? project.exportedAt : new Date().toISOString()
@@ -99,11 +159,14 @@ function cleanBackupTrashItem(item) {
 }
 
 class AcademicStorage {
+  #editorial;
+
   /**
    * @param {string} [customPath] Ruta personalizada opcional (útil para tests o entornos sin Electron)
    */
   constructor(customPath) {
     this.filePath = customPath || this._resolveDefaultPath();
+    this.#editorial = new EditorialStore(path.join(path.dirname(this.filePath), 'editorial'));
     this._ensureFileExists();
   }
 
@@ -194,15 +257,7 @@ class AcademicStorage {
    * @param {{ courses: Array<any>, projects: Array<any> }} data
    */
   _writeData(data) {
-    const tempPath = `${this.filePath}.tmp.${crypto.randomUUID()}`;
-    const payload = JSON.stringify(data, null, 2);
-    try {
-      fs.writeFileSync(tempPath, payload, { encoding: 'utf-8', mode: 0o600 });
-      fs.renameSync(tempPath, this.filePath);
-    } catch (error) {
-      try { fs.rmSync(tempPath, { force: true }); } catch {}
-      throw error;
-    }
+    writePrivateFile(this.filePath, JSON.stringify(data, null, 2));
   }
 
   // ==========================================
@@ -407,14 +462,7 @@ class AcademicStorage {
   getDrafts() {
     const data = this._readData();
     return data.drafts
-      .map(draft => {
-        const activityType = normalizeDraftActivityType(draft.activityType);
-        return {
-          ...draft,
-          activityType,
-          questionCount: normalizeDraftQuestionCount(draft.questionCount, activityType)
-        };
-      })
+      .map(publicDraft)
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   }
 
@@ -437,30 +485,70 @@ class AcademicStorage {
       prompt: typeof draftInput.prompt === 'string' ? draftInput.prompt.slice(0, 10000) : '',
       activityType,
       questionCount,
-      files: Array.isArray(draftInput.files)
-        ? draftInput.files.slice(0, 50).map(file => ({
-          name: typeof file?.name === 'string' ? file.name.slice(0, 255) : '',
-          size: Number.isFinite(file?.size) && file.size > 0 ? file.size : 0,
-          lastModified: Number.isFinite(file?.lastModified) ? file.lastModified : 0
-        })).filter(file => file.name)
-        : [],
+      files: draftFiles(draftInput.files),
       updatedAt: now
     };
 
     const index = data.drafts.findIndex(existing => existing.id === draft.id);
-    if (index >= 0) data.drafts[index] = draft;
-    else data.drafts.unshift(draft);
+    if (index >= 0) {
+      const previous = data.drafts[index];
+      draft.editorialRef = previous.editorialRef;
+      draft.editorProjectRef = previous.editorProjectRef;
+      data.drafts[index] = draft;
+    } else data.drafts.unshift(draft);
     this._writeData(data);
-    return draft;
+    return publicDraft(draft);
   }
 
   deleteDraft(draftId) {
     const data = this._readData();
-    const initialCount = data.drafts.length;
+    const removed = data.drafts.filter(draft => draft.id === draftId);
+    if (!removed.length) return false;
     data.drafts = data.drafts.filter(draft => draft.id !== draftId);
-    if (data.drafts.length === initialCount) return false;
     this._writeData(data);
+    for (const draft of removed) this.#removeUnreferenced(data, draft.editorialRef);
     return true;
+  }
+
+  getEditorialDraft(draftId) {
+    const draft = this._readData().drafts.find(record => record.id === draftId);
+    return this.#readEditorial('draft', draft);
+  }
+
+  saveEditorialDraft(draftId, body) {
+    if (!body) throw new Error('INVALID_EDITABLE');
+    const data = this._readData();
+    const draft = data.drafts.find(record => record.id === draftId);
+    if (!draft) throw new Error('EDITORIAL_DRAFT_NOT_FOUND');
+    draft.updatedAt = new Date().toISOString();
+    this.#commitEditorial(data, 'draft', draft, body);
+    return publicDraft(draft);
+  }
+
+  #readEditorial(kind, record) {
+    return record?.editorialRef ? this.#editorial.read(record.editorialRef, kind, record.id) : null;
+  }
+
+  #commitEditorial(data, kind, record, body) {
+    const previous = record.editorialRef;
+    const reference = body ? this.#editorial.write(kind, record.id, body) : undefined;
+    if (reference) record.editorialRef = reference;
+    else delete record.editorialRef;
+    try {
+      this._writeData(data);
+    } catch (error) {
+      if (reference) this.#editorial.remove(reference);
+      throw error;
+    }
+    this.#removeUnreferenced(data, previous);
+  }
+
+  #removeUnreferenced(data, reference) {
+    if (reference && !data.drafts.some(draft => draft.editorialRef === reference) &&
+        !data.projects.some(project => project.editorialRef === reference) &&
+        !data.trash.some(item => item.type === 'project' && item.record.editorialRef === reference)) {
+      this.#editorial.remove(reference);
+    }
   }
 
   createBackupPayload() {
@@ -469,17 +557,7 @@ class AcademicStorage {
       format: BACKUP_FORMAT,
       version: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
-      data: {
-        courses: data.courses.map(backupCourse),
-        projects: data.projects.map(backupProject),
-        drafts: data.drafts,
-        trash: data.trash.map(item => ({
-          id: item.id,
-          type: item.type,
-          deletedAt: item.deletedAt,
-          record: item.type === 'course' ? backupCourse(item.record) : backupProject(item.record)
-        }))
-      }
+      data: backupMetadata(data)
     };
   }
 
@@ -541,13 +619,7 @@ class AcademicStorage {
           prompt: typeof draft.prompt === 'string' ? draft.prompt.slice(0, 10000) : '',
           activityType,
           questionCount: normalizeDraftQuestionCount(draft.questionCount, activityType),
-          files: Array.isArray(draft.files)
-            ? draft.files.slice(0, 50).map(file => ({
-              name: typeof file?.name === 'string' ? file.name.slice(0, 255) : '',
-              size: Number.isFinite(file?.size) && file.size > 0 ? file.size : 0,
-              lastModified: Number.isFinite(file?.lastModified) ? file.lastModified : 0
-            })).filter(file => file.name)
-            : [],
+          files: draftFiles(draft.files),
           updatedAt: typeof draft.updatedAt === 'string' ? draft.updatedAt : new Date().toISOString()
         };
       }),
@@ -593,7 +665,7 @@ class AcademicStorage {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const suffix = crypto.randomUUID().slice(0, 8);
     const backupPath = path.join(directory, `academic_store-before-restore-${timestamp}-${suffix}.json`);
-    fs.writeFileSync(backupPath, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
+    fs.writeFileSync(backupPath, JSON.stringify(backupMetadata(data, true), null, 2), { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
     return backupPath;
   }
 
@@ -632,7 +704,9 @@ class AcademicStorage {
   }
 
   getTrash() {
-    return this._readData().trash.sort((a, b) => new Date(b.deletedAt || 0) - new Date(a.deletedAt || 0));
+    return this._readData().trash
+      .map(item => trashMetadata(item, publicProject))
+      .sort((a, b) => new Date(b.deletedAt || 0) - new Date(a.deletedAt || 0));
   }
 
   restoreTrashItem(trashId) {
@@ -695,6 +769,7 @@ class AcademicStorage {
       });
     }
     this._writeData(data);
+    if (item.type === 'project') this.#removeUnreferenced(data, item.record.editorialRef);
     return true;
   }
 
@@ -718,7 +793,7 @@ class AcademicStorage {
       .slice()
       .sort((a, b) => new Date(b.exportedAt).getTime() - new Date(a.exportedAt).getTime())
       .map(project => ({
-        ...project,
+        ...publicProject(project),
         fileExists: Boolean(project.filePath && this.verifyFileExists(project.filePath))
       }));
   }
@@ -729,6 +804,15 @@ class AcademicStorage {
    * @returns {object} Proyecto registrado
    */
   saveProject(projectInput) {
+    return this.#saveProject(projectInput);
+  }
+
+  saveExportedProject(projectInput, editorial) {
+    if (!editorial) throw new Error('INVALID_EDITABLE');
+    return this.#saveProject(projectInput, editorial);
+  }
+
+  #saveProject(projectInput, editorial) {
     if (!projectInput || typeof projectInput !== 'object' || Array.isArray(projectInput)) {
       throw new Error('Los datos del proyecto no son válidos.');
     }
@@ -761,11 +845,7 @@ class AcademicStorage {
         ? projectInput.h5pType.trim().slice(0, 120)
         : 'H5P General',
       filePath: normalizedFilePath,
-      sourceFiles: Array.isArray(projectInput.sourceFiles)
-        ? projectInput.sourceFiles.slice(0, 50).map(file => ({
-          name: typeof file === 'string' ? file.slice(0, 255) : (typeof file?.name === 'string' ? file.name.slice(0, 255) : '')
-        })).filter(file => file.name)
-        : [],
+      sourceFiles: projectFiles(projectInput.sourceFiles),
       promptSummary: typeof projectInput.promptSummary === 'string' ? projectInput.promptSummary.trim().slice(0, 10000) : '',
       fileSizeBytes: Number.isFinite(projectInput.fileSizeBytes) && projectInput.fileSizeBytes > 0 ? projectInput.fileSizeBytes : 0,
       exportedAt: typeof projectInput.exportedAt === 'string' && projectInput.exportedAt ? projectInput.exportedAt : now
@@ -784,8 +864,8 @@ class AcademicStorage {
         delete updatedProject.reallocatedAt;
         data.projects.splice(existingIndex, 1);
         data.projects.unshift(updatedProject);
-        this._writeData(data);
-        return updatedProject;
+        this.#commitEditorial(data, 'project', updatedProject, editorial);
+        return publicProject(updatedProject);
       }
     }
 
@@ -795,13 +875,55 @@ class AcademicStorage {
     };
 
     data.projects.unshift(newProject);
-    this._writeData(data);
-    return newProject;
+    this.#commitEditorial(data, 'project', newProject, editorial);
+    return publicProject(newProject);
+  }
+
+  getProjectEditorial(projectId) {
+    const project = this._readData().projects.find(record => record.id === projectId);
+    return this.#readEditorial('project', project);
+  }
+
+  openProjectDraft(projectId) {
+    const data = this._readData();
+    const project = data.projects.find(record => record.id === projectId);
+    if (!project?.editorialRef) return null;
+
+    const course = data.courses.find(record => record.id === project.courseId);
+    const courseId = course?.id || 'unassigned';
+    const courseName = course?.name || 'Proyecto sin ramo';
+    const existing = data.drafts.find(draft => draft.editorProjectRef === project.editorialRef && draft.editorialRef);
+    if (existing) {
+      const editorial = this.#readEditorial('draft', existing);
+      if (existing.courseId !== courseId || existing.courseName !== courseName) {
+        Object.assign(existing, { courseId, courseName });
+        delete existing.previousCourseId;
+        this._writeData(data);
+      }
+      return { draft: publicDraft(existing), ...editorial };
+    }
+
+    const { activity, source } = this.#readEditorial('project', project);
+    const draft = {
+      id: crypto.randomUUID(),
+      courseId,
+      courseName,
+      prompt: '',
+      activityType: activity.activityType,
+      questionCount: activity.items.length,
+      files: draftFiles(projectFiles(project.sourceFiles)),
+      updatedAt: new Date().toISOString(),
+      editorProjectRef: project.editorialRef
+    };
+    data.drafts.unshift(draft);
+    this.#commitEditorial(data, 'draft', draft, { activity, source });
+    return { draft: publicDraft(draft), ...this.#readEditorial('draft', draft) };
   }
 
   assignProject(projectId, courseId) {
     const data = this._readData();
-    if (courseId !== 'unassigned' && !data.courses.some(course => course.id === courseId)) {
+    const course = data.courses.find(item => item.id === courseId);
+    if (courseId !== 'unassigned' && !course) {
       throw new Error('No se encontró el ramo seleccionado.');
     }
     const project = data.projects.find(item => item.id === projectId);
@@ -809,8 +931,15 @@ class AcademicStorage {
     project.courseId = courseId;
     delete project.previousCourseId;
     delete project.reallocatedAt;
+    if (project.editorialRef) {
+      for (const draft of data.drafts) {
+        if (draft.editorProjectRef !== project.editorialRef) continue;
+        Object.assign(draft, { courseId, courseName: course?.name || 'Proyecto sin ramo' });
+        delete draft.previousCourseId;
+      }
+    }
     this._writeData(data);
-    return project;
+    return publicProject(project);
   }
 
   /**

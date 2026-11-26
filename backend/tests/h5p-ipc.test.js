@@ -8,9 +8,14 @@ const { registerH5PIpcHandlers, handler } = require('../../frontend/ipc/h5pHandl
 const id = '01234567-89ab-4cde-8fab-0123456789ab';
 const requests = {
   'h5p:inspect-document': { name: 'apunte.txt', bytes: new Uint8Array([1, 2]) },
+  'h5p:release-document': { documentId: id },
   'h5p:generate': { documentIds: [id], activityType: 'multiple-choice', questionCount: 3, instructions: '' },
   'h5p:cancel-generation': {},
-  'h5p:save-file': { packageId: id, suggestedName: 'actividad.h5p' }
+  'h5p:save-file': { packageId: id, suggestedName: 'actividad.h5p' },
+  'h5p:open-editor': { draftId: id },
+  'h5p:update-editor': { sessionId: id, expectedRevision: 1, operations: [{ type: 'setTitle', title: 'Nuevo título' }] },
+  'h5p:close-editor': { sessionId: id },
+  'h5p:prepare-reviewed': { sessionId: id, expectedRevision: 1 }
 };
 function setup() {
   const handlers = new Map();
@@ -27,7 +32,16 @@ test('preload conecta los métodos explícitos con los canales registrados', asy
       ipcRenderer: { invoke: (channel, payload) => handlers.get(channel)({ trusted: true }, payload) }
     })
   }, { filename });
-  for (const [method, channel] of [['inspectDocument', 'h5p:inspect-document'], ['generateH5P', 'h5p:generate'], ['cancelGeneration', 'h5p:cancel-generation'], ['saveH5PFile', 'h5p:save-file']]) {
+  for (const [method, channel] of [
+    ['inspectDocument', 'h5p:inspect-document'],
+    ['generateH5P', 'h5p:generate'],
+    ['cancelGeneration', 'h5p:cancel-generation'],
+    ['saveH5PFile', 'h5p:save-file'],
+    ['openEditor', 'h5p:open-editor'],
+    ['updateEditor', 'h5p:update-editor'],
+    ['closeEditor', 'h5p:close-editor'],
+    ['prepareReviewedH5P', 'h5p:prepare-reviewed']
+  ]) {
     const result = await api[method](requests[channel]);
     assert.equal(result.status, method === 'inspectDocument' ? 'ok' : 'error');
   }

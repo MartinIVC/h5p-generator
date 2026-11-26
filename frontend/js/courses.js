@@ -372,6 +372,7 @@
    * Navega a la pantalla de inicio (Catálogo de Ramos)
    */
   async function navigateToHome() {
+    await window.editorManager?.closeSession?.({ flushFirst: true });
     await window.uploadManager?.flushDraft?.();
     window.uploadManager?.leaveWizard?.();
     state.activeCourseId = null;
@@ -394,6 +395,7 @@
   }
 
   async function navigateToTrash() {
+    await window.editorManager?.closeSession?.({ flushFirst: true });
     await window.uploadManager?.flushDraft?.();
     window.uploadManager?.leaveWizard?.();
     state.activeCourseId = null;
@@ -418,6 +420,7 @@
    * Navega a la vista de detalle de un ramo específico
    */
   async function navigateToCourseDetail(courseId, projectSearchQuery = '') {
+    await window.editorManager?.closeSession?.({ flushFirst: true });
     await window.uploadManager?.flushDraft?.();
     window.uploadManager?.leaveWizard?.();
     state.activeCourseId = courseId;
@@ -461,6 +464,79 @@
 
     await loadProjectsForActiveCourse();
     renderCourseDetailView();
+  }
+
+  /**
+   * Abre directamente el Paso 3 ("Revisar y exportar") desde un borrador o un proyecto exportado editable.
+   */
+  async function openActivityEditor({ draftId = null, projectId = null, courseId = null, origin = 'drafts' } = {}) {
+    if (!window.academicAPI?.openEditor || !window.editorManager) {
+      window.uiMessage?.('El editor de actividades no está disponible en este entorno.', 'error');
+      return false;
+    }
+    await window.editorManager.closeSession({ flushFirst: true });
+    await window.uploadManager?.flushDraft?.();
+    window.uploadManager?.leaveWizard?.();
+
+    let opened;
+    try {
+      opened = await window.academicAPI.openEditor(draftId ? { draftId } : { projectId });
+    } catch {
+      window.uiMessage?.('No se pudo abrir el editor de la actividad.', 'error');
+      return false;
+    }
+
+    if (opened?.status !== 'ok' || !opened.activity) {
+      if (opened?.status === 'ok' && opened.sessionId) {
+        await window.academicAPI.closeEditor({ sessionId: opened.sessionId }).catch(() => {});
+      }
+      window.uiMessage?.(opened?.message || 'Este registro no tiene contenido editable disponible.', 'error');
+      return false;
+    }
+
+    const resolvedCourseId = opened.courseId || courseId || 'unassigned';
+    state.activeCourseId = resolvedCourseId;
+
+    if (panelHome) panelHome.classList.add('hidden');
+    if (panelCourseDetail) panelCourseDetail.classList.add('hidden');
+    if (panelTrash) panelTrash.classList.add('hidden');
+    if (panelUpload) panelUpload.classList.add('hidden');
+    if (panelSelector) panelSelector.classList.add('hidden');
+    if (panelExport) panelExport.classList.remove('hidden');
+    if (appFooter) appFooter.classList.remove('hidden');
+
+    [1, 2, 3].forEach(step => {
+      const indicator = document.getElementById(`step-indicator-${step}`);
+      if (!indicator) return;
+      indicator.classList.toggle('active', step === 3);
+      indicator.classList.toggle('completed', step < 3);
+      if (step === 3) indicator.setAttribute('aria-current', 'step');
+      else indicator.removeAttribute('aria-current');
+    });
+
+    if (topbarTitle) topbarTitle.textContent = 'Revisar y exportar';
+    if (topbarBackBtn) {
+      topbarBackBtn.classList.remove('hidden');
+      topbarBackBtn.setAttribute('title', origin === 'project' ? 'Volver al Ramo' : 'Volver a Mis Ramos');
+      topbarBackBtn.onclick = () => {
+        if (origin === 'project' && resolvedCourseId) navigateToCourseDetail(resolvedCourseId);
+        else navigateToHome();
+      };
+    }
+
+    await loadDrafts();
+    window.editorManager.mountSession(opened, {
+      origin,
+      onBack: async ({ courseId: nextCourseId }) => {
+        await window.editorManager.closeSession({ flushFirst: true });
+        if (origin === 'project' && (nextCourseId || resolvedCourseId)) {
+          await navigateToCourseDetail(nextCourseId || resolvedCourseId);
+        } else {
+          await navigateToHome();
+        }
+      }
+    });
+    return true;
   }
 
   /**
@@ -835,14 +911,19 @@
         </div>
         <div class="saved-drafts-grid">
           ${state.drafts.map(draft => `
-            <article class="saved-draft-card">
+            <article class="saved-draft-card" data-draft-id="${escapeHTML(draft.id)}">
               <div class="saved-draft-copy">
                 <strong>${escapeHTML(draft.courseName || 'Proyecto sin ramo')}</strong>
                 <span>${(draft.files || []).length} ${(draft.files || []).length === 1 ? 'documento' : 'documentos'} · Guardado ${escapeHTML(formatDate(draft.updatedAt))}</span>
-                <p>Las instrucciones se conservaron. Por privacidad, vuelve a seleccionar los documentos.</p>
+                <p>${draft.hasEditable
+                  ? 'Contenido editable guardado localmente. Puedes abrir el editor para revisarlo y exportarlo.'
+                  : 'Las instrucciones se conservaron. Por privacidad, vuelve a seleccionar los documentos.'}</p>
               </div>
               <div class="saved-draft-actions">
-                <button type="button" class="btn-primary btn-resume-draft" data-draft-id="${escapeHTML(draft.id)}">Continuar</button>
+                ${draft.hasEditable
+                  ? `<button type="button" class="btn-primary btn-open-draft-editor" data-draft-id="${escapeHTML(draft.id)}">Abrir editor</button>
+                     <button type="button" class="btn-secondary btn-resume-draft" data-draft-id="${escapeHTML(draft.id)}">Configurar</button>`
+                  : `<button type="button" class="btn-primary btn-resume-draft" data-draft-id="${escapeHTML(draft.id)}">Continuar</button>`}
                 <button type="button" class="btn-text-danger btn-delete-draft" data-draft-id="${escapeHTML(draft.id)}">Descartar</button>
               </div>
             </article>
@@ -1148,6 +1229,15 @@
       renderHomeView();
     });
 
+    panelHome.querySelectorAll('.btn-open-draft-editor').forEach(button => {
+      button.addEventListener('click', () => {
+        const draft = state.drafts.find(item => item.id === button.dataset.draftId);
+        if (draft) {
+          void openActivityEditor({ draftId: draft.id, courseId: draft.courseId, origin: 'drafts' });
+        }
+      });
+    });
+
     panelHome.querySelectorAll('.btn-resume-draft').forEach(button => {
       button.addEventListener('click', () => {
         const draft = state.drafts.find(item => item.id === button.dataset.draftId);
@@ -1272,6 +1362,11 @@
               ` : ''}
 
               <div class="project-card-footer">
+                ${proj.hasEditable ? `
+                  <button type="button" class="btn-primary btn-open-project-editor" data-project-id="${escapeHTML(proj.id)}" title="Abrir copia editable local para revisar o volver a exportar" aria-label="Abrir editor: ${escapeHTML(proj.title)}">
+                    <span>Abrir editor</span>
+                  </button>
+                ` : ''}
                 <button type="button" class="btn-secondary btn-reveal-project" data-project-id="${escapeHTML(proj.id)}" title="Abrir carpeta donde se guardó el archivo .h5p" aria-label="Ver en carpeta: ${escapeHTML(proj.title)}">
                   <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -1424,6 +1519,20 @@
       if (input) input.value = '';
       updateCourseProjectsContent(isUnassigned);
       input?.focus();
+    });
+
+    // Abrir editor local desde proyecto exportado (incluso si el .h5p se movió o eliminó)
+    contentEl.querySelectorAll('.btn-open-project-editor').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const projectId = btn.getAttribute('data-project-id');
+        if (!projectId) return;
+        const proj = state.projects.find(item => item.id === projectId);
+        void openActivityEditor({
+          projectId,
+          courseId: state.activeCourseId || proj?.courseId || 'unassigned',
+          origin: 'project'
+        });
+      });
     });
 
     // Abrir ubicación en carpeta (resuelta por ID de proyecto en el proceso principal)
@@ -2207,6 +2316,7 @@
     navigateToTrash,
     navigateToCourseDetail,
     startProjectCreation,
+    openActivityEditor,
     openCourseModal,
     openOnboarding: async () => {
       state.isOnboardingDismissed = false;

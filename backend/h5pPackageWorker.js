@@ -8,7 +8,8 @@ const { packH5PPackage } = require('./h5pPacker');
     const activityType = workerData.activityType || 'questionset';
     const items = workerData.items !== undefined ? workerData.items : workerData.questions;
     const { bytes } = await packH5PPackage(activityType, items, {
-      title: workerData.title
+      title: workerData.title,
+      reviewed: workerData.reviewed === true
     });
     parentPort.postMessage({ bytes });
   } catch {
