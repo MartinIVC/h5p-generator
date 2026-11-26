@@ -7,6 +7,9 @@ const { Worker } = require('node:worker_threads');
 const { generateQuestionsFromChunk, MAX_SOURCE_CHARS, RESPONSE_REASONS } = require('../../backend/llmClient');
 const { ACTIVITY_SPECS, resolveActivityType, isValidActivityCount } = require('../../backend/prompts');
 const { writeH5PFile } = require('../../backend/h5pPacker');
+const { createEditableActivity } = require('../../backend/editor/editableActivity');
+
+const EDITABLE_TYPES = new Set(['questionset', 'multichoice', 'truefalse']);
 
 const messages = {
   DOCUMENT_NOT_FOUND: 'Los documentos ya no están disponibles. Vuelve a seleccionarlos.',
@@ -29,7 +32,14 @@ const messages = {
   INVALID_COURSE: 'El ramo seleccionado ya no está disponible.',
   UNSUPPORTED_TYPE: 'El tipo de actividad o la cantidad solicitada no están disponibles.',
   BUSY: 'Hay una operación en curso. Espera a que termine.',
-  SAVE_FAILED: 'No se pudo guardar el archivo. Inténtalo nuevamente.'
+  SAVE_FAILED: 'No se pudo guardar el archivo. Inténtalo nuevamente.',
+  SESSION_NOT_FOUND: 'La sesión de edición ya no está activa. Vuelve a abrir la actividad.',
+  EDITOR_SESSION_REQUIRED: 'Esta actividad requiere abrir una sesión del editor antes de generar.',
+  PERSISTENCE_FAILED: 'No se pudo guardar el borrador editable. Conserva esta ventana abierta e inténtalo de nuevo.',
+  REVISION_CONFLICT: 'La actividad cambió desde tu última lectura. Actualiza antes de continuar.',
+  INVALID_CONTENT: 'La actividad tiene campos pendientes o con errores. Corrige los errores antes de exportar.',
+  DRAFT_NOT_FOUND: 'El borrador solicitado ya no está disponible.',
+  EDITORIAL_TOO_LARGE: 'El contenido de la actividad supera el tamaño máximo permitido.'
 };
 const fail = code => ({ status: 'error', code, message: messages[code] });
 
@@ -55,11 +65,12 @@ function resolveDefaultSaveDirectory(app) {
 
 const NATIVE_NOTIFICATIONS = {
   GENERATION_READY: 'Actividad H5P lista para guardar.',
+  EDITABLE_READY: 'Actividad H5P lista para revisar.',
   GENERATION_ERROR: 'No se pudo completar la generación H5P.',
   SAVE_COMPLETE: 'Archivo H5P guardado.'
 };
 
-function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, generate = generateQuestionsFromChunk, WorkerClass = Worker, fileSystem = fs, notify = () => {} }) {
+function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, generate = generateQuestionsFromChunk, WorkerClass = Worker, fileSystem = fs, notify = () => {}, editor = null }) {
   const sessions = new WeakMap();
   function sendNativeNotification(event, body) {
     if (typeof notify !== 'function' || typeof body !== 'string' || !body) return;
@@ -110,11 +121,21 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
     if (!activityConfig || !isValidActivityCount(activityConfig.workerType, request.questionCount)) {
       return fail('UNSUPPORTED_TYPE');
     }
+    const isEditableType = EDITABLE_TYPES.has(activityConfig.workerType);
+    const hasSessionId = typeof request.sessionId === 'string';
+    if (!isEditableType && hasSessionId) return fail('UNSUPPORTED_TYPE');
+    const useEditorialRoute = isEditableType && hasSessionId;
+    if (useEditorialRoute) {
+      const editorSession = editor?.getSession?.(sender, request.sessionId);
+      if (!editorSession) return fail('SESSION_NOT_FOUND');
+      if (editorSession.busy) return fail('BUSY');
+    }
     const documents = request.documentIds.map(id => inspection.getDocument(sender, id));
     if (documents.some(doc => !doc)) return fail('DOCUMENT_NOT_FOUND');
     const source = documents.map(doc => doc.text).join('\n\n');
     if (source.length > MAX_SOURCE_CHARS) return fail('SOURCE_TOO_LARGE');
     session.busy = true;
+    if (useEditorialRoute) editor.setSessionBusy(sender, request.sessionId, true);
     const requestAbort = new AbortController();
     session.requestAbort = requestAbort;
     try {
@@ -128,6 +149,49 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
       if (requestAbort.signal.aborted && !session.closed) return fail('GENERATION_CANCELLED');
       if (session.closed || sender.isDestroyed() || request.documentIds.some((id, i) => inspection.getDocument(sender, id) !== documents[i])) return fail('DOCUMENT_NOT_FOUND');
       const safeTitle = typeof request.title === 'string' && request.title.trim() ? request.title.trim() : undefined;
+      const sourceFiles = documents
+        .map(doc => (typeof doc?.name === 'string' && doc.name.trim() ? { name: doc.name.trim().slice(0, 255) } : null))
+        .filter(Boolean);
+      if (useEditorialRoute) {
+        if (!editor?.getSession?.(sender, request.sessionId)) return fail('SESSION_NOT_FOUND');
+        let editableActivity;
+        try {
+          editableActivity = createEditableActivity({
+            activityType: activityConfig.workerType,
+            title: safeTitle,
+            items
+          });
+        } catch {
+          if (!session.closed && !sender.isDestroyed()) sendNativeNotification(event, NATIVE_NOTIFICATIONS.GENERATION_ERROR);
+          return fail('INVALID_RESPONSE');
+        }
+        const saved = editor.saveGeneratedContent(sender, request.sessionId, {
+          activity: editableActivity,
+          source: {
+            activityType: activityConfig.workerType,
+            questionCount: request.questionCount,
+            title: safeTitle || null,
+            instructions: request.instructions
+          },
+          sourceFiles
+        });
+        if (saved.status !== 'ok') {
+          if (!session.closed && !sender.isDestroyed()) sendNativeNotification(event, NATIVE_NOTIFICATIONS.GENERATION_ERROR);
+          return saved;
+        }
+        sendNativeNotification(event, NATIVE_NOTIFICATIONS.EDITABLE_READY);
+        return {
+          status: 'ok',
+          kind: 'editable',
+          sessionId: saved.sessionId,
+          draftId: saved.draftId,
+          courseId: saved.courseId,
+          activity: saved.activity,
+          issues: saved.issues,
+          source: saved.source,
+          questionCount: saved.activity.items.length
+        };
+      }
       let bytes;
       try { bytes = await buildPackage(items, session, activityConfig.workerType, safeTitle); }
       catch {
@@ -137,9 +201,6 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
       }
       if (requestAbort.signal.aborted && !session.closed) return fail('GENERATION_CANCELLED');
       if (session.closed || sender.isDestroyed() || request.documentIds.some((id, i) => inspection.getDocument(sender, id) !== documents[i])) return fail('DOCUMENT_NOT_FOUND');
-      const sourceFiles = documents
-        .map(doc => (typeof doc?.name === 'string' && doc.name.trim() ? { name: doc.name.trim().slice(0, 255) } : null))
-        .filter(Boolean);
       const packageId = randomUUID();
       session.package = { id: packageId, bytes, h5pType: activityConfig.projectLabel, sourceFiles };
       sendNativeNotification(event, NATIVE_NOTIFICATIONS.GENERATION_READY);
@@ -155,6 +216,7 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
       }
       return fail(code);
     } finally {
+      if (useEditorialRoute) editor?.setSessionBusy?.(sender, request.sessionId, false);
       if (session.requestAbort === requestAbort) session.requestAbort = null;
       session.busy = false;
     }

@@ -36,14 +36,15 @@ function validDocument(value) {
 }
 
 function validGeneration(value) {
-  if (!objectWithKeys(value, ['documentIds', 'activityType', 'questionCount', 'instructions'], ['title'])) return false;
+  if (!objectWithKeys(value, ['documentIds', 'activityType', 'questionCount', 'instructions'], ['title', 'sessionId'])) return false;
   return Array.isArray(value.documentIds) && value.documentIds.length > 0 && value.documentIds.length <= 20 &&
     value.documentIds.every(id => typeof id === 'string' && UUID.test(id)) &&
     new Set(value.documentIds).size === value.documentIds.length &&
     typeof value.activityType === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(value.activityType) &&
     Number.isInteger(value.questionCount) && value.questionCount >= 1 && value.questionCount <= 20 &&
     typeof value.instructions === 'string' && value.instructions.length <= 10000 &&
-    (value.title === undefined || (typeof value.title === 'string' && value.title.length <= 180 && !/[\x00-\x1f\x7f]/.test(value.title)));
+    (value.title === undefined || (typeof value.title === 'string' && value.title.length <= 180 && !/[\x00-\x1f\x7f]/.test(value.title))) &&
+    (value.sessionId === undefined || (typeof value.sessionId === 'string' && UUID.test(value.sessionId)));
 }
 
 function validSave(value) {
