@@ -462,7 +462,7 @@
       <section class="settings-section backup-settings-section">
         <div class="settings-section-header">
           <h4 class="settings-section-title">Datos y copias de seguridad</h4>
-          <p class="settings-section-desc">La copia guarda ramos, proyectos, borradores y elementos de la Papelera. No incluye la clave de Gemini, documentos fuente ni archivos .h5p; las ubicaciones de archivo se omiten.</p>
+          <p class="settings-section-desc">La copia guarda los metadatos de ramos, proyectos, borradores y Papelera. El contenido editable y las instrucciones de generación permanecen en el equipo. La copia omite la clave de Gemini, los documentos fuente, los archivos .h5p y sus ubicaciones.</p>
         </div>
         <div class="backup-actions-row">
           <button type="button" class="btn-secondary" id="btn-export-backup">Crear copia</button>
@@ -477,7 +477,7 @@
             <button type="button" class="btn-text-danger" id="btn-prepare-replace-backup">Reemplazar mis datos</button>
           </div>
           <div class="backup-replace-confirm hidden" id="backup-replace-confirm" role="group" aria-label="Confirmar reemplazo de datos">
-            <p>Se reemplazarán tus ramos, proyectos, borradores y elementos de la Papelera. Se creará una copia local automática antes del cambio.</p>
+            <p>Se reemplazarán tus ramos, proyectos, borradores y elementos de la Papelera. El sistema guardará una copia local de los metadatos antes del cambio. Los registros restaurados quedarán desvinculados de cualquier editable local.</p>
             <div class="backup-actions-row">
               <button type="button" class="btn-secondary" id="btn-cancel-replace-backup">Cancelar</button>
               <button type="button" class="btn-text-danger" id="btn-confirm-replace-backup">Confirmar reemplazo</button>

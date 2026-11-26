@@ -5,7 +5,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { isValidActivityCount } = require('../prompts');
 const { EDITABLE_ACTIVITY_SCHEMA_VERSION, MAX_EDITABLE_TITLE_LENGTH } = require('./editableActivity');
-const { assertEditableDraft } = require('./activityEdits');
+const { assertEditableDraft, getActivityIssues } = require('./activityEdits');
 
 const RECORD_VERSION = 1;
 const MAX_EDITORIAL_BYTES = 1024 * 1024;
@@ -40,9 +40,13 @@ function assertSource(source, activityType) {
   }
 }
 
-function assertBody(activity, source) {
+function assertBody(kind, activity, source) {
   assertEditableDraft(activity);
   assertSource(source, activity.activityType);
+  if (kind === 'project' &&
+      (activity.reviewedRevision !== activity.revision || getActivityIssues(activity).length > 0)) {
+    throw editorialError('EDITORIAL_NOT_REVIEWED');
+  }
 }
 
 class EditorialStore {
@@ -51,7 +55,7 @@ class EditorialStore {
   }
 
   write(kind, ownerId, { activity, source }) {
-    assertBody(activity, source);
+    assertBody(kind, activity, source);
     const reference = randomUUID();
     const payload = Buffer.from(JSON.stringify({
       schemaVersion: RECORD_VERSION,
@@ -110,7 +114,7 @@ class EditorialStore {
           typeof record.savedAt !== 'string' || !Number.isFinite(Date.parse(record.savedAt))) {
         throw editorialError('EDITORIAL_UNREADABLE');
       }
-      assertBody(record.activity, record.source);
+      assertBody(kind, record.activity, record.source);
     } catch {
       throw editorialError('EDITORIAL_UNREADABLE');
     }

@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { AcademicStorage } = require('../storage');
 const { createEditableActivity } = require('../editor/editableActivity');
-const { applyActivityEdits, getActivityIssues } = require('../editor/activityEdits');
+const { applyActivityEdits, getActivityIssues, confirmActivityReview } = require('../editor/activityEdits');
 
 const source = {
   activityType: 'truefalse',
@@ -136,4 +136,86 @@ test('un editable corrupto, demasiado grande, futuro o vinculado a otro borrador
   originalMeta.editorialRef = data.drafts.find(record => record.id === other.id).editorialRef;
   fs.writeFileSync(storePath, JSON.stringify(data));
   assert.throws(() => storage.getEditorialDraft(affected.id), { code: 'EDITORIAL_UNREADABLE' });
+});
+
+test('la exportación, Guardar como, el traslado y la papelera conservan copias independientes', t => {
+  const { storage, editorial, index, files } = setup(t);
+  const course = storage.saveCourse({ name: 'Física' });
+  const legacy = storage.saveProject({ title: 'Proyecto anterior' });
+  assert.equal(legacy.hasEditable, false);
+  assert.equal(storage.openProjectDraft(legacy.id), null);
+
+  const original = body();
+  const firstPath = path.join(editorial, 'sin-archivo.h5p');
+  assert.throws(() => storage.saveExportedProject({ title: 'Revisión', filePath: firstPath }, original), {
+    code: 'EDITORIAL_NOT_REVIEWED'
+  });
+  const reviewed = { ...original, activity: confirmActivityReview(original.activity) };
+  const first = storage.saveExportedProject({ title: 'Revisión', filePath: firstPath }, reviewed);
+  assert.equal(first.hasEditable, true);
+  assert.equal(first.editorialRef, undefined);
+  assert.equal(storage.getProjects().find(project => project.id === first.id).fileExists, false);
+  const reopened = storage.openProjectDraft(first.id);
+  const edited = confirmActivityReview(editTitle(reopened.activity, 'Otra revisión'));
+  storage.saveEditorialDraft(reopened.draft.id, { ...reviewed, activity: edited });
+  assert.deepEqual(storage.openProjectDraft(first.id).activity, edited);
+  assert.deepEqual(storage.getProjectEditorial(first.id).activity, reviewed.activity);
+
+  const second = storage.saveExportedProject({ title: 'Guardar como', filePath: path.join(editorial, 'otro.h5p') },
+    { ...reviewed, activity: edited });
+  assert.notEqual(second.id, first.id);
+  assert.equal(storage.getProjectEditorial(first.id).activity.title, source.title);
+  assert.equal(storage.getProjectEditorial(second.id).activity.title, edited.title);
+  const updated = storage.saveExportedProject({ title: 'Sobrescribir', filePath: firstPath }, { ...reviewed, activity: edited });
+  assert.equal(updated.id, first.id);
+  assert.deepEqual(storage.getProjectEditorial(first.id).activity, edited);
+
+  const work = storage.openProjectDraft(first.id);
+  assert.equal(storage.assignProject(first.id, course.id).hasEditable, true);
+  assert.equal(storage.getDrafts().find(draft => draft.id === work.draft.id).courseId, course.id);
+  assert.equal(storage.deleteProject(first.id), true);
+  const [trashed] = storage.getTrash();
+  assert.equal(trashed.record.hasEditable, true);
+  assert.equal(trashed.record.editorialRef, undefined);
+  assert.equal(storage.getProjectEditorial(first.id), null);
+  assert.equal(storage.restoreTrashItem(trashed.id), true);
+  assert.equal(storage.openProjectDraft(first.id).draft.id, work.draft.id);
+
+  const refFile = index().projects.find(project => project.id === first.id).editorialRef + '.json';
+  storage.deleteProject(first.id);
+  assert.equal(storage.permanentlyDeleteTrashItem(storage.getTrash()[0].id), true);
+  assert.equal(files().includes(refFile), false);
+  assert.deepEqual(storage.getEditorialDraft(reopened.draft.id).activity, edited);
+  assert.deepEqual(storage.getProjectEditorial(second.id).activity, edited);
+});
+
+test('las copias v1 y el respaldo previo excluyen datos privados e impiden recuperar por IDs importados', t => {
+  const { storage, storePath, index, files } = setup(t);
+  const draft = storage.saveDraft({ courseId: 'unassigned', prompt: 'PROMPT_PRIVADO' });
+  const original = body();
+  storage.saveEditorialDraft(draft.id, original);
+  const reviewed = { ...original, activity: confirmActivityReview(original.activity) };
+  const first = storage.saveExportedProject({ title: 'Activo', promptSummary: 'RESUMEN_PRIVADO' }, reviewed);
+  const second = storage.saveExportedProject({ title: 'En papelera' }, reviewed);
+  storage.deleteProject(second.id);
+  const raw = index();
+  const backup = storage.createBackupPayload();
+  assert.equal(backup.version, 1);
+  const privateData = /editorialRef|editorProjectRef|CONTENIDO_EDITORIAL|INSTRUCCIONES_PRIVADAS|PROMPT_PRIVADO|RESUMEN_PRIVADO/;
+  assert.doesNotMatch(JSON.stringify(backup), privateData);
+
+  storage.restoreBackupPayload(backup, 'merge');
+  assert.equal(storage.getProjectEditorial(first.id).activity.reviewedRevision, reviewed.activity.revision);
+  backup.data.projects[0].editorialRef = raw.projects[0].editorialRef;
+  backup.data.drafts[0].editorialRef = raw.drafts[0].editorialRef;
+  backup.data.trash[0].record.editorialRef = raw.trash[0].record.editorialRef;
+  storage.restoreBackupPayload(backup, 'replace');
+  const backups = path.join(path.dirname(storePath), 'backups');
+  const [snapshot] = fs.readdirSync(backups);
+  assert.doesNotMatch(fs.readFileSync(path.join(backups, snapshot), 'utf8'), privateData);
+  assert.equal(storage.getProjectEditorial(first.id), null);
+  assert.equal(storage.getEditorialDraft(draft.id), null);
+  assert.equal(storage.restoreTrashItem(storage.getTrash()[0].id), true);
+  assert.equal(storage.openProjectDraft(second.id), null);
+  assert.equal(files().length, 3);
 });

@@ -493,6 +493,7 @@ class AcademicStorage {
     if (index >= 0) {
       const previous = data.drafts[index];
       draft.editorialRef = previous.editorialRef;
+      draft.editorProjectRef = previous.editorProjectRef;
       data.drafts[index] = draft;
     } else data.drafts.unshift(draft);
     this._writeData(data);
@@ -543,7 +544,9 @@ class AcademicStorage {
   }
 
   #removeUnreferenced(data, reference) {
-    if (reference && !data.drafts.some(draft => draft.editorialRef === reference)) {
+    if (reference && !data.drafts.some(draft => draft.editorialRef === reference) &&
+        !data.projects.some(project => project.editorialRef === reference) &&
+        !data.trash.some(item => item.type === 'project' && item.record.editorialRef === reference)) {
       this.#editorial.remove(reference);
     }
   }
@@ -766,6 +769,7 @@ class AcademicStorage {
       });
     }
     this._writeData(data);
+    if (item.type === 'project') this.#removeUnreferenced(data, item.record.editorialRef);
     return true;
   }
 
@@ -800,6 +804,15 @@ class AcademicStorage {
    * @returns {object} Proyecto registrado
    */
   saveProject(projectInput) {
+    return this.#saveProject(projectInput);
+  }
+
+  saveExportedProject(projectInput, editorial) {
+    if (!editorial) throw new Error('INVALID_EDITABLE');
+    return this.#saveProject(projectInput, editorial);
+  }
+
+  #saveProject(projectInput, editorial) {
     if (!projectInput || typeof projectInput !== 'object' || Array.isArray(projectInput)) {
       throw new Error('Los datos del proyecto no son válidos.');
     }
@@ -832,11 +845,7 @@ class AcademicStorage {
         ? projectInput.h5pType.trim().slice(0, 120)
         : 'H5P General',
       filePath: normalizedFilePath,
-      sourceFiles: Array.isArray(projectInput.sourceFiles)
-        ? projectInput.sourceFiles.slice(0, 50).map(file => ({
-          name: typeof file === 'string' ? file.slice(0, 255) : (typeof file?.name === 'string' ? file.name.slice(0, 255) : '')
-        })).filter(file => file.name)
-        : [],
+      sourceFiles: projectFiles(projectInput.sourceFiles),
       promptSummary: typeof projectInput.promptSummary === 'string' ? projectInput.promptSummary.trim().slice(0, 10000) : '',
       fileSizeBytes: Number.isFinite(projectInput.fileSizeBytes) && projectInput.fileSizeBytes > 0 ? projectInput.fileSizeBytes : 0,
       exportedAt: typeof projectInput.exportedAt === 'string' && projectInput.exportedAt ? projectInput.exportedAt : now
@@ -855,8 +864,8 @@ class AcademicStorage {
         delete updatedProject.reallocatedAt;
         data.projects.splice(existingIndex, 1);
         data.projects.unshift(updatedProject);
-        this._writeData(data);
-        return updatedProject;
+        this.#commitEditorial(data, 'project', updatedProject, editorial);
+        return publicProject(updatedProject);
       }
     }
 
@@ -866,13 +875,55 @@ class AcademicStorage {
     };
 
     data.projects.unshift(newProject);
-    this._writeData(data);
-    return newProject;
+    this.#commitEditorial(data, 'project', newProject, editorial);
+    return publicProject(newProject);
+  }
+
+  getProjectEditorial(projectId) {
+    const project = this._readData().projects.find(record => record.id === projectId);
+    return this.#readEditorial('project', project);
+  }
+
+  openProjectDraft(projectId) {
+    const data = this._readData();
+    const project = data.projects.find(record => record.id === projectId);
+    if (!project?.editorialRef) return null;
+
+    const course = data.courses.find(record => record.id === project.courseId);
+    const courseId = course?.id || 'unassigned';
+    const courseName = course?.name || 'Proyecto sin ramo';
+    const existing = data.drafts.find(draft => draft.editorProjectRef === project.editorialRef && draft.editorialRef);
+    if (existing) {
+      const editorial = this.#readEditorial('draft', existing);
+      if (existing.courseId !== courseId || existing.courseName !== courseName) {
+        Object.assign(existing, { courseId, courseName });
+        delete existing.previousCourseId;
+        this._writeData(data);
+      }
+      return { draft: publicDraft(existing), ...editorial };
+    }
+
+    const { activity, source } = this.#readEditorial('project', project);
+    const draft = {
+      id: crypto.randomUUID(),
+      courseId,
+      courseName,
+      prompt: '',
+      activityType: activity.activityType,
+      questionCount: activity.items.length,
+      files: draftFiles(projectFiles(project.sourceFiles)),
+      updatedAt: new Date().toISOString(),
+      editorProjectRef: project.editorialRef
+    };
+    data.drafts.unshift(draft);
+    this.#commitEditorial(data, 'draft', draft, { activity, source });
+    return { draft: publicDraft(draft), ...this.#readEditorial('draft', draft) };
   }
 
   assignProject(projectId, courseId) {
     const data = this._readData();
-    if (courseId !== 'unassigned' && !data.courses.some(course => course.id === courseId)) {
+    const course = data.courses.find(item => item.id === courseId);
+    if (courseId !== 'unassigned' && !course) {
       throw new Error('No se encontró el ramo seleccionado.');
     }
     const project = data.projects.find(item => item.id === projectId);
@@ -880,8 +931,15 @@ class AcademicStorage {
     project.courseId = courseId;
     delete project.previousCourseId;
     delete project.reallocatedAt;
+    if (project.editorialRef) {
+      for (const draft of data.drafts) {
+        if (draft.editorProjectRef !== project.editorialRef) continue;
+        Object.assign(draft, { courseId, courseName: course?.name || 'Proyecto sin ramo' });
+        delete draft.previousCourseId;
+      }
+    }
     this._writeData(data);
-    return project;
+    return publicProject(project);
   }
 
   /**

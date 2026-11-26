@@ -35,6 +35,10 @@ En preguntas de opción múltiple, las alternativas se exportan sin mezclar su o
 El backend cuenta con un catálogo estático y operativo de **12 formatos H5P** compatibles con `coreApi <= 1.24` (`QuestionSet`, `MultiChoice`, `TrueFalse`, `SingleChoiceSet`, `Blanks`, `DragText`, `Summary`, `SortParagraphs`, `Crossword`, `FindTheWords`, `Accordion` y `Flashcards`), descrito en [backend/templates/README.md](backend/templates/README.md) y [docs/H5P-15-estructura-plantillas.md](docs/H5P-15-estructura-plantillas.md) (decisiones arquitectónicas en [ADR-001](docs/adr/ADR-001-plantillas-estaticas-h5p.md), [ADR-002](docs/adr/ADR-002-ampliacion-catalogo-plantillas-h5p.md) y [ADR-003](docs/adr/ADR-003-motor-empaquetado-h5p.md)). La selección de formato y extensión se conserva en los borradores locales. La compatibilidad con Moodle requiere validación en esa instalación (`H5P-17`). La revisión y edición de contenido antes de exportar aún no está implementada (`H5P-30`).
 
 
+## Copias de seguridad
+
+Las copias transportables v1 contienen los metadatos de la biblioteca, los borradores y la papelera. Excluyen los archivos `.h5p`, el contenido editable local y las instrucciones de generación. La biblioteca sigue leyendo las copias v1 anteriores. Al reemplazar la biblioteca, los registros importados reciben únicamente los datos de la copia, aunque sus identificadores coincidan con los de los registros locales.
+
 ## Distribución Linux y validación de H5P-19
 
 Desde la raíz, después de instalar las dependencias:
