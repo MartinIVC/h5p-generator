@@ -2,6 +2,12 @@
 
 const { resolveActivityType, isValidActivityCount } = require('./prompts');
 
+const EDITABLE_TEXT_LIMITS = Object.freeze({ question: 2000, option: 1000, feedback: 2000 });
+
+function optionTextKey(value) {
+  return value.trim().toLocaleLowerCase('es');
+}
+
 const SPANISH_VOWEL_ACCENTS = Object.freeze({
   á: 'a', à: 'a', ä: 'a', â: 'a',
   é: 'e', è: 'e', ë: 'e', ê: 'e',
@@ -181,16 +187,16 @@ function checkQuestions(value, count, normalizeOptionPrefixes) {
   if (value.length !== count) throw invalidResponse('COUNT');
   return value.map(item => {
     if (!isPlainObjectWithOnlyKeys(item, ['pregunta', 'opciones', 'respuestaCorrecta', 'retroalimentacion'])) throw invalidResponse('STRUCTURE');
-    if (!isNonEmptyBoundedString(item.pregunta, 2000)) throw invalidResponse('QUESTION');
+    if (!isNonEmptyBoundedString(item.pregunta, EDITABLE_TEXT_LIMITS.question)) throw invalidResponse('QUESTION');
     if (!Array.isArray(item.opciones) || item.opciones.length !== 4 ||
-        item.opciones.some(option => !isNonEmptyBoundedString(option, 1000))) throw invalidResponse('OPTIONS');
+        item.opciones.some(option => !isNonEmptyBoundedString(option, EDITABLE_TEXT_LIMITS.option))) throw invalidResponse('OPTIONS');
     if (typeof item.respuestaCorrecta !== 'string') throw invalidResponse('CORRECT_ANSWER');
-    if (!isNonEmptyBoundedString(item.retroalimentacion, 2000)) throw invalidResponse('FEEDBACK');
+    if (!isNonEmptyBoundedString(item.retroalimentacion, EDITABLE_TEXT_LIMITS.feedback)) throw invalidResponse('FEEDBACK');
     let options = item.opciones.map(option => option.trim());
     const correctIndex = options.indexOf(item.respuestaCorrecta.trim());
     if (correctIndex < 0) throw invalidResponse('CORRECT_ANSWER');
     if (normalizeOptionPrefixes) options = stripCompleteOptionPrefixes(options);
-    if (new Set(options.map(option => option.toLocaleLowerCase('es'))).size !== 4) throw invalidResponse('DUPLICATE_OPTIONS');
+    if (new Set(options.map(optionTextKey)).size !== 4) throw invalidResponse('DUPLICATE_OPTIONS');
     return { pregunta: item.pregunta.trim(), opciones: options, respuestaCorrecta: options[correctIndex], retroalimentacion: item.retroalimentacion.trim() };
   });
 }
@@ -213,10 +219,10 @@ function checkActivityItems(activityType, value, count, normalizeOptionPrefixes)
         if (!isPlainObjectWithOnlyKeys(item, ['afirmacion', 'esVerdadera', 'retroalimentacionCorrecta', 'retroalimentacionIncorrecta'])) {
           throw invalidResponse('STRUCTURE');
         }
-        if (!isNonEmptyBoundedString(item.afirmacion, 2000)) throw invalidResponse('QUESTION');
+        if (!isNonEmptyBoundedString(item.afirmacion, EDITABLE_TEXT_LIMITS.question)) throw invalidResponse('QUESTION');
         if (typeof item.esVerdadera !== 'boolean') throw invalidResponse('CORRECT_ANSWER');
-        if (!isNonEmptyBoundedString(item.retroalimentacionCorrecta, 2000) ||
-            !isNonEmptyBoundedString(item.retroalimentacionIncorrecta, 2000)) {
+        if (!isNonEmptyBoundedString(item.retroalimentacionCorrecta, EDITABLE_TEXT_LIMITS.feedback) ||
+            !isNonEmptyBoundedString(item.retroalimentacionIncorrecta, EDITABLE_TEXT_LIMITS.feedback)) {
           throw invalidResponse('FEEDBACK');
         }
         return {
@@ -397,7 +403,9 @@ function validateReviewedActivityItems(activityType, value, count) {
 }
 
 module.exports = {
+  EDITABLE_TEXT_LIMITS,
   invalidResponse,
+  optionTextKey,
   validateQuestions,
   validateActivityItems,
   validateReviewedActivityItems

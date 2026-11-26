@@ -5,6 +5,11 @@ const { invalidResponse, validateReviewedActivityItems } = require('../activityV
 const { getActivitySpec, resolveActivityType } = require('../prompts');
 
 const EDITABLE_ACTIVITY_SCHEMA_VERSION = 1;
+const MAX_EDITABLE_TITLE_LENGTH = 180;
+
+function normalizeEditableTitle(title) {
+  return title.trim().replace(/(?:\s*\.h5p)+$/i, '').replace(/\s+/g, ' ').trim();
+}
 
 const choiceAdapter = {
   fromGenerated({ pregunta, opciones, respuestaCorrecta, retroalimentacion }) {
@@ -71,7 +76,7 @@ function createEditableActivity({ activityType, title, items }) {
     schemaVersion: EDITABLE_ACTIVITY_SCHEMA_VERSION,
     activityId: randomUUID(),
     activityType: canonical,
-    title: title?.trim() || getActivitySpec(canonical).label,
+    title: (title && normalizeEditableTitle(title)) || getActivitySpec(canonical).label,
     revision: 1,
     reviewedRevision: null,
     items: validated.map(adapter.fromGenerated)
@@ -84,4 +89,10 @@ function toPackageItems(activity) {
   return activity.items.map(getAdapter(activity.activityType).toPackageItem);
 }
 
-module.exports = { EDITABLE_ACTIVITY_SCHEMA_VERSION, createEditableActivity, toPackageItems };
+module.exports = {
+  EDITABLE_ACTIVITY_SCHEMA_VERSION,
+  MAX_EDITABLE_TITLE_LENGTH,
+  createEditableActivity,
+  normalizeEditableTitle,
+  toPackageItems
+};
