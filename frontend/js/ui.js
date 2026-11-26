@@ -18,6 +18,16 @@
   let returnFocus = null;
   let modalCloseHandler = null;
   let activeOnClose = null;
+  let activeDialog = null;
+  let messageRegion = null;
+  const dismissMessages = new WeakMap();
+
+  function placeMessageRegion() {
+    if (!messageRegion) return;
+    const host = activeDialog || document.body;
+    if (messageRegion.parentNode === host) return;
+    host.appendChild(messageRegion);
+  }
 
   const HTML_ENTITIES = {
     '&': '&amp;',
@@ -46,6 +56,8 @@
     document.removeEventListener('keydown', modalCloseHandler);
     const onClose = activeOnClose;
     activeModal = null;
+    activeDialog = null;
+    placeMessageRegion();
     modalCloseHandler = null;
     activeOnClose = null;
 
@@ -75,6 +87,8 @@
     if (!wasActive) returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
     const dialog = modal.querySelector('.modal-dialog-content, .preview-dialog') || modal;
+    activeDialog = dialog;
+    placeMessageRegion();
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
 
@@ -188,6 +202,7 @@
     open: openModal,
     close: closeModal,
     focusableElements: getFocusableElements,
+    isOpen: () => Boolean(activeDialog),
     confirm: confirmDialog
   };
 
@@ -200,23 +215,25 @@
     }
   };
 
-  let messageRegion = null;
   window.uiMessage = function (message, type = 'info') {
     if (typeof message !== 'string') return;
     const text = message.trim();
     if (!text) return;
-    const kind = type === 'error' || type === 'success' ? type : 'info';
+    const kind = ['error', 'success', 'warning'].includes(type) ? type : 'info';
     if (!messageRegion) {
       messageRegion = document.createElement('div');
       messageRegion.className = 'ui-message-region';
-      document.body.appendChild(messageRegion);
+      placeMessageRegion();
     }
 
     // Un mismo resultado no debe acumular avisos ni anunciarse varias veces.
     if (Array.from(messageRegion.children).some(item =>
       (item.dataset?.message || item.textContent) === text && item.dataset?.type === kind
     )) return;
-    while (messageRegion.children.length >= 3) messageRegion.firstElementChild.remove();
+    if (messageRegion.children.length >= 3) {
+      const oldest = Array.from(messageRegion.children).find(item => !item.contains(document.activeElement));
+      if (oldest) dismissMessages.get(oldest)(true);
+    }
 
     const toast = document.createElement('div');
     toast.className = `ui-message ui-message-${kind}`;
@@ -231,17 +248,49 @@
     body.textContent = text;
     toast.appendChild(body);
 
-    let dismissTimer = null;
-    let removeTimer = null;
+    let dismissTimer;
+    let removeTimer;
+    let remaining = kind === 'error' ? 10000 : 6500;
+    let startedAt;
+    let hovered = false;
+    let focused = false;
     let dismissed = false;
-    const dismiss = () => {
+
+    const dismiss = (immediate = false) => {
+      window.clearTimeout(dismissTimer);
+      if (immediate) {
+        window.clearTimeout(removeTimer);
+        toast.remove();
+        return;
+      }
       if (dismissed) return;
       dismissed = true;
-      if (dismissTimer) window.clearTimeout?.(dismissTimer);
-      if (removeTimer) window.clearTimeout?.(removeTimer);
+      if (toast.contains(document.activeElement)) {
+        const target = getFocusableElements(activeDialog || document.body)
+          .find(element => !messageRegion.contains(element));
+        target?.focus();
+      }
       toast.classList.add('is-leaving');
-      removeTimer = window.setTimeout(() => toast.remove(), 180);
+      removeTimer = window.setTimeout(() => dismiss(true), 180);
     };
+    dismissMessages.set(toast, dismiss);
+
+    const updateTimer = () => {
+      if (dismissed) return;
+      if (focused || hovered) {
+        if (dismissTimer === undefined) return;
+        window.clearTimeout(dismissTimer);
+        dismissTimer = undefined;
+        remaining = Math.max(0, remaining - (Date.now() - startedAt));
+      } else if (dismissTimer === undefined) {
+        startedAt = Date.now();
+        dismissTimer = window.setTimeout(dismiss, remaining);
+      }
+    };
+    toast.addEventListener('pointerenter', () => { hovered = true; updateTimer(); });
+    toast.addEventListener('pointerleave', () => { hovered = false; updateTimer(); });
+    toast.addEventListener('focusin', () => { focused = true; updateTimer(); });
+    toast.addEventListener('focusout', () => { focused = false; updateTimer(); });
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
@@ -251,11 +300,11 @@
     closeGlyph.setAttribute('aria-hidden', 'true');
     closeGlyph.textContent = '×';
     closeBtn.appendChild(closeGlyph);
-    closeBtn.addEventListener?.('click', dismiss);
+    closeBtn.addEventListener('click', () => dismiss());
     toast.appendChild(closeBtn);
 
     messageRegion.appendChild(toast);
 
-    dismissTimer = window.setTimeout(dismiss, kind === 'error' ? 10000 : 6500);
+    updateTimer();
   };
 })();

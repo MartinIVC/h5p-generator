@@ -108,9 +108,10 @@ function isSystemNotificationsEnabled() {
 
 function notifyWhenInBackground(event, body) {
   if (typeof body !== 'string' || !body.trim()) return;
-  const win = BrowserWindow.fromWebContents(event?.sender);
-  if (!win || win.isDestroyed() || win.isFocused() || !isSystemNotificationSupported() || !isSystemNotificationsEnabled()) return;
   try {
+    if (event?.sender?.isDestroyed()) return;
+    const win = BrowserWindow.fromWebContents(event?.sender);
+    if (!win || win.isDestroyed() || win.isFocused() || !isSystemNotificationSupported() || !isSystemNotificationsEnabled()) return;
     const notification = new Notification({ title: 'Generador H5P', body });
     notification.on?.('click', () => {
       try {
@@ -128,20 +129,23 @@ function notifyWhenInBackground(event, body) {
   }
 }
 
+function clearPendingBackup(sender) {
+  const pending = pendingBackupImports.get(sender);
+  if (!pending) return;
+  pendingBackupImports.delete(sender);
+  sender.removeListener('destroyed', pending.clear);
+  sender.removeListener('did-start-navigation', pending.onNavigation);
+}
+
 function setPendingBackup(sender, entry) {
-  if (!pendingBackupImports.has(sender) && typeof sender?.once === 'function') {
-    const clear = () => {
-      pendingBackupImports.delete(sender);
-      sender.removeListener?.('destroyed', clear);
-      sender.removeListener?.('did-start-navigation', onNavigation);
-    };
-    const onNavigation = (_event, _url, inPlace, isMainFrame) => {
-      if (isMainFrame && !inPlace) clear();
-    };
-    sender.once('destroyed', clear);
-    sender.on?.('did-start-navigation', onNavigation);
-  }
-  pendingBackupImports.set(sender, entry);
+  clearPendingBackup(sender);
+  const clear = () => clearPendingBackup(sender);
+  const onNavigation = (_event, _url, inPlace, isMainFrame) => {
+    if (isMainFrame && !inPlace) clear();
+  };
+  pendingBackupImports.set(sender, { ...entry, clear, onNavigation });
+  sender.once('destroyed', clear);
+  sender.on('did-start-navigation', onNavigation);
 }
 
 function registerIpcHandlers() {
@@ -224,51 +228,51 @@ function registerIpcHandlers() {
   }
 
   handleTrusted('academic:exportBackup', async (event) => {
-    const { canceled, filePath } = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
-      title: 'Crear copia de seguridad',
-      defaultPath: path.join(resolveDocumentsDir(), `generador-h5p-${new Date().toISOString().slice(0, 10)}.json`),
-      filters: [{ name: 'Copia del Generador H5P', extensions: ['json'] }]
-    });
-    if (canceled || !filePath) return { canceled: true };
+    try {
+      const { canceled, filePath } = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+        title: 'Crear copia de seguridad',
+        defaultPath: path.join(resolveDocumentsDir(), `generador-h5p-${new Date().toISOString().slice(0, 10)}.json`),
+        filters: [{ name: 'Copia del Generador H5P', extensions: ['json'] }]
+      });
+      if (canceled || !filePath || !isTrustedSender(event)) return { canceled: true };
 
-    const payload = academicStorage.createBackupPayload();
-    const serialized = JSON.stringify(payload, null, 2);
-    if (typeof fs.renameSync === 'function') {
+      const payload = academicStorage.createBackupPayload();
+      const summary = academicStorage.inspectBackupPayload(payload);
+      const serialized = JSON.stringify(payload, null, 2);
       const tempPath = `${filePath}.tmp.${crypto.randomUUID()}`;
       try {
         fs.writeFileSync(tempPath, serialized, { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
         fs.renameSync(tempPath, filePath);
       } catch (err) {
-        try { fs.rmSync?.(tempPath, { force: true }); } catch {}
+        try { fs.rmSync(tempPath, { force: true }); } catch {}
         throw err;
       }
-    } else {
-      fs.writeFileSync(filePath, serialized, { encoding: 'utf-8', mode: 0o600 });
+      notifyWhenInBackground(event, 'Copia de seguridad creada.');
+      return { canceled: false, summary };
+    } catch {
+      throw new Error('No se pudo crear la copia de seguridad.');
     }
-    notifyWhenInBackground(event, 'Copia de seguridad creada.');
-    return {
-      canceled: false,
-      filePath,
-      summary: academicStorage.inspectBackupPayload(payload)
-    };
   });
 
   handleTrusted('academic:previewBackup', async (event) => {
-    const { canceled, filePaths } = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
-      title: 'Seleccionar copia de seguridad',
-      properties: ['openFile'],
-      filters: [{ name: 'Copia del Generador H5P', extensions: ['json'] }]
-    });
-    if (canceled || !filePaths[0]) return { canceled: true };
-
-    const filePath = filePaths[0];
-    const fileSize = fs.statSync(filePath).size;
-    if (fileSize > 25 * 1024 * 1024) throw new Error('La copia supera el límite de 25 MB.');
-    const payload = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    const summary = academicStorage.inspectBackupPayload(payload);
-    const pending = { id: crypto.randomUUID(), payload };
-    setPendingBackup(event.sender, pending);
-    return { canceled: false, backupId: pending.id, ...summary };
+    clearPendingBackup(event.sender);
+    try {
+      const { canceled, filePaths } = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
+        title: 'Seleccionar copia de seguridad',
+        properties: ['openFile'],
+        filters: [{ name: 'Copia del Generador H5P', extensions: ['json'] }]
+      });
+      if (canceled || !filePaths[0] || !isTrustedSender(event)) return { canceled: true };
+      const filePath = filePaths[0];
+      if (fs.statSync(filePath).size > 25 * 1024 * 1024) throw new Error();
+      const payload = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      const summary = academicStorage.inspectBackupPayload(payload);
+      const backupId = crypto.randomUUID();
+      setPendingBackup(event.sender, { id: backupId, payload });
+      return { canceled: false, backupId, ...summary };
+    } catch {
+      throw new Error('No se pudo leer la copia de seguridad.');
+    }
   });
 
   handleTrusted('academic:restoreBackup', async (event, request = {}) => {
@@ -278,8 +282,13 @@ function registerIpcHandlers() {
     if (!pending || typeof backupId !== 'string' || backupId !== pending.id) {
       throw new Error('La copia debe seleccionarse y revisarse antes de restaurarla.');
     }
-    const result = academicStorage.restoreBackupPayload(pending.payload, strategy);
-    pendingBackupImports.delete(event.sender);
+    let result;
+    try {
+      result = academicStorage.restoreBackupPayload(pending.payload, strategy);
+    } catch {
+      throw new Error('No se pudo restaurar la copia de seguridad.');
+    }
+    clearPendingBackup(event.sender);
     notifyWhenInBackground(event, 'Copia de seguridad restaurada.');
     return result;
   });

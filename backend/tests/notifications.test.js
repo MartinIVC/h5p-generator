@@ -6,7 +6,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const vm = require('node:vm');
 
-function mainWithMocks({ focused = false, supported = true, writeFails = false, notificationsEnabled = true, minimized = false, generate = null, savePath = '/tmp/actividad.h5p' } = {}) {
+function mainWithMocks({ focused = false, supported = true, writeFails = false, notificationFails = false, backupContents = '{"sample":"private document text"}', notificationsEnabled = true, minimized = false, generate = null, savePath = '/tmp/actividad.h5p' } = {}) {
   const handlers = new Map();
   const notifications = [];
   const notificationInstances = [];
@@ -40,6 +40,7 @@ function mainWithMocks({ focused = false, supported = true, writeFails = false, 
       static isSupported() { return isSupported; }
       constructor(options) { super(); this.options = options; }
       show() {
+        if (notificationFails) throw new Error('private notification error');
         notifications.push(this.options);
         notificationInstances.push(this);
       }
@@ -73,11 +74,11 @@ function mainWithMocks({ focused = false, supported = true, writeFails = false, 
     require: (name) => {
       if (name === 'electron') return electron;
       if (name === 'node:fs') return {
-        writeFileSync() { if (writeFails) throw new Error('write failed'); },
+        writeFileSync() { if (writeFails) throw new Error('/tmp/backup.json: private write failure'); },
         renameSync() {},
         rmSync() {},
         statSync: () => ({ size: 30 }),
-        readFileSync: () => '{"sample":"private document text"}'
+        readFileSync: () => backupContents
       };
       if (name.endsWith('backend/storage.js')) return { academicStorage: storage };
       if (generate && name.endsWith(path.join('ipc', 'h5pGeneration.js'))) {
@@ -122,7 +123,7 @@ describe('Avisos nativos de operaciones completadas', () => {
 
   it('no notifica una operación que falla', async () => {
     const { handlers, notifications, trustedEvent } = mainWithMocks({ writeFails: true });
-    await assert.rejects(handlers.get('academic:exportBackup')(trustedEvent));
+    await assert.rejects(handlers.get('academic:exportBackup')(trustedEvent), { message: 'No se pudo crear la copia de seguridad.' });
     assert.equal(notifications.length, 0);
   });
 
@@ -145,6 +146,41 @@ describe('Avisos nativos de operaciones completadas', () => {
       handlers.get('academic:restoreBackup')(trustedEvent, { backupId: preview2.backupId, strategy: 'merge' }),
       /revisarse antes/
     );
+  });
+
+  it('limpia los listeners de copia al restaurar, navegar o destruir la ventana', async () => {
+    const { handlers, trustedEvent, sender } = mainWithMocks();
+    const preview = () => handlers.get('academic:previewBackup')(trustedEvent);
+    const listeners = () => ['destroyed', 'did-start-navigation'].map(event => sender.listenerCount(event));
+    for (let i = 0; i < 3; i++) {
+      await preview();
+      const { backupId } = await preview();
+      assert.deepEqual(listeners(), [1, 1]);
+      await handlers.get('academic:restoreBackup')(trustedEvent, { backupId, strategy: 'merge' });
+      assert.deepEqual(listeners(), [0, 0]);
+    }
+    await preview();
+    sender.emit('did-start-navigation', {}, '#main-content', true, true);
+    assert.deepEqual(listeners(), [1, 1]);
+    sender.emit('did-start-navigation', {}, 'about:blank', false, true);
+    assert.deepEqual(listeners(), [0, 0]);
+    await preview();
+    sender.emit('destroyed');
+    assert.deepEqual(listeners(), [0, 0]);
+  });
+
+  it('entrega el resumen sin ruta aunque falle el notificador y usa un error fijo para JSON inválido', async () => {
+    const { handlers, trustedEvent, notifications } = mainWithMocks({
+      notificationFails: true, backupContents: 'private invalid JSON'
+    });
+    const result = await handlers.get('academic:exportBackup')(trustedEvent);
+    assert.equal(result.canceled, false);
+    assert.equal(result.summary.counts.courses, 0);
+    assert.equal(Object.hasOwn(result, 'filePath'), false);
+    assert.equal(notifications.length, 0);
+    await assert.rejects(handlers.get('academic:previewBackup')(trustedEvent), {
+      message: 'No se pudo leer la copia de seguridad.'
+    });
   });
 
   it('H5P-27: respeta preferencia del usuario, valida canales IPC de notificaciones y restaura foco al hacer clic', async () => {
@@ -271,19 +307,25 @@ it('el aviso visible evita duplicados, permite cierre accesible y distingue erro
       children: [], dataset: {}, attributes: {}, classList: { toggle() {}, add() {} },
       setAttribute(name, value) { this.attributes[name] = value; },
       addEventListener(name, fn) { (listeners[name] ||= []).push(fn); },
-      click() { (listeners.click || []).forEach(fn => fn()); },
+      emit(name) { (listeners[name] || []).forEach(fn => fn()); },
+      click() { this.emit('click'); },
       appendChild(child) { child.parent = this; this.children.push(child); },
+      contains(child) { return child === this || this.children.some(item => item.contains(child)); },
       remove() { this.parent.children = this.parent.children.filter(item => item !== this); },
       get firstElementChild() { return this.children[0]; }
     };
   }
   const body = element();
   const document = { body, documentElement: element(), createElement: element };
-  const scheduled = [];
+  const scheduled = new Map();
+  let nextTimer = 0;
   const window = {
     matchMedia: () => ({ matches: false, addEventListener() {} }),
-    setTimeout(fn) { scheduled.push(fn); return scheduled.length; },
-    clearTimeout() {}
+    setTimeout(fn, delay) {
+      scheduled.set(++nextTimer, { fn, delay });
+      return nextTimer;
+    },
+    clearTimeout(id) { scheduled.delete(id); }
   };
   const filename = path.join(__dirname, '../../frontend/js/ui.js');
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
@@ -305,8 +347,19 @@ it('el aviso visible evita duplicados, permite cierre accesible y distingue erro
   assert.equal(region.children[1].attributes['aria-atomic'], 'true');
   assert.equal(region.attributes['aria-live'], undefined);
   assert.equal(region.children[0].children[1].attributes['aria-label'], 'Cerrar aviso');
-  region.children[0].children[1].click();
-  scheduled[scheduled.length - 1]();
+  const first = region.children[0];
+  first.emit('focusin');
+  assert.deepEqual(Array.from(scheduled.keys()), [2]);
+  first.emit('focusout');
+  assert.ok(scheduled.get(3).delay <= 6500);
+  first.children[1].click();
+  assert.equal(scheduled.has(3), false);
+  scheduled.get(4).fn();
+  assert.equal(scheduled.has(4), false);
   assert.equal(region.children.length, 1);
+  for (const message of ['Segundo', 'Tercero', 'Cuarto']) window.uiMessage(message);
+  assert.equal(scheduled.has(2), false);
+  assert.equal(scheduled.size, 3);
+  assert.equal(region.children.length, 3);
   assert.equal(window.uiEscapeHtml(`<img "x" 'y' &>`), '&lt;img &quot;x&quot; &#39;y&#39; &amp;&gt;');
 });

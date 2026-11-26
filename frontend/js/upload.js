@@ -630,13 +630,13 @@
 
     function invalidateSelection() {
       state.inspectionVersion++;
+      state.inspecting = false;
+      state.inspectionProgress = '';
       state.inspectionError = '';
     }
 
     function cancelActiveWizardOperations() {
       invalidateSelection();
-      state.inspecting = false;
-      state.inspectionProgress = '';
       if (typeof activeGenerationCanceller === 'function') {
         activeGenerationCanceller();
       }
@@ -1002,7 +1002,7 @@
             : `Inspeccionando documento ${i + 1} de ${files.length}…`;
           updateUI();
           if (!file.size || file.size > 50 * 1024 * 1024) {
-            state.inspectionError = `${file.name}: cada documento debe tener contenido y pesar como máximo 50 MiB.`;
+            state.inspectionError = `El documento ${i + 1} debe tener contenido y pesar como máximo 50 MiB.`;
             return;
           }
           const bytes = new Uint8Array(await file.arrayBuffer());
@@ -1013,7 +1013,7 @@
             return;
           }
           if (result?.status !== 'ok') {
-            state.inspectionError = `${file.name}: ${result?.message || 'No se pudo inspeccionar el documento. Inténtalo nuevamente.'}`;
+            state.inspectionError = `Documento ${i + 1}: ${result?.message || 'No se pudo inspeccionar el documento. Inténtalo nuevamente.'}`;
             return;
           }
           state.inspections.set(file, result.documentId);
@@ -1023,9 +1023,11 @@
         if (version === state.inspectionVersion) state.inspectionError = 'No se pudo inspeccionar el documento. Inténtalo nuevamente.';
         return;
       } finally {
-        state.inspecting = false;
-        state.inspectionProgress = '';
-        updateUI();
+        if (version === state.inspectionVersion) {
+          state.inspecting = false;
+          state.inspectionProgress = '';
+          updateUI();
+        }
       }
       if (version !== state.inspectionVersion) return;
       const panelUpload = document.getElementById('panel-upload');
@@ -1184,10 +1186,17 @@
       let packageId = null;
       let lastSavedProjectId = null;
       let isGenerating = false;
-      let stageTimer = null;
+      let generation = null;
+      let isSaving = false;
+
+      const focusControl = control => {
+        if (!window.uiDialog?.isOpen()) control.focus();
+      };
+      const isCurrentView = version => version === state.inspectionVersion &&
+        generateButton.isConnected && !panelSelector.classList.contains('hidden');
 
       backButton?.addEventListener('click', () => {
-        if (isGenerating) return;
+        if (isGenerating || isSaving) return;
         returnToMaterial();
       });
 
@@ -1213,6 +1222,7 @@
       };
 
       const syncSelectorUI = () => {
+        const controlsLocked = isGenerating || isSaving;
         const selectedCard = getActivityCard(state.activityType);
         const isFixedSingle = Boolean(selectedCard && selectedCard.fixedCount !== null);
         const minCount = selectedCard ? selectedCard.minCount : 1;
@@ -1222,7 +1232,7 @@
           const isCurrent = tab.dataset.categoryFilter === state.activeCategory;
           tab.classList.toggle('selected', isCurrent);
           tab.setAttribute('aria-pressed', String(isCurrent));
-          tab.disabled = isGenerating;
+          tab.disabled = controlsLocked;
         });
 
         activeCardButtons.forEach(card => {
@@ -1231,7 +1241,7 @@
           card.classList.toggle('hidden', !visible);
           card.classList.toggle('selected', isSelected);
           card.setAttribute('aria-pressed', String(isSelected));
-          card.disabled = isGenerating;
+          card.disabled = controlsLocked;
         });
 
         const selectedHiddenByFilter = Boolean(
@@ -1243,7 +1253,7 @@
             hiddenFormatText.textContent = `Formato seleccionado: ${selectedCard.label} (en ${selectedCard.categoryLabel}).`;
           }
         }
-        if (showSelectedFormatBtn) showSelectedFormatBtn.disabled = isGenerating;
+        if (showSelectedFormatBtn) showSelectedFormatBtn.disabled = controlsLocked;
 
         if (countLabel) {
           countLabel.textContent = selectedCard
@@ -1260,7 +1270,7 @@
           countInput.disabled = true;
           countHint.textContent = `${selectedCard.library} exporta un reactivo individual (1 ${selectedCard.unitSingular}).`;
         } else {
-          countInput.disabled = isGenerating;
+          countInput.disabled = controlsLocked;
           countHint.textContent = selectedCard
             ? `Elige entre ${minCount} y ${maxCount} ${selectedCard.unitPlural} o usa un botón rápido.`
             : 'Elige entre 1 y 20 elementos o usa un botón rápido.';
@@ -1275,25 +1285,24 @@
           const isActive = allowedForFormat && countValid && parsedCount === value;
           btn.classList.toggle('selected', isActive);
           btn.setAttribute('aria-pressed', String(isActive));
-          btn.disabled = isGenerating || !allowedForFormat;
+          btn.disabled = controlsLocked || !allowedForFormat;
         });
 
-        nameInput.disabled = isGenerating;
+        nameInput.disabled = controlsLocked;
         if (promptInput) {
-          promptInput.disabled = isGenerating;
+          promptInput.disabled = controlsLocked;
           promptInput.placeholder = selectedCard?.promptPlaceholder || DEFAULT_PROMPT_PLACEHOLDER;
         }
-        if (backButton) backButton.disabled = isGenerating;
-        if (revealSavedButton) revealSavedButton.disabled = isGenerating;
-        generateButton.disabled = isGenerating || !selectedCard || !countValid;
+        if (backButton) backButton.disabled = controlsLocked;
+        if (revealSavedButton) revealSavedButton.disabled = controlsLocked;
+        saveButton.disabled = controlsLocked;
+        generateButton.disabled = controlsLocked || !selectedCard || !countValid;
       };
 
       const setGeneratingState = (active, stageMessage = '') => {
         isGenerating = active;
-        window.clearTimeout(stageTimer);
         if (active) showStatus('');
         selectorCard?.classList.toggle('is-generating', active);
-        if (selectorCard) selectorCard.setAttribute('aria-busy', String(active));
         progressBanner.classList.toggle('hidden', !active);
         progressBanner.setAttribute('aria-hidden', String(!active));
         progressStep.textContent = active ? stageMessage : '';
@@ -1301,26 +1310,39 @@
           cancelButton.disabled = !active;
           cancelButton.textContent = 'Cancelar';
         }
-        activeGenerationCanceller = active
-          ? () => {
-            window.academicAPI?.cancelGeneration?.().catch(() => {});
-          }
-          : null;
         syncSelectorUI();
       };
 
-      cancelButton?.addEventListener('click', async () => {
-        if (!isGenerating) return;
-        window.clearTimeout(stageTimer);
+      async function cancelGeneration(operation) {
+        if (!operation || operation.cancelRequested) return;
+        operation.cancelRequested = true;
+        if (!operation.requestSent) {
+          if (isCurrentView(operation.version)) {
+            setGeneratingState(false);
+            showStatus('La generación fue cancelada.');
+            focusControl(generateButton);
+          }
+          generation = null;
+          activeGenerationCanceller = null;
+          return;
+        }
         cancelButton.disabled = true;
-        cancelButton.textContent = 'Cancelando…';
         progressStep.textContent = 'Cancelando generación…';
         try {
-          await window.academicAPI?.cancelGeneration?.();
+          const result = await window.academicAPI.cancelGeneration();
+          if (result?.status === 'ok' && result.cancelled) return;
         } catch {
-          // El estado final se actualiza cuando concluye generateH5P.
+          // La generación puede continuar si no se pudo solicitar su cancelación.
         }
-      });
+        if (generation === operation && isCurrentView(operation.version)) {
+          operation.cancelRequested = false;
+          progressStep.textContent = 'No se pudo solicitar la cancelación. La generación sigue en curso.';
+          cancelButton.disabled = false;
+          focusControl(cancelButton);
+        }
+      }
+
+      cancelButton?.addEventListener('click', () => cancelGeneration(generation));
 
       categoryTabButtons.forEach(tab => {
         tab.addEventListener('click', () => {
@@ -1470,22 +1492,26 @@
           return;
         }
         if (!window.configManager || !window.academicAPI?.generateH5P) { showStatus('No se pudo iniciar la generación.', true); return; }
-        setGeneratingState(true, `Analizando documentos y generando ${selectedCard.label} con Gemini…`);
+        if (isGenerating || isSaving) return;
+        const operation = { version: state.inspectionVersion, requestSent: false, cancelRequested: false };
+        generation = operation;
+        activeGenerationCanceller = () => cancelGeneration(operation);
+        setGeneratingState(true, 'Comprobando la configuración de Gemini…');
+        const isCurrent = () => generation === operation && isCurrentView(operation.version);
         try {
           await window.configManager.refreshStatus();
+          if (!isCurrent() || operation.cancelRequested) return;
           if (!window.configManager.hasApiKey()) {
             setGeneratingState(false);
-            await window.configManager.requireApiKey(() => generateButton.click());
+            await window.configManager.requireApiKey(() => {
+              if (isCurrentView(operation.version)) generateButton.click();
+            }, () => isCurrentView(operation.version));
             return;
           }
           invalidatePreparedPackage();
-          const version = state.inspectionVersion;
           const documentIds = state.files.map(file => state.inspections.get(file));
-          stageTimer = window.setTimeout(() => {
-            if (isGenerating && !cancelButton?.disabled) {
-              progressStep.textContent = 'Validando estructura y empaquetando el archivo H5P…';
-            }
-          }, 1200);
+          progressStep.textContent = 'Generando y preparando la actividad H5P…';
+          operation.requestSent = true;
           const payload = {
             documentIds,
             activityType: selectedCard.type,
@@ -1494,42 +1520,73 @@
           };
           if (requestedTitle) payload.title = requestedTitle;
           const result = await window.academicAPI.generateH5P(payload);
-          if (version !== state.inspectionVersion || !generateButton.isConnected || panelSelector.classList.contains('hidden')) return;
+          if (!isCurrent()) return;
+          setGeneratingState(false);
           if (result?.status !== 'ok' || result.kind !== 'package') {
             const tone = result?.code === 'GENERATION_CANCELLED' ? 'info' : 'error';
             showStatus(result?.message || 'No se pudo generar la actividad.', tone);
+            focusControl(generateButton);
             return;
           }
           packageId = result.packageId;
           saveButton.classList.remove('hidden');
           const unit = result.questionCount === 1 ? selectedCard.unitSingular : selectedCard.unitPlural;
           showStatus(`${selectedCard.label} preparada con ${result.questionCount} ${unit}. Puedes guardarlo y revisarlo en Lumi. Comprueba las respuestas y explicaciones antes de usarlo con estudiantes.`, 'success');
-          saveButton.focus();
-        } catch { showStatus('No se pudo generar la actividad. Inténtalo nuevamente.', 'error'); }
-        finally { setGeneratingState(false); }
+          focusControl(saveButton);
+        } catch {
+          if (isCurrent()) {
+            setGeneratingState(false);
+            showStatus('No se pudo generar la actividad. Inténtalo nuevamente.', 'error');
+            focusControl(generateButton);
+          }
+        } finally {
+          if (generation === operation) {
+            generation = null;
+            activeGenerationCanceller = null;
+            if (isGenerating && isCurrentView(operation.version)) setGeneratingState(false);
+          }
+        }
       });
       saveButton.addEventListener('click', async () => {
+        if (!packageId || isSaving || isGenerating) return;
         const suggestedName = nameInput.value.trim();
         const baseName = suggestedName.replace(/\.h5p$/i, '').trim();
         if (!baseName || /[\\/:*?"<>|\x00-\x1f\x7f]/.test(suggestedName) || suggestedName === '.' || suggestedName === '..' || baseName === '.' || baseName === '..') {
           showStatus('Escribe un nombre de archivo válido (sin barras ni caracteres especiales como : * ? " < > |).', 'error'); nameInput.focus(); return;
         }
-        if (!packageId) return;
+        const saveContext = {
+          version: state.inspectionVersion,
+          draftToken: draftContextToken,
+          draftId: state.draftId,
+          courseId: state.courseId || 'unassigned',
+          packageId
+        };
+        const isCurrent = () => isCurrentView(saveContext.version) &&
+          draftContextToken === saveContext.draftToken && packageId === saveContext.packageId;
+        isSaving = true;
         const originalSaveLabel = saveButton.textContent;
-        saveButton.disabled = true;
         saveButton.textContent = 'Guardando…';
-        generateButton.disabled = true;
-        if (revealSavedButton) revealSavedButton.disabled = true;
+        syncSelectorUI();
         showStatus('Elige dónde guardar el archivo…', 'progress');
         try {
-          const result = await window.academicAPI.saveH5PFile({ packageId, suggestedName, courseId: state.courseId || 'unassigned' });
+          const result = await window.academicAPI.saveH5PFile({
+            packageId: saveContext.packageId, suggestedName, courseId: saveContext.courseId
+          });
+          const savedMessage = result?.projectSaved ? 'Archivo H5P guardado y añadido a tus proyectos.' :
+            'Archivo H5P guardado. Aviso: no se pudo añadir a tus proyectos.';
+          const savedTone = result?.projectSaved ? 'success' : 'warning';
+          if (!isCurrent()) {
+            if (result?.status === 'ok') window.uiMessage?.(savedMessage, savedTone);
+            return;
+          }
           if (result?.status === 'cancelled') { showStatus('Guardado cancelado. Puedes intentarlo nuevamente.', 'info'); return; }
           if (result?.status !== 'ok') { showStatus(result?.message || 'No se pudo guardar el archivo.', 'error'); return; }
-          if (state.draftId) {
-            const completedDraftId = state.draftId;
+          if (saveContext.draftId && state.draftId === saveContext.draftId) {
+            const completedDraftId = saveContext.draftId;
             window.clearTimeout(draftSaveTimer);
             state.draftId = null;
             draftContextToken++;
+            saveContext.draftToken = draftContextToken;
             window.coursesManager?.deleteDraft?.(completedDraftId).catch(() => {});
           }
           if (result.projectSaved && typeof result.projectId === 'string' && result.projectId) {
@@ -1540,17 +1597,17 @@
             revealSavedButton?.classList.add('hidden');
           }
           if (result.projectSaved) {
-            Promise.resolve(window.coursesManager?.onProjectExported?.(state.courseId || 'unassigned')).catch(() => {});
+            Promise.resolve(window.coursesManager?.onProjectExported?.(saveContext.courseId)).catch(() => {});
           }
-          showStatus(
-            result.projectSaved ? `Archivo ${result.fileName} guardado y añadido a tus proyectos.` : `Archivo ${result.fileName} guardado. No se pudo añadir a tus proyectos.`,
-            result.projectSaved ? 'success' : 'error'
-          );
-        } catch { showStatus('No se pudo guardar el archivo. Inténtalo nuevamente.', 'error'); }
-        finally {
-          saveButton.textContent = originalSaveLabel;
-          saveButton.disabled = false;
-          syncSelectorUI();
+          showStatus(savedMessage, savedTone);
+        } catch {
+          if (isCurrent()) showStatus('No se pudo guardar el archivo. Inténtalo nuevamente.', 'error');
+        } finally {
+          isSaving = false;
+          if (isCurrent()) {
+            saveButton.textContent = originalSaveLabel;
+            syncSelectorUI();
+          }
         }
       });
       revealSavedButton?.addEventListener('click', async () => {
