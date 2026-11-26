@@ -222,8 +222,7 @@ describe('Avisos nativos de operaciones completadas', () => {
     const sampleQuestions = [{
       pregunta: '¿Qué protege la integridad?',
       opciones: ['Exactitud', 'Color', 'Peso', 'Ruido'],
-      respuestaCorrecta: 'Exactitud',
-      retroalimentacion: 'Protege la exactitud de la información.'
+      respuestaCorrecta: 'Exactitud'
     }];
     const { handlers, notifications, trustedEvent, setFocused } = mainWithMocks({
       focused: false,
@@ -242,7 +241,7 @@ describe('Avisos nativos de operaciones completadas', () => {
     assert.equal(inspected.status, 'ok');
     const req = {
       documentIds: [inspected.documentId],
-      activityType: 'questionset',
+      activityType: 'singlechoiceset',
       questionCount: 1,
       instructions: 'Instrucción privada'
     };

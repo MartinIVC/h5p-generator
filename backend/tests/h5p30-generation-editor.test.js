@@ -286,3 +286,33 @@ test('los nueve formatos restantes continúan devolviendo kind package y rechaza
     assert.equal(res.questionCount, questionCount, activityType);
   }
 });
+
+test('los tres formatos MVP y sus alias legados sin sesión editorial son rechazados sin generar ni empaquetar', async t => {
+  let generateCalls = 0;
+  const { owner, generation, getWorkerCalls } = setup(t, {
+    forbidWorker: true,
+    generate: async () => {
+      generateCalls++;
+      return [];
+    }
+  });
+
+  for (const [activityType, questionCount] of [
+    ['questionset', 2],
+    ['multichoice', 1],
+    ['truefalse', 1],
+    ['question-set', 2],
+    ['multiple-choice', 2]
+  ]) {
+    const res = await generation.generateH5P({
+      documentIds: [DOC_ID],
+      activityType,
+      questionCount,
+      instructions: ''
+    }, { sender: owner });
+    assert.equal(res.status, 'error', activityType);
+    assert.equal(res.code, 'EDITOR_SESSION_REQUIRED', activityType);
+  }
+  assert.equal(generateCalls, 0);
+  assert.equal(getWorkerCalls(), 0);
+});

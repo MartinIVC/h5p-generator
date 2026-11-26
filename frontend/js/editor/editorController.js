@@ -793,7 +793,8 @@
     getSessionId: () => getSharedController()?.getSessionId() || null,
     getDraftId: () => getSharedController()?.getDraftId() || null,
     hasActiveSession: () => Boolean(getSharedController()?.hasActiveSession()),
-    goToFirstError: () => getSharedController()?.goToFirstError()
+    goToFirstError: () => getSharedController()?.goToFirstError(),
+    syncCompactMode: () => getSharedController()?.syncCompactMode()
   };
 
   if (typeof module !== 'undefined' && module.exports) {

@@ -240,6 +240,7 @@
   const QUICK_COUNTS = [3, 5, 10];
   const ACTIVITY_CARD_MAP = new Map(ACTIVITY_CARDS.map(card => [card.type, card]));
   const DEFAULT_FILE_NAMES = new Set(ACTIVITY_CARDS.map(card => card.defaultFileName));
+  const EDITABLE_ACTIVITY_TYPES = new Set(['questionset', 'multichoice', 'truefalse']);
 
   function getActivityCard(activityType) {
     return ACTIVITY_CARD_MAP.get(activityType) || null;
@@ -268,9 +269,11 @@
     activityType: null,
     activeCategory: 'all',
     questionCount: 5,
-    lastVariableCount: 5
+    lastVariableCount: 5,
+    hasEditable: false
   };
   let draftSaveTimer = null;
+  let inFlightDraftSave = null;
   let draftStatus = null;
   let draftContextToken = 0;
   let flushDraftHandler = async () => {};
@@ -564,8 +567,11 @@
 
     async function saveDraftNow() {
       window.clearTimeout(draftSaveTimer);
-      if (!state.courseId || (!state.draftId && state.files.length === 0 && !state.prompt.trim() && !state.activityType)) return;
-      if (!window.coursesManager?.saveDraft) return;
+      if (inFlightDraftSave) {
+        try { await inFlightDraftSave; } catch {}
+      }
+      if (!state.courseId || (!state.draftId && state.files.length === 0 && !state.prompt.trim() && !state.activityType)) return state.draftId;
+      if (!window.coursesManager?.saveDraft) return state.draftId;
 
       const contextToken = draftContextToken;
       const courseId = state.courseId;
@@ -575,43 +581,55 @@
         draftStatus.setAttribute('aria-live', 'polite');
         draftStatus.textContent = 'Guardando borrador…';
       }
+      const run = (async () => {
+        try {
+          const saved = await window.coursesManager.saveDraft({
+            id: draftId,
+            courseId,
+            courseName: state.courseName || getCourseName(),
+            prompt: state.prompt,
+            activityType: state.activityType,
+            questionCount: state.questionCount,
+            files: state.files.map(file => ({
+              name: file.name,
+              size: file.size,
+              lastModified: file.lastModified
+            }))
+          });
+          if (contextToken === draftContextToken && state.courseId === courseId) {
+            state.draftId = saved.id;
+            if (typeof saved.hasEditable === 'boolean') state.hasEditable = saved.hasEditable;
+            const savedTime = formatDraftTime(saved.updatedAt, false);
+            if (draftStatus) {
+              draftStatus.setAttribute('role', 'status');
+              draftStatus.setAttribute('aria-live', 'polite');
+              draftStatus.textContent = savedTime
+                ? `Borrador guardado · ${savedTime}. Los documentos no se copiaron.`
+                : 'Borrador guardado. Los documentos no se copiaron.';
+            }
+            return saved.id;
+          }
+          return null;
+        } catch (err) {
+          if (contextToken === draftContextToken) {
+            const errorMsg = 'No se pudo guardar el borrador. Mantén esta ventana abierta y vuelve a intentarlo.';
+            if (draftStatus) {
+              draftStatus.setAttribute('role', 'alert');
+              draftStatus.setAttribute('aria-live', 'assertive');
+              draftStatus.textContent = errorMsg;
+            }
+            if (container.classList.contains('hidden')) {
+              window.uiMessage?.(errorMsg, 'error');
+            }
+          }
+          return null;
+        }
+      })();
+      inFlightDraftSave = run;
       try {
-        const saved = await window.coursesManager.saveDraft({
-          id: draftId,
-          courseId,
-          courseName: state.courseName || getCourseName(),
-          prompt: state.prompt,
-          activityType: state.activityType,
-          questionCount: state.questionCount,
-          files: state.files.map(file => ({
-            name: file.name,
-            size: file.size,
-            lastModified: file.lastModified
-          }))
-        });
-        if (contextToken === draftContextToken && state.courseId === courseId) {
-          state.draftId = saved.id;
-          const savedTime = formatDraftTime(saved.updatedAt, false);
-          if (draftStatus) {
-            draftStatus.setAttribute('role', 'status');
-            draftStatus.setAttribute('aria-live', 'polite');
-            draftStatus.textContent = savedTime
-              ? `Borrador guardado · ${savedTime}. Los documentos no se copiaron.`
-              : 'Borrador guardado. Los documentos no se copiaron.';
-          }
-        }
-      } catch (err) {
-        if (contextToken === draftContextToken) {
-          const errorMsg = 'No se pudo guardar el borrador. Mantén esta ventana abierta y vuelve a intentarlo.';
-          if (draftStatus) {
-            draftStatus.setAttribute('role', 'alert');
-            draftStatus.setAttribute('aria-live', 'assertive');
-            draftStatus.textContent = errorMsg;
-          }
-          if (container.classList.contains('hidden')) {
-            window.uiMessage?.(errorMsg, 'error');
-          }
-        }
+        return await run;
+      } finally {
+        if (inFlightDraftSave === run) inFlightDraftSave = null;
       }
     }
 
@@ -645,7 +663,11 @@
     leaveWizardHandler = cancelActiveWizardOperations;
 
     draftDeletedHandler = (deletedDraftId) => {
-      if (!deletedDraftId || state.draftId !== deletedDraftId) return;
+      if (!deletedDraftId) return;
+      if (window.editorManager?.getDraftId?.() === deletedDraftId && window.editorManager?.hasActiveSession?.()) {
+        void window.editorManager.closeSession({ flushFirst: false });
+      }
+      if (state.draftId !== deletedDraftId) return;
       window.clearTimeout(draftSaveTimer);
       draftContextToken++;
       cancelActiveWizardOperations();
@@ -660,6 +682,7 @@
       state.activeCategory = 'all';
       state.questionCount = 5;
       state.lastVariableCount = 5;
+      state.hasEditable = false;
       syncPromptDom();
       resumeNotice.classList.add('hidden');
       updateUI();
@@ -671,6 +694,9 @@
       const isSameLiveDraft = Boolean(draft && draft.id === state.draftId && state.courseId === nextCourseId);
 
       if (!isSameLiveDraft) {
+        if (window.editorManager?.hasActiveSession?.()) {
+          void window.editorManager.closeSession({ flushFirst: true });
+        }
         if (state.courseId && (state.draftId || state.files.length || state.prompt.trim() || state.activityType)) {
           saveDraftNow();
         }
@@ -685,12 +711,14 @@
         state.activeCategory = 'all';
         state.questionCount = 5;
         state.lastVariableCount = 5;
+        state.hasEditable = false;
       }
       state.courseId = nextCourseId;
       state.courseName = draft?.courseName || getCourseName();
 
       if (draft) {
         state.draftId = draft.id;
+        state.hasEditable = Boolean(draft.hasEditable);
         state.prompt = draft.prompt || '';
         const restoredCard = getActivityCard(draft.activityType);
         const restoredType = restoredCard ? restoredCard.type : null;
@@ -1143,6 +1171,7 @@
               <span>Volver al material</span>
             </button>
             <div class="selector-primary-actions">
+              <button type="button" class="btn-secondary hidden" id="btn-open-existing-editor">Abrir editor</button>
               <button type="button" class="btn-secondary hidden" id="btn-reveal-saved-h5p">Ver en carpeta</button>
               <button type="button" class="btn-primary hidden" id="btn-save-h5p">Guardar archivo H5P</button>
               <button type="button" class="btn-primary" id="btn-generate-h5p" disabled>Generar Evaluación</button>
@@ -1166,6 +1195,7 @@
       const generateButton = document.getElementById('btn-generate-h5p');
       const saveButton = document.getElementById('btn-save-h5p');
       const revealSavedButton = document.getElementById('btn-reveal-saved-h5p');
+      const openExistingEditorButton = document.getElementById('btn-open-existing-editor');
       const status = document.getElementById('generation-status');
       const progressBanner = document.getElementById('generation-progress');
       const progressStep = document.getElementById('generation-progress-step');
@@ -1295,9 +1325,79 @@
         }
         if (backButton) backButton.disabled = controlsLocked;
         if (revealSavedButton) revealSavedButton.disabled = controlsLocked;
+        if (openExistingEditorButton) {
+          const canResumeEditor = Boolean(state.hasEditable && state.draftId);
+          openExistingEditorButton.classList.toggle('hidden', !canResumeEditor);
+          openExistingEditorButton.disabled = controlsLocked;
+        }
         saveButton.disabled = controlsLocked;
         generateButton.disabled = controlsLocked || !selectedCard || !countValid;
       };
+
+      const returnFromEditorToConfig = async () => {
+        const panelExport = document.getElementById('panel-export');
+        const currentEditorState = window.editorManager?.getState?.();
+        if (currentEditorState?.exportState === 'exported' && !currentEditorState?.sessionId) {
+          if (state.courseId && state.courseId !== 'unassigned') {
+            await window.coursesManager?.navigateToCourseDetail?.(state.courseId);
+          } else {
+            await window.coursesManager?.navigateToHome?.();
+          }
+          return;
+        }
+        if (panelExport) panelExport.classList.add('hidden');
+        panelSelector.classList.remove('hidden');
+        updateStepIndicators(2);
+        const topbarTitle = document.getElementById('app-topbar-title');
+        if (topbarTitle) topbarTitle.textContent = 'Nueva actividad';
+        syncSelectorUI();
+        focusControl(document.getElementById('selector-title') || generateButton);
+      };
+
+      const openStep3WithSession = (sessionDto) => {
+        const panelExport = document.getElementById('panel-export');
+        if (!panelExport || !window.editorManager) return;
+        panelUpload.classList.add('hidden');
+        panelSelector.classList.add('hidden');
+        panelExport.classList.remove('hidden');
+        updateStepIndicators(3);
+        const topbarTitle = document.getElementById('app-topbar-title');
+        if (topbarTitle) topbarTitle.textContent = 'Revisar y exportar';
+        window.editorManager.mountSession(sessionDto, {
+          origin: 'wizard',
+          onBack: returnFromEditorToConfig
+        });
+      };
+
+      openExistingEditorButton?.addEventListener('click', async () => {
+        if (isGenerating || isSaving || !state.draftId) return;
+        const activeSessionId = window.editorManager?.getSessionId?.();
+        const activeDraftId = window.editorManager?.getDraftId?.();
+        if (activeSessionId && activeDraftId === state.draftId && window.editorManager?.getState?.()?.activity) {
+          const panelExport = document.getElementById('panel-export');
+          if (panelExport) {
+            panelSelector.classList.add('hidden');
+            panelExport.classList.remove('hidden');
+            updateStepIndicators(3);
+            const topbarTitle = document.getElementById('app-topbar-title');
+            if (topbarTitle) topbarTitle.textContent = 'Revisar y exportar';
+            window.editorManager.syncCompactMode?.();
+            document.getElementById('editor-panel-title')?.focus();
+            return;
+          }
+        }
+        try {
+          await window.editorManager?.closeSession?.({ flushFirst: true });
+          const opened = await window.academicAPI?.openEditor?.({ draftId: state.draftId });
+          if (opened?.status !== 'ok' || !opened.activity) {
+            showStatus(opened?.message || 'No se pudo abrir el editor de este borrador.', 'error');
+            return;
+          }
+          openStep3WithSession(opened);
+        } catch {
+          showStatus('No se pudo abrir el editor de este borrador.', 'error');
+        }
+      });
 
       const setGeneratingState = (active, stageMessage = '') => {
         isGenerating = active;
@@ -1493,11 +1593,28 @@
         }
         if (!window.configManager || !window.academicAPI?.generateH5P) { showStatus('No se pudo iniciar la generación.', true); return; }
         if (isGenerating || isSaving) return;
+
+        const isEditableFormat = EDITABLE_ACTIVITY_TYPES.has(selectedCard.type);
+        const existingMountedMatches = Boolean(
+          state.draftId &&
+          window.editorManager?.getDraftId?.() === state.draftId &&
+          window.editorManager?.getState?.()?.activity
+        );
+        if (isEditableFormat && (state.hasEditable || existingMountedMatches)) {
+          const confirmed = await window.uiDialog?.confirm?.({
+            title: '¿Reemplazar el contenido editable actual?',
+            message: 'Este borrador ya contiene una actividad generada. Si vuelves a generar, se perderán los cambios realizados en el editor.',
+            confirmLabel: 'Regenerar actividad'
+          });
+          if (!confirmed) return;
+        }
+
         const operation = { version: state.inspectionVersion, requestSent: false, cancelRequested: false };
         generation = operation;
         activeGenerationCanceller = () => cancelGeneration(operation);
         setGeneratingState(true, 'Comprobando la configuración de Gemini…');
         const isCurrent = () => generation === operation && isCurrentView(operation.version);
+        let temporarySessionId = null;
         try {
           await window.configManager.refreshStatus();
           if (!isCurrent() || operation.cancelRequested) return;
@@ -1510,8 +1627,6 @@
           }
           invalidatePreparedPackage();
           const documentIds = state.files.map(file => state.inspections.get(file));
-          progressStep.textContent = 'Generando y preparando la actividad H5P…';
-          operation.requestSent = true;
           const payload = {
             documentIds,
             activityType: selectedCard.type,
@@ -1519,9 +1634,72 @@
             instructions: state.prompt
           };
           if (requestedTitle) payload.title = requestedTitle;
+
+          if (isEditableFormat) {
+            progressStep.textContent = 'Preparando borrador y sesión de edición…';
+            const ensuredDraftId = await saveDraftNow();
+            if (!isCurrent() || operation.cancelRequested) return;
+            if (!ensuredDraftId) {
+              setGeneratingState(false);
+              showStatus('No se pudo preparar el borrador antes de generar. Inténtalo nuevamente.', 'error');
+              focusControl(generateButton);
+              return;
+            }
+            let sessionId = null;
+            if (window.editorManager?.getDraftId?.() === ensuredDraftId && window.editorManager?.getSessionId?.()) {
+              await window.editorManager.flush();
+              sessionId = window.editorManager.getSessionId();
+            } else {
+              await window.editorManager?.closeSession?.({ flushFirst: true });
+              const opened = await window.academicAPI.openEditor({ draftId: ensuredDraftId });
+              if (!isCurrent() || operation.cancelRequested) {
+                if (opened?.status === 'ok' && opened.sessionId) {
+                  await window.academicAPI.closeEditor({ sessionId: opened.sessionId }).catch(() => {});
+                }
+                return;
+              }
+              if (opened?.status !== 'ok' || !opened.sessionId) {
+                setGeneratingState(false);
+                showStatus(opened?.message || 'No se pudo iniciar la sesión del editor.', 'error');
+                focusControl(generateButton);
+                return;
+              }
+              sessionId = opened.sessionId;
+              temporarySessionId = sessionId;
+            }
+            payload.sessionId = sessionId;
+          }
+
+          progressStep.textContent = isEditableFormat
+            ? 'Generando contenido editable con Gemini…'
+            : 'Generando y preparando la actividad H5P…';
+          operation.requestSent = true;
           const result = await window.academicAPI.generateH5P(payload);
-          if (!isCurrent()) return;
+          if (!isCurrent()) {
+            if (temporarySessionId) {
+              await window.academicAPI.closeEditor({ sessionId: temporarySessionId }).catch(() => {});
+              temporarySessionId = null;
+            }
+            return;
+          }
           setGeneratingState(false);
+          if (isEditableFormat) {
+            if (result?.status !== 'ok' || result.kind !== 'editable') {
+              if (temporarySessionId) {
+                await window.academicAPI.closeEditor({ sessionId: temporarySessionId }).catch(() => {});
+                temporarySessionId = null;
+              }
+              const tone = result?.code === 'GENERATION_CANCELLED' ? 'info' : 'error';
+              showStatus(result?.message || 'No se pudo generar la actividad.', tone);
+              focusControl(generateButton);
+              return;
+            }
+            temporarySessionId = null;
+            state.hasEditable = true;
+            Promise.resolve(window.coursesManager?.refreshDrafts?.()).catch(() => {});
+            openStep3WithSession(result);
+            return;
+          }
           if (result?.status !== 'ok' || result.kind !== 'package') {
             const tone = result?.code === 'GENERATION_CANCELLED' ? 'info' : 'error';
             showStatus(result?.message || 'No se pudo generar la actividad.', tone);
@@ -1534,6 +1712,10 @@
           showStatus(`${selectedCard.label} preparada con ${result.questionCount} ${unit}. Puedes guardarlo y revisarlo en Lumi. Comprueba las respuestas y explicaciones antes de usarlo con estudiantes.`, 'success');
           focusControl(saveButton);
         } catch {
+          if (temporarySessionId) {
+            await window.academicAPI.closeEditor({ sessionId: temporarySessionId }).catch(() => {});
+            temporarySessionId = null;
+          }
           if (isCurrent()) {
             setGeneratingState(false);
             showStatus('No se pudo generar la actividad. Inténtalo nuevamente.', 'error');
@@ -1649,6 +1831,8 @@
     flushDraft: () => flushDraftHandler(),
     leaveWizard: () => leaveWizardHandler(),
     onDraftDeleted: (draftId) => draftDeletedHandler(draftId),
+    getDraftId: () => state.draftId,
+    hasEditable: () => state.hasEditable,
     clearFiles: () => {
       const btnClearAll = document.getElementById('btn-clear-all');
       if (btnClearAll) btnClearAll.click();

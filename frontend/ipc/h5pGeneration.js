@@ -138,7 +138,8 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
     const isEditableType = EDITABLE_TYPES.has(activityConfig.workerType);
     const hasSessionId = typeof request.sessionId === 'string';
     if (!isEditableType && hasSessionId) return fail('UNSUPPORTED_TYPE');
-    const useEditorialRoute = isEditableType && hasSessionId;
+    if (isEditableType && !hasSessionId) return fail('EDITOR_SESSION_REQUIRED');
+    const useEditorialRoute = isEditableType;
     if (useEditorialRoute) {
       const editorSession = editor?.getSession?.(sender, request.sessionId);
       if (!editorSession) return fail('SESSION_NOT_FOUND');
