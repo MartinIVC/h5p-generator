@@ -128,6 +128,12 @@ function validCloseEditor(value) {
     typeof value.sessionId === 'string' && UUID.test(value.sessionId);
 }
 
+function validPrepareReviewed(value) {
+  return objectWithKeys(value, ['sessionId', 'expectedRevision']) &&
+    typeof value.sessionId === 'string' && UUID.test(value.sessionId) &&
+    Number.isSafeInteger(value.expectedRevision) && value.expectedRevision >= 1;
+}
+
 // Un único límite de errores para los nuevos canales. Nunca serializa excepciones.
 function handler(isTrustedSender, validate, operation) {
   return async (event, request) => {
@@ -152,6 +158,7 @@ function registerH5PIpcHandlers(ipcMain, isTrustedSender, inspection = createDoc
   ipcMain.handle('h5p:open-editor', handler(isTrustedSender, validOpenEditor, editor.openEditor || unavailable));
   ipcMain.handle('h5p:update-editor', handler(isTrustedSender, validUpdateEditor, editor.updateEditor || unavailable));
   ipcMain.handle('h5p:close-editor', handler(isTrustedSender, validCloseEditor, editor.closeEditor || unavailable));
+  ipcMain.handle('h5p:prepare-reviewed', handler(isTrustedSender, validPrepareReviewed, generation.prepareReviewed || unavailable));
   return inspection;
 }
 

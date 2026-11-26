@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld('academicAPI', {
   openEditor: (request) => ipcRenderer.invoke('h5p:open-editor', request),
   updateEditor: (request) => ipcRenderer.invoke('h5p:update-editor', request),
   closeEditor: (request) => ipcRenderer.invoke('h5p:close-editor', request),
+  prepareReviewedH5P: (request) => ipcRenderer.invoke('h5p:prepare-reviewed', request),
 
   // Enlaces Externos
   openExternalUrl: (url) => ipcRenderer.invoke('app:openExternalUrl', url)

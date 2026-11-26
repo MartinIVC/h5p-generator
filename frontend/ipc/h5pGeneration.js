@@ -7,7 +7,8 @@ const { Worker } = require('node:worker_threads');
 const { generateQuestionsFromChunk, MAX_SOURCE_CHARS, RESPONSE_REASONS } = require('../../backend/llmClient');
 const { ACTIVITY_SPECS, resolveActivityType, isValidActivityCount } = require('../../backend/prompts');
 const { writeH5PFile } = require('../../backend/h5pPacker');
-const { createEditableActivity } = require('../../backend/editor/editableActivity');
+const { createEditableActivity, toPackageItems } = require('../../backend/editor/editableActivity');
+const { confirmActivityReview } = require('../../backend/editor/activityEdits');
 
 const EDITABLE_TYPES = new Set(['questionset', 'multichoice', 'truefalse']);
 
@@ -34,6 +35,7 @@ const messages = {
   BUSY: 'Hay una operación en curso. Espera a que termine.',
   SAVE_FAILED: 'No se pudo guardar el archivo. Inténtalo nuevamente.',
   SESSION_NOT_FOUND: 'La sesión de edición ya no está activa. Vuelve a abrir la actividad.',
+  NO_EDITABLE_CONTENT: 'Todavía no hay contenido generado para editar en esta sesión.',
   EDITOR_SESSION_REQUIRED: 'Esta actividad requiere abrir una sesión del editor antes de generar.',
   PERSISTENCE_FAILED: 'No se pudo guardar el borrador editable. Conserva esta ventana abierta e inténtalo de nuevo.',
   REVISION_CONFLICT: 'La actividad cambió desde tu última lectura. Actualiza antes de continuar.',
@@ -72,6 +74,15 @@ const NATIVE_NOTIFICATIONS = {
 
 function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, generate = generateQuestionsFromChunk, WorkerClass = Worker, fileSystem = fs, notify = () => {}, editor = null }) {
   const sessions = new WeakMap();
+  editor?.onSessionInvalidated?.((editorSession, reason) => {
+    const winSession = sessions.get(editorSession.sender);
+    if (!winSession || !winSession.package) return;
+    if (winSession.package.editorSessionId !== editorSession.id) return;
+    if (reason === 'content-changed' || reason === 'regenerated') {
+      winSession.stalePackageIds.add(winSession.package.id);
+    }
+    winSession.package = null;
+  });
   function sendNativeNotification(event, body) {
     if (typeof notify !== 'function' || typeof body !== 'string' || !body) return;
     try {
@@ -83,10 +94,10 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
   function sessionFor(sender) {
     let session = sessions.get(sender);
     if (session) return session;
-    session = { closed: false, busy: false, package: null, abort: new AbortController(), requestAbort: null, worker: null };
+    session = { closed: false, busy: false, package: null, stalePackageIds: new Set(), abort: new AbortController(), requestAbort: null, worker: null };
     sessions.set(sender, session);
     const close = () => {
-      session.closed = true; session.package = null;
+      session.closed = true; session.package = null; session.stalePackageIds.clear();
       session.requestAbort?.abort(); session.requestAbort = null;
       session.abort.abort();
       if (session.worker) Promise.resolve(session.worker.terminate()).catch(() => {});
@@ -97,9 +108,12 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
     sender.once('destroyed', close); sender.on('did-start-navigation', navigation);
     return session;
   }
-  async function buildPackage(items, session, activityType = 'questionset', title) {
+  async function buildPackage(items, session, activityType = 'questionset', title, { reviewed = false } = {}) {
+    const workerData = reviewed
+      ? { activityType, items, title, reviewed: true }
+      : { questions: items, items, activityType, title };
     const worker = new WorkerClass(path.join(__dirname, '../../backend/h5pPackageWorker.js'), {
-      workerData: { questions: items, items, activityType, title }
+      workerData
     });
     session.worker = worker;
     try {
@@ -221,6 +235,94 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
       session.busy = false;
     }
   }
+  async function prepareReviewed(request, event) {
+    const sender = event.sender;
+    const session = sessionFor(sender);
+    if (session.busy) return fail('BUSY');
+    const editorSession = editor?.getSession?.(sender, request.sessionId);
+    if (!editorSession) return fail('SESSION_NOT_FOUND');
+    if (editorSession.busy) return fail('BUSY');
+    if (!editorSession.activity || !editorSession.source) return fail('NO_EDITABLE_CONTENT');
+    if (editorSession.activity.revision !== request.expectedRevision) {
+      return { ...fail('REVISION_CONFLICT'), revision: editorSession.activity.revision };
+    }
+
+    let confirmedActivity;
+    try {
+      confirmedActivity = confirmActivityReview(editorSession.activity);
+    } catch (error) {
+      if (error?.code === 'INVALID_CONTENT') {
+        return { ...fail('INVALID_CONTENT'), issues: error.issues || [] };
+      }
+      return fail('INVALID_CONTENT');
+    }
+
+    let projectedItems;
+    try {
+      projectedItems = toPackageItems(confirmedActivity);
+    } catch {
+      return fail('INVALID_CONTENT');
+    }
+
+    const activityConfig = resolveGenerationConfig(confirmedActivity.activityType);
+    if (!activityConfig) return fail('UNSUPPORTED_TYPE');
+
+    session.busy = true;
+    editor.setSessionBusy(sender, request.sessionId, true);
+    const requestAbort = new AbortController();
+    session.requestAbort = requestAbort;
+    try {
+      const saved = editor.saveConfirmedActivity(sender, request.sessionId, confirmedActivity);
+      if (saved.status !== 'ok') return saved;
+
+      let bytes;
+      try {
+        bytes = await buildPackage(projectedItems, session, confirmedActivity.activityType, confirmedActivity.title, { reviewed: true });
+      } catch {
+        if (requestAbort.signal.aborted && !session.closed) return fail('GENERATION_CANCELLED');
+        if (!session.closed && !sender.isDestroyed()) sendNativeNotification(event, NATIVE_NOTIFICATIONS.GENERATION_ERROR);
+        return fail('PACKAGE_FAILED');
+      }
+
+      if (requestAbort.signal.aborted && !session.closed) return fail('GENERATION_CANCELLED');
+      if (session.closed || sender.isDestroyed()) return fail('SESSION_NOT_FOUND');
+      const currentEditor = editor.getSession(sender, request.sessionId);
+      if (!currentEditor) return fail('SESSION_NOT_FOUND');
+      if (currentEditor.activity?.revision !== confirmedActivity.revision ||
+          currentEditor.activity?.reviewedRevision !== confirmedActivity.revision) {
+        return { ...fail('REVISION_CONFLICT'), revision: currentEditor.activity?.revision };
+      }
+
+      const packageId = randomUUID();
+      session.package = {
+        id: packageId,
+        bytes,
+        h5pType: activityConfig.projectLabel,
+        sourceFiles: Array.isArray(currentEditor.sourceFiles) ? [...currentEditor.sourceFiles] : [],
+        editorSessionId: currentEditor.id,
+        draftId: currentEditor.draftId,
+        revision: confirmedActivity.revision,
+        editorialSnapshot: structuredClone({
+          activity: confirmedActivity,
+          source: currentEditor.source
+        })
+      };
+
+      return {
+        status: 'ok',
+        packageId,
+        sessionId: currentEditor.id,
+        revision: confirmedActivity.revision,
+        reviewedRevision: confirmedActivity.reviewedRevision,
+        questionCount: confirmedActivity.items.length,
+        title: confirmedActivity.title
+      };
+    } finally {
+      editor?.setSessionBusy?.(sender, request.sessionId, false);
+      if (session.requestAbort === requestAbort) session.requestAbort = null;
+      session.busy = false;
+    }
+  }
   async function cancelGeneration(_request, event) {
     const session = sessions.get(event.sender);
     if (!session || session.closed) return { status: 'ok', cancelled: false };
@@ -276,6 +378,6 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
     } catch { return fail('SAVE_FAILED'); }
     finally { session.busy = false; }
   }
-  return { generateH5P, cancelGeneration, saveH5PFile };
+  return { generateH5P, prepareReviewed, cancelGeneration, saveH5PFile };
 }
 module.exports = { createH5PGeneration };

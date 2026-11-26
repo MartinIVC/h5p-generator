@@ -14,7 +14,8 @@ const requests = {
   'h5p:save-file': { packageId: id, suggestedName: 'actividad.h5p' },
   'h5p:open-editor': { draftId: id },
   'h5p:update-editor': { sessionId: id, expectedRevision: 1, operations: [{ type: 'setTitle', title: 'Nuevo título' }] },
-  'h5p:close-editor': { sessionId: id }
+  'h5p:close-editor': { sessionId: id },
+  'h5p:prepare-reviewed': { sessionId: id, expectedRevision: 1 }
 };
 function setup() {
   const handlers = new Map();
@@ -38,7 +39,8 @@ test('preload conecta los métodos explícitos con los canales registrados', asy
     ['saveH5PFile', 'h5p:save-file'],
     ['openEditor', 'h5p:open-editor'],
     ['updateEditor', 'h5p:update-editor'],
-    ['closeEditor', 'h5p:close-editor']
+    ['closeEditor', 'h5p:close-editor'],
+    ['prepareReviewedH5P', 'h5p:prepare-reviewed']
   ]) {
     const result = await api[method](requests[channel]);
     assert.equal(result.status, method === 'inspectDocument' ? 'ok' : 'error');
