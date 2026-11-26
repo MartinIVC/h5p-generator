@@ -263,6 +263,7 @@
     inspections: new Map(),
     inspectionVersion: 0,
     inspecting: false,
+    inspectionProgress: '',
     inspectionError: '',
     activityType: null,
     activeCategory: 'all',
@@ -517,6 +518,7 @@
     container.innerHTML = getTemplate();
 
     // Cachear referencias del DOM
+    const uploadCard = container.querySelector('.upload-card-wrapper');
     const dropzone = container.querySelector('#upload-dropzone');
     const fileInput = container.querySelector('#upload-file-input');
     const btnTriggerUpload = container.querySelector('#btn-trigger-upload');
@@ -549,6 +551,7 @@
         : d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
     }
     const btnNextStep = container.querySelector('#btn-next-step');
+    const btnNextStepLabel = btnNextStep?.querySelector('span');
     const resumeNotice = container.querySelector('#draft-resume-notice');
     const resumeFiles = container.querySelector('#draft-resume-files');
     draftStatus = container.querySelector('#draft-save-status');
@@ -569,6 +572,7 @@
       const draftId = state.draftId;
       if (draftStatus) {
         draftStatus.setAttribute('role', 'status');
+        draftStatus.setAttribute('aria-live', 'polite');
         draftStatus.textContent = 'Guardando borrador…';
       }
       try {
@@ -588,14 +592,25 @@
         if (contextToken === draftContextToken && state.courseId === courseId) {
           state.draftId = saved.id;
           const savedTime = formatDraftTime(saved.updatedAt, false);
-          if (draftStatus) draftStatus.textContent = savedTime
-            ? `Borrador guardado · ${savedTime}. Los documentos no se copiaron.`
-            : 'Borrador guardado. Los documentos no se copiaron.';
+          if (draftStatus) {
+            draftStatus.setAttribute('role', 'status');
+            draftStatus.setAttribute('aria-live', 'polite');
+            draftStatus.textContent = savedTime
+              ? `Borrador guardado · ${savedTime}. Los documentos no se copiaron.`
+              : 'Borrador guardado. Los documentos no se copiaron.';
+          }
         }
       } catch (err) {
-        if (contextToken === draftContextToken && draftStatus) {
-          draftStatus.setAttribute('role', 'alert');
-          draftStatus.textContent = 'No se pudo guardar el borrador. Mantén esta ventana abierta y vuelve a intentarlo.';
+        if (contextToken === draftContextToken) {
+          const errorMsg = 'No se pudo guardar el borrador. Mantén esta ventana abierta y vuelve a intentarlo.';
+          if (draftStatus) {
+            draftStatus.setAttribute('role', 'alert');
+            draftStatus.setAttribute('aria-live', 'assertive');
+            draftStatus.textContent = errorMsg;
+          }
+          if (container.classList.contains('hidden')) {
+            window.uiMessage?.(errorMsg, 'error');
+          }
         }
       }
     }
@@ -621,6 +636,7 @@
     function cancelActiveWizardOperations() {
       invalidateSelection();
       state.inspecting = false;
+      state.inspectionProgress = '';
       if (typeof activeGenerationCanceller === 'function') {
         activeGenerationCanceller();
       }
@@ -698,9 +714,13 @@
               : 'Tu configuración se conservó para el Paso 2.';
         resumeNotice.classList.toggle('hidden', isSameLiveDraft && state.files.length > 0);
         const restoredTime = formatDraftTime(draft.updatedAt, true);
-        if (draftStatus) draftStatus.textContent = restoredTime
-          ? `Borrador de ${draft.courseName || getCourseName()} · guardado ${restoredTime}.`
-          : `Borrador de ${draft.courseName || getCourseName()}.`;
+        if (draftStatus) {
+          draftStatus.setAttribute('role', 'status');
+          draftStatus.setAttribute('aria-live', 'polite');
+          draftStatus.textContent = restoredTime
+            ? `Borrador de ${draft.courseName || getCourseName()} · guardado ${restoredTime}.`
+            : `Borrador de ${draft.courseName || getCourseName()}.`;
+        }
       } else {
         state.activityType = null;
         state.activeCategory = 'all';
@@ -708,7 +728,11 @@
         state.lastVariableCount = 5;
         state.restoredFiles = [];
         resumeNotice.classList.add('hidden');
-        if (draftStatus) draftStatus.textContent = 'Los borradores se guardan en este equipo; los documentos no se copian.';
+        if (draftStatus) {
+          draftStatus.setAttribute('role', 'status');
+          draftStatus.setAttribute('aria-live', 'polite');
+          draftStatus.textContent = 'Los borradores se guardan en este equipo; los documentos no se copian.';
+        }
       }
 
       syncPromptDom();
@@ -721,6 +745,10 @@
     function updateUI() {
       const count = state.files.length;
       fileCountBadge.textContent = count;
+      uploadCard?.setAttribute('aria-busy', String(state.inspecting));
+      if (btnNextStepLabel) {
+        btnNextStepLabel.textContent = state.inspecting ? 'Inspeccionando…' : 'Inspeccionar documentos';
+      }
 
       if (count === 0) {
         fileListContent.innerHTML = getEmptyStateTemplate();
@@ -728,6 +756,7 @@
         btnNextStep.disabled = true;
         summaryInfo.className = 'upload-summary-info';
         summaryInfo.setAttribute('role', 'status');
+        summaryInfo.setAttribute('aria-live', 'polite');
         summaryInfo.innerHTML = state.restoredFiles.length
           ? `Este borrador recuerda ${state.restoredFiles.length} documento${state.restoredFiles.length === 1 ? '' : 's'}. Selecciónalo${state.restoredFiles.length === 1 ? '' : 's'} otra vez para continuar.`
           : 'No se han seleccionado archivos';
@@ -747,19 +776,23 @@
       if (state.inspecting) {
         summaryInfo.className = 'upload-summary-info';
         summaryInfo.setAttribute('role', 'status');
-        summaryInfo.textContent = 'Inspeccionando documentos…';
+        summaryInfo.setAttribute('aria-live', 'polite');
+        summaryInfo.textContent = state.inspectionProgress || 'Inspeccionando documentos…';
       } else if (state.inspectionError || count > 20) {
         summaryInfo.className = 'upload-summary-info has-error';
         summaryInfo.setAttribute('role', 'alert');
+        summaryInfo.setAttribute('aria-live', 'assertive');
         summaryInfo.textContent = state.inspectionError || 'Puedes inspeccionar hasta 20 documentos.';
       } else if (hasErrors) {
         summaryInfo.className = 'upload-summary-info has-error';
         summaryInfo.setAttribute('role', 'alert');
+        summaryInfo.setAttribute('aria-live', 'assertive');
         const errPlural = errorFiles.length === 1 ? 'archivo con formato no permitido' : 'archivos con formatos no permitidos';
         summaryInfo.innerHTML = `<strong>Formato no disponible:</strong> ${errorFiles.length} ${errPlural}. Formatos permitidos: ${SUPPORTED_FORMATS_LABEL}.`;
       } else {
         summaryInfo.className = 'upload-summary-info';
         summaryInfo.setAttribute('role', 'status');
+        summaryInfo.setAttribute('aria-live', 'polite');
         const totalBytes = validFiles.reduce((acc, f) => acc + (f.size || 0), 0);
         const plural = count === 1 ? 'archivo' : 'archivos';
         summaryInfo.innerHTML = `<strong>${count}</strong> ${plural} válido${count === 1 ? '' : 's'} (${formatFileSize(totalBytes)} en total)`;
@@ -786,7 +819,14 @@
         }
       });
 
-      if (state.files.length !== previousCount) invalidateSelection();
+      if (state.files.length === previousCount) {
+        window.uiMessage?.(
+          newFiles.length === 1 ? 'Ese archivo ya está en la lista.' : 'Esos archivos ya están en la lista.',
+          'info'
+        );
+        return;
+      }
+      invalidateSelection();
       updateUI();
       fileListContent.querySelectorAll('.file-item').forEach((item, index) => {
         item.classList.toggle('is-new', index >= previousCount);
@@ -945,13 +985,22 @@
       }
       const version = state.inspectionVersion;
       const files = [...state.files];
+      let newlyInspectedCount = 0;
       state.inspecting = true;
       state.inspectionError = '';
+      state.inspectionProgress = files.length === 1
+        ? 'Inspeccionando documento…'
+        : `Inspeccionando documento 1 de ${files.length}…`;
       updateUI();
       try {
-        for (const file of files) {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
           if (version !== state.inspectionVersion) return;
           if (state.inspections.has(file)) continue;
+          state.inspectionProgress = files.length === 1
+            ? 'Inspeccionando documento…'
+            : `Inspeccionando documento ${i + 1} de ${files.length}…`;
+          updateUI();
           if (!file.size || file.size > 50 * 1024 * 1024) {
             state.inspectionError = `${file.name}: cada documento debe tener contenido y pesar como máximo 50 MiB.`;
             return;
@@ -968,12 +1017,14 @@
             return;
           }
           state.inspections.set(file, result.documentId);
+          newlyInspectedCount++;
         }
       } catch {
         if (version === state.inspectionVersion) state.inspectionError = 'No se pudo inspeccionar el documento. Inténtalo nuevamente.';
         return;
       } finally {
         state.inspecting = false;
+        state.inspectionProgress = '';
         updateUI();
       }
       if (version !== state.inspectionVersion) return;
@@ -1074,12 +1125,12 @@
             </div>
           </div>
 
-          <div id="generation-progress" class="generation-progress-banner hidden" aria-hidden="true">
+          <div id="generation-progress" class="generation-progress-banner hidden" role="status" aria-live="polite" aria-atomic="true" aria-hidden="true">
             <span class="generation-spinner" aria-hidden="true"></span>
             <span id="generation-progress-step"></span>
             <button type="button" class="btn-secondary btn-cancel-generation" id="btn-cancel-generation">Cancelar</button>
           </div>
-          <p id="generation-status" role="status" aria-live="polite"></p>
+          <p id="generation-status" role="status" aria-live="polite" aria-atomic="true"></p>
 
           <footer class="upcoming-step-actions selector-footer-actions">
             <button type="button" class="btn-secondary" id="btn-back-to-material">
@@ -1099,6 +1150,14 @@
       panelUpload.classList.add('hidden');
       panelSelector.classList.remove('hidden');
       updateStepIndicators(2);
+      if (newlyInspectedCount > 0) {
+        window.uiMessage?.(
+          files.length === 1
+            ? 'Documento inspeccionado y listo para configurar.'
+            : `${files.length} documentos inspeccionados y listos para configurar.`,
+          'success'
+        );
+      }
 
       const selectorCard = document.getElementById('activity-selector-card');
       const backButton = document.getElementById('btn-back-to-material');
@@ -1132,8 +1191,17 @@
         returnToMaterial();
       });
 
-      const showStatus = (message, error = false) => {
-        status.setAttribute('role', error ? 'alert' : 'status');
+      const showStatus = (message, tone = 'info') => {
+        const normalizedTone = tone === true ? 'error' : (tone === false ? 'info' : tone);
+        const isError = normalizedTone === 'error';
+        status.setAttribute('role', isError ? 'alert' : 'status');
+        status.setAttribute('aria-live', isError ? 'assertive' : 'polite');
+        status.setAttribute('aria-atomic', 'true');
+        if (message) {
+          status.dataset.state = normalizedTone;
+        } else {
+          delete status.dataset.state;
+        }
         status.textContent = message;
       };
 
@@ -1223,6 +1291,7 @@
       const setGeneratingState = (active, stageMessage = '') => {
         isGenerating = active;
         window.clearTimeout(stageTimer);
+        if (active) showStatus('');
         selectorCard?.classList.toggle('is-generating', active);
         if (selectorCard) selectorCard.setAttribute('aria-busy', String(active));
         progressBanner.classList.toggle('hidden', !active);
@@ -1242,9 +1311,10 @@
 
       cancelButton?.addEventListener('click', async () => {
         if (!isGenerating) return;
+        window.clearTimeout(stageTimer);
         cancelButton.disabled = true;
         cancelButton.textContent = 'Cancelando…';
-        showStatus('Cancelando generación…');
+        progressStep.textContent = 'Cancelando generación…';
         try {
           await window.academicAPI?.cancelGeneration?.();
         } catch {
@@ -1411,9 +1481,10 @@
           invalidatePreparedPackage();
           const version = state.inspectionVersion;
           const documentIds = state.files.map(file => state.inspections.get(file));
-          showStatus('Generando contenido y preparando el archivo… Los fallos temporales y las respuestas incompletas o inválidas se reintentarán de forma limitada.');
           stageTimer = window.setTimeout(() => {
-            if (isGenerating) progressStep.textContent = 'Validando estructura y empaquetando el archivo H5P…';
+            if (isGenerating && !cancelButton?.disabled) {
+              progressStep.textContent = 'Validando estructura y empaquetando el archivo H5P…';
+            }
           }, 1200);
           const payload = {
             documentIds,
@@ -1425,30 +1496,35 @@
           const result = await window.academicAPI.generateH5P(payload);
           if (version !== state.inspectionVersion || !generateButton.isConnected || panelSelector.classList.contains('hidden')) return;
           if (result?.status !== 'ok' || result.kind !== 'package') {
-            showStatus(result?.message || 'No se pudo generar la actividad.', true); return;
+            const tone = result?.code === 'GENERATION_CANCELLED' ? 'info' : 'error';
+            showStatus(result?.message || 'No se pudo generar la actividad.', tone);
+            return;
           }
           packageId = result.packageId;
           saveButton.classList.remove('hidden');
           const unit = result.questionCount === 1 ? selectedCard.unitSingular : selectedCard.unitPlural;
-          showStatus(`${selectedCard.label} preparada con ${result.questionCount} ${unit}. Puedes guardarlo y revisarlo en Lumi. Comprueba las respuestas y explicaciones antes de usarlo con estudiantes.`);
+          showStatus(`${selectedCard.label} preparada con ${result.questionCount} ${unit}. Puedes guardarlo y revisarlo en Lumi. Comprueba las respuestas y explicaciones antes de usarlo con estudiantes.`, 'success');
           saveButton.focus();
-        } catch { showStatus('No se pudo generar la actividad. Inténtalo nuevamente.', true); }
+        } catch { showStatus('No se pudo generar la actividad. Inténtalo nuevamente.', 'error'); }
         finally { setGeneratingState(false); }
       });
       saveButton.addEventListener('click', async () => {
         const suggestedName = nameInput.value.trim();
         const baseName = suggestedName.replace(/\.h5p$/i, '').trim();
         if (!baseName || /[\\/:*?"<>|\x00-\x1f\x7f]/.test(suggestedName) || suggestedName === '.' || suggestedName === '..' || baseName === '.' || baseName === '..') {
-          showStatus('Escribe un nombre de archivo válido (sin barras ni caracteres especiales como : * ? " < > |).', true); nameInput.focus(); return;
+          showStatus('Escribe un nombre de archivo válido (sin barras ni caracteres especiales como : * ? " < > |).', 'error'); nameInput.focus(); return;
         }
         if (!packageId) return;
-        saveButton.disabled = true; generateButton.disabled = true;
+        const originalSaveLabel = saveButton.textContent;
+        saveButton.disabled = true;
+        saveButton.textContent = 'Guardando…';
+        generateButton.disabled = true;
         if (revealSavedButton) revealSavedButton.disabled = true;
-        showStatus('Elige dónde guardar el archivo…');
+        showStatus('Elige dónde guardar el archivo…', 'progress');
         try {
           const result = await window.academicAPI.saveH5PFile({ packageId, suggestedName, courseId: state.courseId || 'unassigned' });
-          if (result?.status === 'cancelled') { showStatus('Guardado cancelado. Puedes intentarlo nuevamente.'); return; }
-          if (result?.status !== 'ok') { showStatus(result?.message || 'No se pudo guardar el archivo.', true); return; }
+          if (result?.status === 'cancelled') { showStatus('Guardado cancelado. Puedes intentarlo nuevamente.', 'info'); return; }
+          if (result?.status !== 'ok') { showStatus(result?.message || 'No se pudo guardar el archivo.', 'error'); return; }
           if (state.draftId) {
             const completedDraftId = state.draftId;
             window.clearTimeout(draftSaveTimer);
@@ -1466,9 +1542,16 @@
           if (result.projectSaved) {
             Promise.resolve(window.coursesManager?.onProjectExported?.(state.courseId || 'unassigned')).catch(() => {});
           }
-          showStatus(result.projectSaved ? `Archivo ${result.fileName} guardado y añadido a tus proyectos.` : `Archivo ${result.fileName} guardado. No se pudo añadir a tus proyectos.`, !result.projectSaved);
-        } catch { showStatus('No se pudo guardar el archivo. Inténtalo nuevamente.', true); }
-        finally { saveButton.disabled = false; syncSelectorUI(); }
+          showStatus(
+            result.projectSaved ? `Archivo ${result.fileName} guardado y añadido a tus proyectos.` : `Archivo ${result.fileName} guardado. No se pudo añadir a tus proyectos.`,
+            result.projectSaved ? 'success' : 'error'
+          );
+        } catch { showStatus('No se pudo guardar el archivo. Inténtalo nuevamente.', 'error'); }
+        finally {
+          saveButton.textContent = originalSaveLabel;
+          saveButton.disabled = false;
+          syncSelectorUI();
+        }
       });
       revealSavedButton?.addEventListener('click', async () => {
         if (!lastSavedProjectId || !window.academicAPI?.revealProjectFile) return;

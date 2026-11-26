@@ -202,7 +202,10 @@
 
   let messageRegion = null;
   window.uiMessage = function (message, type = 'info') {
-    if (typeof message !== 'string' || !message.trim()) return;
+    if (typeof message !== 'string') return;
+    const text = message.trim();
+    if (!text) return;
+    const kind = type === 'error' || type === 'success' ? type : 'info';
     if (!messageRegion) {
       messageRegion = document.createElement('div');
       messageRegion.className = 'ui-message-region';
@@ -210,19 +213,49 @@
     }
 
     // Un mismo resultado no debe acumular avisos ni anunciarse varias veces.
-    if (Array.from(messageRegion.children).some(item => item.textContent === message && item.dataset.type === type)) return;
+    if (Array.from(messageRegion.children).some(item =>
+      (item.dataset?.message || item.textContent) === text && item.dataset?.type === kind
+    )) return;
     while (messageRegion.children.length >= 3) messageRegion.firstElementChild.remove();
 
     const toast = document.createElement('div');
-    toast.className = `ui-message ui-message-${type}`;
-    toast.dataset.type = type;
-    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
-    toast.textContent = message;
+    toast.className = `ui-message ui-message-${kind}`;
+    toast.dataset.type = kind;
+    toast.dataset.message = text;
+    toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+    toast.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
+    toast.setAttribute('aria-atomic', 'true');
+
+    const body = document.createElement('span');
+    body.className = 'ui-message-text';
+    body.textContent = text;
+    toast.appendChild(body);
+
+    let dismissTimer = null;
+    let removeTimer = null;
+    let dismissed = false;
+    const dismiss = () => {
+      if (dismissed) return;
+      dismissed = true;
+      if (dismissTimer) window.clearTimeout?.(dismissTimer);
+      if (removeTimer) window.clearTimeout?.(removeTimer);
+      toast.classList.add('is-leaving');
+      removeTimer = window.setTimeout(() => toast.remove(), 180);
+    };
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'ui-message-close';
+    closeBtn.setAttribute('aria-label', 'Cerrar aviso');
+    const closeGlyph = document.createElement('span');
+    closeGlyph.setAttribute('aria-hidden', 'true');
+    closeGlyph.textContent = '×';
+    closeBtn.appendChild(closeGlyph);
+    closeBtn.addEventListener?.('click', dismiss);
+    toast.appendChild(closeBtn);
+
     messageRegion.appendChild(toast);
 
-    window.setTimeout(() => {
-      toast.classList.add('is-leaving');
-      window.setTimeout(() => toast.remove(), 180);
-    }, type === 'error' ? 10000 : 6500);
+    dismissTimer = window.setTimeout(dismiss, kind === 'error' ? 10000 : 6500);
   };
 })();

@@ -53,8 +53,22 @@ function resolveDefaultSaveDirectory(app) {
   return os.homedir();
 }
 
-function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, generate = generateQuestionsFromChunk, WorkerClass = Worker, fileSystem = fs }) {
+const NATIVE_NOTIFICATIONS = {
+  GENERATION_READY: 'Actividad H5P lista para guardar.',
+  GENERATION_ERROR: 'No se pudo completar la generación H5P.',
+  SAVE_COMPLETE: 'Archivo H5P guardado.'
+};
+
+function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, generate = generateQuestionsFromChunk, WorkerClass = Worker, fileSystem = fs, notify = () => {} }) {
   const sessions = new WeakMap();
+  function sendNativeNotification(event, body) {
+    if (typeof notify !== 'function' || typeof body !== 'string' || !body) return;
+    try {
+      notify(event, body);
+    } catch {
+      // El aviso visible dentro de la aplicación sigue disponible.
+    }
+  }
   function sessionFor(sender) {
     let session = sessions.get(sender);
     if (session) return session;
@@ -118,6 +132,7 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
       try { bytes = await buildPackage(items, session, activityConfig.workerType, safeTitle); }
       catch {
         if (requestAbort.signal.aborted && !session.closed) return fail('GENERATION_CANCELLED');
+        if (!session.closed && !sender.isDestroyed()) sendNativeNotification(event, NATIVE_NOTIFICATIONS.GENERATION_ERROR);
         return fail('PACKAGE_FAILED');
       }
       if (requestAbort.signal.aborted && !session.closed) return fail('GENERATION_CANCELLED');
@@ -127,9 +142,14 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
         .filter(Boolean);
       const packageId = randomUUID();
       session.package = { id: packageId, bytes, h5pType: activityConfig.projectLabel, sourceFiles };
+      sendNativeNotification(event, NATIVE_NOTIFICATIONS.GENERATION_READY);
       return { status: 'ok', kind: 'package', packageId, questionCount: items.length };
     } catch (error) {
+      if (requestAbort.signal.aborted && !session.closed) return fail('GENERATION_CANCELLED');
       const code = ['API_KEY_INVALID', 'API_ACCESS_DENIED', 'MODEL_UNAVAILABLE', 'QUOTA', 'INVALID_RESPONSE', 'NETWORK_ERROR', 'SERVICE_UNAVAILABLE', 'API_REQUEST_FAILED', 'GENERATION_TIMEOUT', 'GENERATION_CANCELLED'].includes(error?.message) ? error.message : 'GENERATION_FAILED';
+      if (!session.closed && !sender.isDestroyed() && code !== 'GENERATION_CANCELLED') {
+        sendNativeNotification(event, NATIVE_NOTIFICATIONS.GENERATION_ERROR);
+      }
       if (code === 'INVALID_RESPONSE' && Object.hasOwn(RESPONSE_REASONS, error.reason)) {
         return { ...fail(code), reason: error.reason, message: `No se pudo validar la actividad. ${RESPONSE_REASONS[error.reason]}` };
       }
@@ -189,6 +209,7 @@ function createH5PGeneration({ inspection, storage, dialog, BrowserWindow, app, 
         });
         if (typeof savedProject?.id === 'string' && savedProject.id) projectId = savedProject.id;
       } catch { projectSaved = false; }
+      sendNativeNotification(event, NATIVE_NOTIFICATIONS.SAVE_COMPLETE);
       return { status: 'ok', fileName: path.basename(filePath), projectSaved, projectId };
     } catch { return fail('SAVE_FAILED'); }
     finally { session.busy = false; }

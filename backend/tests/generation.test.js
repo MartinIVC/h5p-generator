@@ -293,3 +293,106 @@ test('H5P-22: registra sourceFiles (solo nombres), devuelve projectId opaco y no
   assert.equal(cancelled.status, 'cancelled');
   assert.equal(projects.length, 1);
 });
+
+test('H5P-27: notifica eventos útiles de generación y guardado sin datos sensibles ni duplicados en cancelaciones', async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'h5p-27-notify-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const destination = path.join(dir, 'examen-secreto.h5p');
+  const notifications = [];
+  let mode = 'ok';
+  let dialogMode = 'ok';
+  let abortReady;
+  const abortStarted = new Promise(resolve => { abortReady = resolve; });
+  const owner = sender();
+  const doc = { name: 'apunte-privado.pdf', text: 'Contenido privado del examen' };
+  const generation = createH5PGeneration({
+    inspection: { getDocument: (s, id) => s === owner && id === documentId ? doc : undefined },
+    storage: {
+      getApiKey: () => mode === 'missing-key' ? '' : 'AIza-clave-secreta',
+      getCourseById: () => ({ id: 'curso' }),
+      saveProject: project => ({ id: 'proj-27', ...project })
+    },
+    dialog: {
+      showSaveDialog: async () => {
+        if (dialogMode === 'cancel') return { canceled: true };
+        if (dialogMode === 'fail') return { canceled: false, filePath: '/carpeta-inexistente/examen-secreto.h5p' };
+        return { canceled: false, filePath: destination };
+      }
+    },
+    BrowserWindow: { fromWebContents: () => ({}) },
+    app: { getPath: () => dir },
+    generate: (_source, _key, _instructions, _count, options) => {
+      if (mode === 'network') return Promise.reject(new Error('NETWORK_ERROR'));
+      if (mode === 'slow') {
+        return new Promise((_resolve, reject) => {
+          abortReady();
+          options.signal.addEventListener('abort', () => reject(new Error('GENERATION_CANCELLED')), { once: true });
+        });
+      }
+      return Promise.resolve(questions);
+    },
+    notify: (_event, body) => { notifications.push(body); }
+  });
+
+  // 1) Pre-validación (clave ausente) no dispara notificación nativa
+  mode = 'missing-key';
+  assert.equal((await generation.generateH5P(request, { sender: owner })).code, 'MISSING_KEY');
+  assert.deepEqual(notifications, []);
+
+  // 2) Fallo remoto dispara notificación fija sin datos sensibles
+  mode = 'network';
+  assert.equal((await generation.generateH5P({ ...request, instructions: 'Instrucción privada' }, { sender: owner })).code, 'NETWORK_ERROR');
+  assert.deepEqual(notifications, ['No se pudo completar la generación H5P.']);
+
+  // 3) Cancelación voluntaria no dispara notificación nativa
+  mode = 'slow';
+  const pending = generation.generateH5P(request, { sender: owner });
+  await abortStarted;
+  await generation.cancelGeneration({}, { sender: owner });
+  assert.equal((await pending).code, 'GENERATION_CANCELLED');
+  assert.equal(notifications.length, 1);
+
+  // 4) Éxito en generación dispara notificación fija
+  mode = 'ok';
+  const generated = await generation.generateH5P({ ...request, instructions: 'Instrucción privada' }, { sender: owner });
+  assert.equal(generated.status, 'ok');
+  assert.deepEqual(notifications, [
+    'No se pudo completar la generación H5P.',
+    'Actividad H5P lista para guardar.'
+  ]);
+
+  // 5) Guardado cancelado o fallido no dispara notificación nativa; guardado exitoso sí
+  dialogMode = 'cancel';
+  assert.equal((await generation.saveH5PFile({ packageId: generated.packageId, suggestedName: 'examen-secreto' }, { sender: owner })).status, 'cancelled');
+  assert.equal(notifications.length, 2);
+
+  dialogMode = 'fail';
+  assert.equal((await generation.saveH5PFile({ packageId: generated.packageId, suggestedName: 'examen-secreto' }, { sender: owner })).code, 'SAVE_FAILED');
+  assert.equal(notifications.length, 2);
+
+  dialogMode = 'ok';
+  assert.equal((await generation.saveH5PFile({ packageId: generated.packageId, suggestedName: 'examen-secreto' }, { sender: owner })).status, 'ok');
+  assert.deepEqual(notifications, [
+    'No se pudo completar la generación H5P.',
+    'Actividad H5P lista para guardar.',
+    'Archivo H5P guardado.'
+  ]);
+
+  // Ningún texto nativo contiene secretos, contenido, instrucciones ni rutas
+  const serialized = JSON.stringify(notifications);
+  assert.doesNotMatch(serialized, /AIza|privado|secreto|apunte|examen/i);
+
+  // 6) Un fallo en el callback notify nunca interrumpe generación ni guardado
+  const resilient = createH5PGeneration({
+    inspection: { getDocument: (s, id) => s === owner && id === documentId ? doc : undefined },
+    storage: { getApiKey: () => 'clave', getCourseById: () => ({ id: 'curso' }), saveProject: () => ({ id: 'p' }) },
+    dialog: { showSaveDialog: async () => ({ canceled: false, filePath: destination }) },
+    BrowserWindow: { fromWebContents: () => ({}) },
+    app: { getPath: () => dir },
+    generate: async () => questions,
+    notify: () => { throw new Error('notification daemon down'); }
+  });
+  const okGen = await resilient.generateH5P(request, { sender: owner });
+  assert.equal(okGen.status, 'ok');
+  assert.equal((await resilient.saveH5PFile({ packageId: okGen.packageId, suggestedName: 'examen' }, { sender: owner })).status, 'ok');
+});

@@ -782,6 +782,7 @@ button { -webkit-tap-highlight-color: transparent; }
   padding: 0.7rem 0.95rem;
   border-radius: 8px;
   border: 1px solid var(--md-sys-color-outline-variant);
+  border-left: 3px solid var(--md-sys-color-outline);
   background: var(--studio-paper);
   color: var(--md-sys-color-on-surface);
   font-size: 13px;
@@ -790,8 +791,16 @@ button { -webkit-tap-highlight-color: transparent; }
 #generation-status:empty {
   display: none;
 }
-#generation-status[role="alert"] {
+#generation-status[data-state="success"] {
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 42%, var(--md-sys-color-outline-variant));
+  border-left-color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 9%, var(--md-sys-color-surface-container-lowest));
+  color: var(--md-sys-color-on-surface);
+}
+#generation-status[role="alert"],
+#generation-status[data-state="error"] {
   border-color: color-mix(in srgb, var(--md-sys-color-error) 45%, var(--md-sys-color-outline-variant));
+  border-left-color: var(--md-sys-color-error);
   background: var(--md-sys-color-error-container);
   color: var(--md-sys-color-on-error-container);
   font-weight: 500;

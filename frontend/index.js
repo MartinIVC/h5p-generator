@@ -87,11 +87,42 @@ const createWindow = () => {
 let ipcRegistered = false;
 const pendingBackupImports = new WeakMap();
 
-function notifyWhenInBackground(event, body) {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win || win.isDestroyed() || win.isFocused() || !Notification.isSupported()) return;
+function isSystemNotificationSupported() {
   try {
-    new Notification({ title: 'Generador H5P', body }).show();
+    return typeof Notification?.isSupported === 'function' && Boolean(Notification.isSupported());
+  } catch {
+    return false;
+  }
+}
+
+function isSystemNotificationsEnabled() {
+  try {
+    if (typeof academicStorage?.getSystemNotificationsEnabled === 'function') {
+      return academicStorage.getSystemNotificationsEnabled() !== false;
+    }
+  } catch {
+    // Si no se puede leer la preferencia, mantener el comportamiento por defecto.
+  }
+  return true;
+}
+
+function notifyWhenInBackground(event, body) {
+  if (typeof body !== 'string' || !body.trim()) return;
+  const win = BrowserWindow.fromWebContents(event?.sender);
+  if (!win || win.isDestroyed() || win.isFocused() || !isSystemNotificationSupported() || !isSystemNotificationsEnabled()) return;
+  try {
+    const notification = new Notification({ title: 'Generador H5P', body });
+    notification.on?.('click', () => {
+      try {
+        if (win.isDestroyed()) return;
+        if (typeof win.isMinimized === 'function' && win.isMinimized()) win.restore?.();
+        if (typeof win.isVisible === 'function' && !win.isVisible()) win.show?.();
+        win.focus?.();
+      } catch {
+        // Ignora fallos del gestor de ventanas al recuperar el foco.
+      }
+    });
+    notification.show();
   } catch {
     // El aviso visible dentro de la aplicación sigue disponible.
   }
@@ -117,7 +148,7 @@ function registerIpcHandlers() {
   if (ipcRegistered) return;
   ipcRegistered = true;
   const inspection = createDocumentInspection();
-  const generation = createH5PGeneration({ inspection, storage: academicStorage, dialog, BrowserWindow, app });
+  const generation = createH5PGeneration({ inspection, storage: academicStorage, dialog, BrowserWindow, app, notify: notifyWhenInBackground });
   const isTrustedSender = (event) => {
     const win = BrowserWindow.fromWebContents(event?.sender);
     const frame = event?.senderFrame;
@@ -346,6 +377,26 @@ function registerIpcHandlers() {
 
   handleTrusted('academic:removeApiKey', async () => {
     return academicStorage.removeApiKey();
+  });
+
+  handleTrusted('academic:getNotificationSettings', async () => {
+    return {
+      enabled: isSystemNotificationsEnabled(),
+      supported: isSystemNotificationSupported()
+    };
+  });
+
+  handleTrusted('academic:setNotificationSettings', async (_event, settings) => {
+    if (!isPlainObject(settings) ||
+        Object.keys(settings).some(key => key !== 'enabled') ||
+        typeof settings.enabled !== 'boolean') {
+      throw new Error('La configuración de notificaciones no es válida.');
+    }
+    const enabled = academicStorage.setSystemNotificationsEnabled(settings.enabled);
+    return {
+      enabled,
+      supported: isSystemNotificationSupported()
+    };
   });
 
   // Enlaces Externos

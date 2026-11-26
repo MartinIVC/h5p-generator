@@ -1,6 +1,6 @@
 'use strict';
 // Se ejecuta únicamente en una copia temporal del paquete, nunca se distribuye.
-const { app, BrowserWindow, dialog, shell } = require('electron');
+const { app, BrowserWindow, dialog, shell, Notification } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -16,7 +16,14 @@ let dialogMode = 'cancel';
 let fetchCalls = 0;
 let transientFailures = 0;
 let invalidResponses = 0;
+let notificationsSupported = true;
+let simulatedFocused = true;
+const nativeNotifications = [];
 const revealedFiles = [];
+Notification.isSupported = () => notificationsSupported;
+Notification.prototype.show = function () {
+  nativeNotifications.push({ title: this.title, body: this.body });
+};
 shell.showItemInFolder = target => { revealedFiles.push(target); };
 const questions = [{ pregunta: '¿Qué conserva la integridad?', opciones: ['A) Exactitud', 'B) Publicidad', 'C) Velocidad', 'D) Color'], respuestaCorrecta: 'A) Exactitud', retroalimentacion: 'La integridad protege la exactitud de la información.' }];
 global.fetch = async (url, options) => {
@@ -102,6 +109,7 @@ function buildSyntheticPdfBytes() {
 let window;
 app.once('browser-window-created', (_event, win) => {
   window = win;
+  win.isFocused = () => simulatedFocused;
   win.webContents.once('did-finish-load', () => run().catch(error => { console.error(error); app.exit(1); }));
 });
 require('./frontend/index');
@@ -121,6 +129,45 @@ async function run() {
       await new Promise(resolve => setTimeout(resolve, 50));
     }
   };
+  const measureContrast = selectorPairs => evaluate(`(() => {
+    const parseRgb = str => {
+      const nums = str.match(/\\d+(\\.\\d+)?/g).slice(0, 3).map(Number);
+      return str.startsWith('color(srgb') ? nums.map(n => n * 255) : nums;
+    };
+    const lum = rgb => {
+      const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+      return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+    };
+    const ratio = (a, b) => {
+      const l1 = lum(a), l2 = lum(b);
+      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    };
+    const prevLight = document.documentElement.classList.contains('light');
+    const prevDark = document.documentElement.classList.contains('dark');
+    const style = document.createElement('style');
+    style.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; }';
+    document.head.appendChild(style);
+    document.documentElement.getBoundingClientRect();
+    try {
+      const pairs = ${JSON.stringify(selectorPairs)};
+      const measure = mode => {
+        document.documentElement.classList.remove('light', 'dark');
+        document.documentElement.classList.add(mode);
+        const out = {};
+        for (const [key, fgSel, bgSel] of pairs) {
+          const fg = document.querySelector(fgSel);
+          const bg = document.querySelector(bgSel || fgSel);
+          out[key] = ratio(parseRgb(getComputedStyle(fg).color), parseRgb(getComputedStyle(bg).backgroundColor));
+        }
+        return out;
+      };
+      return { dark: measure('dark'), light: measure('light') };
+    } finally {
+      style.remove();
+      document.documentElement.classList.toggle('light', prevLight);
+      document.documentElement.classList.toggle('dark', prevDark);
+    }
+  })()`);
   assert.deepEqual(await evaluate('[typeof require, typeof process, typeof window.academicAPI.ipcRenderer]'), ['undefined', 'undefined', 'undefined']);
   assert.equal(await invoke('verifyFileExists', '/etc/passwd'), false);
   assert.equal(await invoke('openExternalUrl', 'file:///etc/passwd'), false);
@@ -225,13 +272,23 @@ async function run() {
   other.destroy();
   // Recorre también la interfaz real: z-index, IME, vista previa parcial, visor PDF en <canvas>, aislamiento de borradores, contraste WCAG AA y cancelación.
   window.setSize(840, 600);
-  // H5P-35 (BUG-16): .ui-message-region por encima de modales (.preview-modal-overlay)
-  await evaluate(`window.uiMessage('Aviso visible sobre modales', 'info')`);
+  // H5P-35 (BUG-16) + H5P-27: .ui-message-region por encima de modales, botón de cierre accesible y contraste WCAG AA en éxito y error
+  await evaluate(`window.uiMessage('Aviso visible sobre modales', 'success'); window.uiMessage('Aviso de error visible', 'error');`);
   assert.equal(await evaluate(`(() => {
     const region = document.querySelector('.ui-message-region');
     const modal = document.getElementById('preview-modal');
     return Number(getComputedStyle(region).zIndex) > Number(getComputedStyle(modal).zIndex);
   })()`), true);
+  const toastContrast = await measureContrast([
+    ['success', '.ui-message-success'],
+    ['error', '.ui-message-error']
+  ]);
+  assert.ok(toastContrast.light.success >= 4.5, `Contraste insuficiente en .ui-message-success (light): ${toastContrast.light.success}`);
+  assert.ok(toastContrast.dark.success >= 4.5, `Contraste insuficiente en .ui-message-success (dark): ${toastContrast.dark.success}`);
+  assert.ok(toastContrast.light.error >= 4.5, `Contraste insuficiente en .ui-message-error (light): ${toastContrast.light.error}`);
+  assert.ok(toastContrast.dark.error >= 4.5, `Contraste insuficiente en .ui-message-error (dark): ${toastContrast.dark.error}`);
+  await evaluate(`document.querySelectorAll('.ui-message-close').forEach(btn => btn.click())`);
+  await waitFor('document.querySelectorAll(".ui-message").length === 0');
   // H5P-35 (BUG-19): buscador de Home preserva el nodo <input> al escribir (IME-safe)
   await invoke('saveCourse', { name: 'Arquitectura de Computadores', code: 'INF-245', term: '2026-1', section: '1' });
   await evaluate('window.coursesManager.navigateToHome()');
@@ -281,16 +338,26 @@ async function run() {
   assert.equal(await evaluate('window.uploadManager.getPrompt()'), '');
   assert.equal(await evaluate('document.getElementById("btn-next-step").disabled'), true);
   await evaluate(`(() => {
+    const file = new File(['Material sintético sobre integridad.'], 'ui.txt', {type:'text/plain', lastModified: 1700000000000});
     const transfer = new DataTransfer();
-    transfer.items.add(new File(['Material sintético sobre integridad.'], 'ui.txt', {type:'text/plain'}));
+    transfer.items.add(file);
     const input = document.getElementById('upload-file-input');
     input.files = transfer.files;
     input.dispatchEvent(new Event('change', {bubbles:true}));
+    // Volver a agregar exactamente el mismo archivo informa sin duplicar avisos
+    const dupTransfer = new DataTransfer();
+    dupTransfer.items.add(new File(['Material sintético sobre integridad.'], 'ui.txt', {type:'text/plain', lastModified: 1700000000000}));
+    input.files = dupTransfer.files;
+    input.dispatchEvent(new Event('change', {bubbles:true}));
+    input.files = dupTransfer.files;
+    input.dispatchEvent(new Event('change', {bubbles:true}));
   })()`);
+  assert.equal(await evaluate('Array.from(document.querySelectorAll(".ui-message-text")).filter(el => el.textContent.includes("ya está en la lista")).length'), 1);
   await waitFor('!document.getElementById("btn-next-step").disabled');
   await evaluate(`document.getElementById('btn-next-step').click()`);
   await waitFor('Boolean(document.getElementById("question-count"))');
   assert.equal(await evaluate('document.activeElement.id'), 'selector-title');
+  assert.equal(await evaluate('Array.from(document.querySelectorAll(".ui-message-success .ui-message-text")).some(el => el.textContent.includes("Documento inspeccionado"))'), true);
   // Verificar de forma síncrona (sin carrera con el gestor de ventanas) que el ancho del Paso 1 y del Paso 2 coinciden
   const measureStepWidths = () => evaluate(`(() => {
     const panelUpload = document.getElementById('panel-upload');
@@ -372,36 +439,10 @@ async function run() {
   await evaluate('document.querySelector(\'.activity-type-card[data-activity-type="flashcards"]\').click()');
   assert.equal(await evaluate('window.uploadManager.getActivityType()'), 'flashcards');
   // H5P-35 (BUG-17): verificar contraste WCAG AA (>= 4.5:1) en modo claro y oscuro en Paso 2
-  const contrastCheck = await evaluate(`(() => {
-    const parseRgb = str => {
-      const nums = str.match(/\\d+(\\.\\d+)?/g).slice(0, 3).map(Number);
-      return str.startsWith('color(srgb') ? nums.map(n => n * 255) : nums;
-    };
-    const lum = rgb => {
-      const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
-      return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
-    };
-    const ratio = (a, b) => {
-      const l1 = lum(a), l2 = lum(b);
-      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-    };
-    const measure = mode => {
-      document.documentElement.classList.remove('light', 'dark');
-      document.documentElement.classList.add(mode);
-      const card = document.querySelector('.activity-type-card.selected');
-      const lib = card.querySelector('.activity-card-library');
-      const desc = card.querySelector('.activity-card-desc');
-      return {
-        libRatio: ratio(parseRgb(getComputedStyle(lib).color), parseRgb(getComputedStyle(lib).backgroundColor)),
-        descRatio: ratio(parseRgb(getComputedStyle(desc).color), parseRgb(getComputedStyle(card).backgroundColor))
-      };
-    };
-    document.documentElement.classList.add('motion-reduced');
-    const dark = measure('dark');
-    const light = measure('light');
-    document.documentElement.classList.remove('motion-reduced');
-    return { light, dark };
-  })()`);
+  const contrastCheck = await measureContrast([
+    ['libRatio', '.activity-type-card.selected .activity-card-library'],
+    ['descRatio', '.activity-type-card.selected .activity-card-desc', '.activity-type-card.selected']
+  ]);
   assert.ok(contrastCheck.light.libRatio >= 4.5, `Contraste insuficiente en .activity-card-library (light): ${contrastCheck.light.libRatio}`);
   assert.ok(contrastCheck.light.descRatio >= 4.5, `Contraste insuficiente en .activity-card-desc seleccionada (light): ${contrastCheck.light.descRatio}`);
   assert.ok(contrastCheck.dark.libRatio >= 4.5, `Contraste insuficiente en .activity-card-library (dark): ${contrastCheck.dark.libRatio}`);
@@ -464,20 +505,41 @@ async function run() {
   window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
   window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
   await waitFor('document.activeElement.id === "upload-prompt-input"');
+  // H5P-27: notificaciones nativas solo en segundo plano, respetando soporte del SO y preferencia del usuario, sin duplicar banners ni filtrar datos sensibles
+  nativeNotifications.length = 0;
+  simulatedFocused = false;
+  notificationsSupported = true;
   networkMode = 'offline';
   await evaluate('document.getElementById("question-count").value = 1; document.getElementById("btn-generate-h5p").click()');
   await waitFor('document.getElementById("generation-status").getAttribute("role") === "alert"');
-  // H5P-33 (BUG-08) + H5P-36: durante la generación el campo de instrucciones permanece deshabilitado; cancelar libera BUSY y rehabilita.
+  assert.equal(await evaluate('document.getElementById("generation-status").getAttribute("aria-live")'), 'assertive');
+  assert.equal(await evaluate('document.getElementById("generation-status").dataset.state'), 'error');
+  assert.deepEqual(nativeNotifications.map(item => item.body), ['No se pudo completar la generación H5P.']);
+  const errorStatusContrast = await measureContrast([['status', '#generation-status']]);
+  assert.ok(errorStatusContrast.light.status >= 4.5, `Contraste insuficiente en #generation-status error (light): ${errorStatusContrast.light.status}`);
+  assert.ok(errorStatusContrast.dark.status >= 4.5, `Contraste insuficiente en #generation-status error (dark): ${errorStatusContrast.dark.status}`);
+  // H5P-33 (BUG-08) + H5P-36 + H5P-27: durante la generación no se duplica progreso en #generation-status; cancelar no dispara aviso nativo y usa role="status".
   networkMode = 'slow';
   await evaluate('document.getElementById("btn-generate-h5p").click()');
   await waitFor('!document.getElementById("generation-progress").classList.contains("hidden") && Boolean(document.getElementById("btn-cancel-generation"))');
+  assert.equal(await evaluate('document.getElementById("generation-progress").getAttribute("role")'), 'status');
+  assert.equal(await evaluate('document.getElementById("generation-status").textContent'), '');
   assert.equal(await evaluate('document.getElementById("upload-prompt-input").disabled'), true);
   await evaluate('document.getElementById("btn-cancel-generation").click()');
   await waitFor('document.getElementById("generation-status").textContent.includes("cancelada")');
+  assert.equal(await evaluate('document.getElementById("generation-status").getAttribute("role")'), 'status');
+  assert.equal(await evaluate('document.getElementById("generation-status").getAttribute("aria-live")'), 'polite');
   assert.equal(await evaluate('document.getElementById("upload-prompt-input").disabled'), false);
+  assert.equal(nativeNotifications.length, 1);
   networkMode = 'ok';
   await evaluate('document.getElementById("btn-generate-h5p").click()');
   await waitFor('!document.getElementById("btn-save-h5p").classList.contains("hidden")');
+  assert.equal(await evaluate('document.getElementById("generation-status").dataset.state'), 'success');
+  assert.equal(nativeNotifications.length, 2);
+  assert.equal(nativeNotifications[1].body, 'Actividad H5P lista para guardar.');
+  const successStatusContrast = await measureContrast([['status', '#generation-status']]);
+  assert.ok(successStatusContrast.light.status >= 4.5, `Contraste insuficiente en #generation-status success (light): ${successStatusContrast.light.status}`);
+  assert.ok(successStatusContrast.dark.status >= 4.5, `Contraste insuficiente en #generation-status success (dark): ${successStatusContrast.dark.status}`);
   // H5P-36: editar instrucciones tras generar invalida el paquete pendiente y oculta #btn-save-h5p
   await evaluate(`(() => {
     const prompt = document.getElementById('upload-prompt-input');
@@ -486,16 +548,42 @@ async function run() {
   })()`);
   assert.equal(await evaluate('document.getElementById("btn-save-h5p").classList.contains("hidden")'), true);
   assert.equal(await evaluate('document.getElementById("btn-reveal-saved-h5p").classList.contains("hidden")'), true);
+  // H5P-27 CA-5: desactivar notificaciones del sistema desde Opciones silencia avisos nativos pero conserva avisos visibles en la UI
+  await evaluate('window.configManager.openSettingsModal()');
+  await waitFor('Boolean(document.querySelector(\'input[name="system-notifications"][value="disabled"]\'))');
+  await evaluate('document.querySelector(\'input[name="system-notifications"][value="disabled"]\').click()');
+  await waitFor('document.getElementById("notifications-preference-status").textContent.includes("desactivadas")');
+  assert.deepEqual(await invoke('getNotificationSettings'), { enabled: false, supported: true });
+  await evaluate('document.getElementById("btn-close-settings-modal").click()');
   await evaluate('document.getElementById("btn-generate-h5p").click()');
   await waitFor('!document.getElementById("btn-save-h5p").classList.contains("hidden")');
   assert.match(await evaluate('document.getElementById("generation-status").textContent'), /Comprueba las respuestas y explicaciones/);
   assert.equal(await evaluate('document.activeElement.id'), 'btn-save-h5p');
+  assert.equal(nativeNotifications.length, 2);
+  // Reactivar preferencia en Opciones y probar guardado cancelado (sin aviso nativo) vs guardado exitoso (con aviso nativo sin secretos)
+  await evaluate('window.configManager.openSettingsModal()');
+  await waitFor('Boolean(document.querySelector(\'input[name="system-notifications"][value="enabled"]\'))');
+  await evaluate('document.querySelector(\'input[name="system-notifications"][value="enabled"]\').click()');
+  await waitFor('document.getElementById("notifications-preference-status").textContent.includes("activadas")');
+  await evaluate('document.getElementById("btn-close-settings-modal").click()');
   dialogMode = 'cancel';
   await evaluate('document.getElementById("btn-save-h5p").click()');
   await waitFor('document.getElementById("generation-status").textContent.includes("cancelado")');
+  assert.equal(nativeNotifications.length, 2);
   dialogMode = 'ok';
   await evaluate('document.getElementById("btn-save-h5p").click()');
   await waitFor('document.getElementById("generation-status").textContent.includes("guardado y añadido")');
+  assert.equal(nativeNotifications.length, 3);
+  assert.equal(nativeNotifications[2].body, 'Archivo H5P guardado.');
+  assert.doesNotMatch(JSON.stringify(nativeNotifications), /synthetic-test-key|integridad|output\.h5p|ui\.txt|Tarjetas/i);
+  // H5P-27 CA-5: simular SO sin soporte de notificaciones nativas -> Opciones informa estado y bloquea radios
+  notificationsSupported = false;
+  await evaluate('window.configManager.openSettingsModal()');
+  await waitFor('document.querySelector(\'input[name="system-notifications"][value="enabled"]\')?.disabled === true');
+  assert.match(await evaluate('document.getElementById("notifications-preference-desc").textContent'), /no están disponibles/i);
+  await evaluate('document.getElementById("btn-close-settings-modal").click()');
+  notificationsSupported = true;
+  simulatedFocused = true;
   // H5P-36: reanudar borrador con prompt guardado restaura las instrucciones al entrar al Paso 2, e iniciar nuevo proyecto las aísla
   const draftWithPrompt = await evaluate(`window.coursesManager.saveDraft({
     courseId: 'unassigned',
@@ -539,33 +627,9 @@ async function run() {
   assert.equal(revealedFiles.length, revealsBeforeCard + 1);
   assert.equal(await evaluate('document.activeElement?.classList.contains("btn-reveal-project")'), true);
   assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true);
-  const missingContrast = await evaluate(`(() => {
-    const parseRgb = str => {
-      const nums = str.match(/\\d+(\\.\\d+)?/g).slice(0, 3).map(Number);
-      return str.startsWith('color(srgb') ? nums.map(n => n * 255) : nums;
-    };
-    const lum = rgb => {
-      const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
-      return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
-    };
-    const ratio = (a, b) => {
-      const l1 = lum(a), l2 = lum(b);
-      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-    };
-    const measure = mode => {
-      document.documentElement.classList.remove('light', 'dark');
-      document.documentElement.classList.add(mode);
-      const notice = document.querySelector('.project-missing-notice');
-      return ratio(parseRgb(getComputedStyle(notice).color), parseRgb(getComputedStyle(notice).backgroundColor));
-    };
-    document.documentElement.classList.add('motion-reduced');
-    const dark = measure('dark');
-    const light = measure('light');
-    document.documentElement.classList.remove('motion-reduced');
-    return { light, dark };
-  })()`);
-  assert.ok(missingContrast.light >= 4.5, `Contraste insuficiente en .project-missing-notice (light): ${missingContrast.light}`);
-  assert.ok(missingContrast.dark >= 4.5, `Contraste insuficiente en .project-missing-notice (dark): ${missingContrast.dark}`);
+  const missingContrast = await measureContrast([['notice', '.project-missing-notice']]);
+  assert.ok(missingContrast.light.notice >= 4.5, `Contraste insuficiente en .project-missing-notice (light): ${missingContrast.light.notice}`);
+  assert.ok(missingContrast.dark.notice >= 4.5, `Contraste insuficiente en .project-missing-notice (dark): ${missingContrast.dark.notice}`);
   assertNoListeners();
   console.log('PASS: paquete Linux, aislamiento, preload/IPC, workers, prompt vacío, errores de red/lectura/escritura, cancelación, guardado, registro, permisos por ventana y ausencia de puertos TCP de escucha. Interfaz a 840 × 600 y foco por teclado comprobados. Gemini y diálogo simulados.');
   app.exit(0);
