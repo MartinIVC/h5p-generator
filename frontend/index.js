@@ -7,6 +7,7 @@ const { pathToFileURL, URL } = require('node:url');
 const { registerH5PIpcHandlers } = require(path.join(__dirname, 'ipc', 'h5pHandlers.js'));
 const { createDocumentInspection } = require(path.join(__dirname, 'ipc', 'documentInspection.js'));
 const { createH5PGeneration } = require(path.join(__dirname, 'ipc', 'h5pGeneration.js'));
+const { createH5PEditor } = require(path.join(__dirname, 'ipc', 'h5pEditor.js'));
 const { verifyGeminiKey } = require(path.join(__dirname, '..', 'backend', 'gemini.js'));
 // Chromium no detecta automáticamente Libsecret en sesiones Hyprland.
 if (process.platform === 'linux' && (process.env.XDG_CURRENT_DESKTOP || '').toLowerCase().split(':').includes('hyprland')) {
@@ -152,7 +153,8 @@ function registerIpcHandlers() {
   if (ipcRegistered) return;
   ipcRegistered = true;
   const inspection = createDocumentInspection();
-  const generation = createH5PGeneration({ inspection, storage: academicStorage, dialog, BrowserWindow, app, notify: notifyWhenInBackground });
+  const editor = createH5PEditor({ storage: academicStorage });
+  const generation = createH5PGeneration({ inspection, storage: academicStorage, dialog, BrowserWindow, app, notify: notifyWhenInBackground, editor });
   const isTrustedSender = (event) => {
     const win = BrowserWindow.fromWebContents(event?.sender);
     const frame = event?.senderFrame;
@@ -177,7 +179,7 @@ function registerIpcHandlers() {
       return false;
     }
   };
-  registerH5PIpcHandlers(ipcMain, isTrustedSender, inspection, generation);
+  registerH5PIpcHandlers(ipcMain, isTrustedSender, inspection, generation, editor);
   // Ramos (Courses)
   handleTrusted('academic:getCourses', async () => {
     return academicStorage.getAllCourses();
@@ -214,6 +216,7 @@ function registerIpcHandlers() {
 
   handleTrusted('academic:deleteDraft', async (_event, draftId) => {
     if (!isValidId(draftId)) return false;
+    editor.releaseDraft(draftId);
     return academicStorage.deleteDraft(draftId);
   });
 
@@ -288,6 +291,7 @@ function registerIpcHandlers() {
     } catch {
       throw new Error('No se pudo restaurar la copia de seguridad.');
     }
+    if (strategy === 'replace') editor.closeAll('backup-replaced');
     clearPendingBackup(event.sender);
     notifyWhenInBackground(event, 'Copia de seguridad restaurada.');
     return result;
