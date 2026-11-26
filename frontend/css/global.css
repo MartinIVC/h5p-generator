@@ -2843,7 +2843,10 @@ body {
 .ui-message-text {
   flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
+
+.ui-message-warning { border-left-color: var(--md-sys-color-tertiary); }
 
 .ui-message-success {
   border-color: color-mix(in srgb, var(--md-sys-color-primary) 42%, var(--md-sys-color-outline-variant));
@@ -3117,3 +3120,14 @@ body {
   .trash-item-copy { min-width: calc(100% - 3.5rem); }
   .trash-item-actions { width: 100%; justify-content: flex-start; margin-left: 3.2rem; }
 }
+
+[aria-modal="true"] > .ui-message-region {
+  position: static;
+  flex: 0 0 auto;
+  max-height: 30dvh;
+  overflow-y: auto;
+  width: auto;
+  margin: 0.75rem 1rem;
+}
+
+.ui-message-region:empty { display: none; }

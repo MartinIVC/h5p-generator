@@ -1,6 +1,6 @@
 'use strict';
 // Se ejecuta únicamente en una copia temporal del paquete, nunca se distribuye.
-const { app, BrowserWindow, dialog, shell, Notification } = require('electron');
+const { app, BrowserWindow, dialog, shell, Notification, ipcMain } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -13,6 +13,18 @@ storage.getApiKey = () => 'synthetic-test-key';
 storage.getApiKeyStatus = () => ({ hasKey: true, maskedKey: 'test' });
 let networkMode = 'ok';
 let dialogMode = 'cancel';
+let keyStatusGate;
+let saveDialogGate;
+let rejectCancellation = false;
+const handleIpc = ipcMain.handle.bind(ipcMain);
+ipcMain.handle = (channel, handler) => handleIpc(channel, async (...args) => {
+  if (channel === 'academic:getApiKeyStatus' && keyStatusGate) await keyStatusGate;
+  if (channel === 'h5p:cancel-generation' && rejectCancellation) {
+    rejectCancellation = false;
+    return { status: 'error', code: 'INTERNAL_ERROR' };
+  }
+  return handler(...args);
+});
 let fetchCalls = 0;
 let transientFailures = 0;
 let invalidResponses = 0;
@@ -60,8 +72,15 @@ global.fetch = async (url, options) => {
     }));
   return { ok: true, json: async () => ({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(values) }] } }] }) };
 };
-dialog.showSaveDialog = async () => dialogMode === 'cancel' ? { canceled: true } :
-  { filePath: path.join(directory, dialogMode === 'failure' ? 'missing/output.h5p' : 'output.h5p') };
+const backupPath = path.join(directory, 'private-backup-name.json');
+let cancelBackupSelection = false;
+dialog.showOpenDialog = async () => cancelBackupSelection ? { canceled: true } : { filePaths: [backupPath] };
+dialog.showSaveDialog = async (_window, options) => {
+  if (saveDialogGate) return saveDialogGate;
+  if (dialogMode === 'cancel') return { canceled: true };
+  if (options.defaultPath.endsWith('.json')) return { filePath: backupPath };
+  return { filePath: path.join(directory, dialogMode === 'failure' ? 'missing/output.h5p' : 'output.h5p') };
+};
 
 function assertNoListeners() {
   // Verifica sockets TCP LISTEN de main, renderer y procesos auxiliares.
@@ -110,6 +129,8 @@ let window;
 app.once('browser-window-created', (_event, win) => {
   window = win;
   win.isFocused = () => simulatedFocused;
+  // El compositor puede cubrir la ventana de pruebas mientras PDF.js pinta en canvas.
+  win.webContents.setBackgroundThrottling(false);
   win.webContents.once('did-finish-load', () => run().catch(error => { console.error(error); app.exit(1); }));
 });
 require('./frontend/index');
@@ -505,6 +526,20 @@ async function run() {
   window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
   window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
   await waitFor('document.activeElement.id === "upload-prompt-input"');
+  // Cancelar antes de enviar la solicitud no llama a Gemini.
+  const callsBeforeEarlyCancel = fetchCalls;
+  let resolveKeyStatus;
+  keyStatusGate = new Promise(resolve => { resolveKeyStatus = resolve; });
+  await evaluate('document.getElementById("btn-generate-h5p").click()');
+  await waitFor('document.getElementById("generation-progress-step").textContent.includes("Comprobando")');
+  await evaluate('document.getElementById("btn-cancel-generation").click()');
+  await waitFor('document.getElementById("generation-status").textContent.includes("cancelada")');
+  resolveKeyStatus();
+  keyStatusGate = null;
+  await invoke('getApiKeyStatus');
+  assert.equal(fetchCalls, callsBeforeEarlyCancel);
+  assert.equal(await evaluate('document.getElementById("btn-generate-h5p").disabled'), false);
+
   // H5P-27: notificaciones nativas solo en segundo plano, respetando soporte del SO y preferencia del usuario, sin duplicar banners ni filtrar datos sensibles
   nativeNotifications.length = 0;
   simulatedFocused = false;
@@ -525,6 +560,12 @@ async function run() {
   assert.equal(await evaluate('document.getElementById("generation-progress").getAttribute("role")'), 'status');
   assert.equal(await evaluate('document.getElementById("generation-status").textContent'), '');
   assert.equal(await evaluate('document.getElementById("upload-prompt-input").disabled'), true);
+  await new Promise(resolve => setTimeout(resolve, 1300));
+  assert.equal(await evaluate('document.getElementById("generation-progress-step").textContent'), 'Generando y preparando la actividad H5P…');
+  rejectCancellation = true;
+  await evaluate('document.getElementById("btn-cancel-generation").click()');
+  await waitFor('document.getElementById("generation-progress-step").textContent.includes("No se pudo solicitar")');
+  assert.equal(await evaluate('document.getElementById("btn-cancel-generation").disabled'), false);
   await evaluate('document.getElementById("btn-cancel-generation").click()');
   await waitFor('document.getElementById("generation-status").textContent.includes("cancelada")');
   assert.equal(await evaluate('document.getElementById("generation-status").getAttribute("role")'), 'status');
@@ -602,14 +643,62 @@ async function run() {
     const input = document.getElementById('upload-file-input');
     input.files = transfer.files;
     input.dispatchEvent(new Event('change', {bubbles:true}));
-    document.getElementById('btn-next-step').click();
   })()`);
-  await waitFor('Boolean(document.getElementById("upload-prompt-input"))');
+  await waitFor('document.getElementById("draft-save-status").textContent.includes("Borrador guardado")');
+  assert.ok((await invoke('getDrafts')).some(draft => draft.id === draftWithPrompt.id && draft.files.length === 1));
+  await evaluate('document.getElementById("btn-next-step").click()');
+  await waitFor('!document.getElementById("panel-selector").classList.contains("hidden") && Boolean(document.getElementById("upload-prompt-input"))');
   assert.equal(await evaluate('document.getElementById("upload-prompt-input").value'), 'Instrucciones restauradas desde borrador');
   assert.match(await evaluate('document.getElementById("upload-prompt-counter").textContent'), /40 \/ 10\.000/);
+  const saveProject = storage.saveProject;
+  storage.saveProject = () => { throw new Error('private project error'); };
+  await evaluate('document.getElementById("h5p-name").value = "private-activity"; document.getElementById("btn-generate-h5p").click()');
+  await waitFor('!document.getElementById("btn-save-h5p").classList.contains("hidden")');
+  dialogMode = 'ok';
+  await evaluate('document.getElementById("btn-save-h5p").click()');
+  await waitFor('document.getElementById("generation-status").dataset.state === "warning"');
+  const warning = await evaluate('document.getElementById("generation-status").textContent');
+  assert.match(warning, /guardado.*Aviso/);
+  assert.doesNotMatch(warning, /private|output/);
+  assert.ok(fs.existsSync(path.join(directory, 'output.h5p')));
+  for (const [theme, ratios] of Object.entries(await measureContrast([['warning', '#generation-status']]))) {
+    assert.ok(ratios.warning >= 4.5, `Contraste de advertencia (${theme}): ${ratios.warning}`);
+  }
+  storage.saveProject = saveProject;
+
+  let resolveSaveDialog;
+  saveDialogGate = new Promise(resolve => { resolveSaveDialog = resolve; });
+  await evaluate('document.getElementById("btn-save-h5p").click()');
+  await waitFor('document.getElementById("generation-status").dataset.state === "progress"');
+  const nextDraft = await evaluate(`window.coursesManager.saveDraft({
+    courseId: 'unassigned', prompt: 'Nuevo borrador', files: []
+  })`);
+  await evaluate(`window.coursesManager.startProjectCreation('unassigned', ${JSON.stringify(nextDraft)});
+    document.getElementById('btn-trigger-upload').focus();
+    window.h5pTestFocus = document.activeElement;
+    true;`);
+  resolveSaveDialog({ filePath: path.join(directory, 'output.h5p') });
+  saveDialogGate = null;
+  await waitFor('Array.from(document.querySelectorAll(".ui-message-text")).some(el => el.textContent.includes("guardado y añadido"))');
+  assert.ok((await invoke('getDrafts')).some(draft => draft.id === nextDraft.id));
+  assert.equal(await evaluate('document.activeElement === window.h5pTestFocus'), true);
+  assert.equal(await evaluate('window.uploadManager.getPrompt()'), 'Nuevo borrador');
+  assert.ok(fs.existsSync(path.join(directory, 'output.h5p')));
   await evaluate(`window.coursesManager.startProjectCreation('unassigned')`);
   assert.equal(await evaluate('window.uploadManager.getAllFiles().length'), 0);
   assert.equal(await evaluate('window.uploadManager.getPrompt()'), '');
+  await evaluate(`(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([], 'private-empty.txt'));
+    const input = document.getElementById('upload-file-input');
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('btn-next-step').click();
+  })()`);
+  await waitFor('document.getElementById("upload-summary-info").getAttribute("role") === "alert"');
+  const inspectionError = await evaluate('document.getElementById("upload-summary-info").textContent');
+  assert.match(inspectionError, /documento 1/);
+  assert.doesNotMatch(inspectionError, /private-empty/);
   // H5P-22: tarjeta de proyecto muestra material fuente, "Ver en carpeta" localiza el archivo y comunica su ausencia posterior
   await evaluate(`window.coursesManager.navigateToCourseDetail('unassigned')`);
   await waitFor('Boolean(document.querySelector(".project-card .btn-reveal-project"))');
@@ -630,6 +719,61 @@ async function run() {
   const missingContrast = await measureContrast([['notice', '.project-missing-notice']]);
   assert.ok(missingContrast.light.notice >= 4.5, `Contraste insuficiente en .project-missing-notice (light): ${missingContrast.light.notice}`);
   assert.ok(missingContrast.dark.notice >= 4.5, `Contraste insuficiente en .project-missing-notice (dark): ${missingContrast.dark.notice}`);
+  await evaluate('window.coursesManager.navigateToHome()');
+  await evaluate('document.getElementById("btn-library-create-course").click()');
+  await evaluate('document.getElementById("input-course-name").value = "Ramo sintético"; document.getElementById("btn-save-course").click()');
+  await waitFor('Array.from(document.querySelectorAll(".ui-message-text")).some(el => el.textContent === "Ramo creado.")');
+  const testCourse = (await invoke('getCourses')).find(course => course.name === 'Ramo sintético');
+  assert.ok(testCourse);
+  await evaluate(`window.coursesManager.navigateToCourseDetail(${JSON.stringify(testCourse.id)})`);
+  await evaluate('document.getElementById("btn-detail-edit-course").click()');
+  await evaluate('document.getElementById("input-course-name").value = "Ramo actualizado sintético"; document.getElementById("btn-save-course").click()');
+  await waitFor('Array.from(document.querySelectorAll(".ui-message-text")).some(el => el.textContent === "Ramo actualizado.")');
+
+  await evaluate('window.configManager.openSettingsModal()');
+  const press = (keyCode, modifiers = []) => {
+    for (const type of ['keyDown', 'keyUp']) window.webContents.sendInputEvent({ type, keyCode, modifiers });
+  };
+  await evaluate("document.querySelectorAll('.ui-message-close').forEach(btn => btn.click())");
+  await waitFor('!document.querySelector(".ui-message")');
+  await evaluate(`window.uiMessage('Aviso de prueba en opciones', 'error');
+    document.getElementById('btn-close-settings-modal-footer').focus();`);
+  press('Tab');
+  await waitFor('document.activeElement.closest("[aria-modal=true]") && document.activeElement.matches(".ui-message-close")');
+  await evaluate(`for (const message of ['Segundo aviso', 'Tercer aviso', 'Cuarto aviso']) window.uiMessage(message);`);
+  assert.equal(await evaluate('document.querySelectorAll(".ui-message").length'), 3);
+  assert.match(await evaluate('document.activeElement.parentElement.textContent'), /Aviso de prueba/);
+  assert.equal(await evaluate(`(() => {
+    const dialog = document.querySelector('#modal-settings [aria-modal=true]');
+    const footer = dialog.querySelector('footer').getBoundingClientRect();
+    const messages = dialog.querySelector('.ui-message-region').getBoundingClientRect();
+    return footer.bottom <= messages.top && messages.bottom <= innerHeight;
+  })()`), true);
+  press('Tab', ['shift']);
+  await waitFor('document.activeElement.id === "btn-close-settings-modal-footer"');
+  press('Tab');
+  await waitFor('document.activeElement.matches(".ui-message-close")');
+  press('Enter');
+  await waitFor('!Array.from(document.querySelectorAll(".ui-message-text")).some(el => el.textContent === "Aviso de prueba en opciones")');
+  assert.equal(await evaluate('Boolean(document.activeElement.closest("#modal-settings"))'), true);
+
+  dialogMode = 'cancel';
+  await evaluate('document.getElementById("btn-export-backup").click()');
+  await waitFor('document.getElementById("backup-operation-status").textContent.includes("cancelada")');
+  dialogMode = 'ok';
+  await evaluate('document.getElementById("btn-export-backup").click()');
+  await waitFor('document.getElementById("backup-operation-status").textContent.includes("Copia creada")');
+  assert.doesNotMatch(await evaluate('document.getElementById("backup-operation-status").textContent'), /private-backup/);
+  assert.ok(fs.existsSync(backupPath));
+  cancelBackupSelection = true;
+  await evaluate('document.getElementById("btn-preview-backup").click()');
+  await waitFor('document.getElementById("backup-operation-status").textContent.includes("Selección de copia cancelada")');
+  cancelBackupSelection = false;
+  await evaluate('document.getElementById("btn-preview-backup").click()');
+  await waitFor('document.activeElement.id === "btn-merge-backup"');
+  await evaluate('document.getElementById("btn-merge-backup").click()');
+  await waitFor('document.getElementById("modal-settings").classList.contains("hidden") && Array.from(document.querySelectorAll(".ui-message-success")).some(el => el.textContent.includes("Copia restaurada"))');
+
   assertNoListeners();
   console.log('PASS: paquete Linux, aislamiento, preload/IPC, workers, prompt vacío, errores de red/lectura/escritura, cancelación, guardado, registro, permisos por ventana y ausencia de puertos TCP de escucha. Interfaz a 840 × 600 y foco por teclado comprobados. Gemini y diálogo simulados.');
   app.exit(0);

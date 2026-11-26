@@ -797,6 +797,10 @@ button { -webkit-tap-highlight-color: transparent; }
   background: color-mix(in srgb, var(--md-sys-color-primary) 9%, var(--md-sys-color-surface-container-lowest));
   color: var(--md-sys-color-on-surface);
 }
+#generation-status[data-state="warning"] {
+  border-left-color: var(--md-sys-color-tertiary);
+  font-weight: 500;
+}
 #generation-status[role="alert"],
 #generation-status[data-state="error"] {
   border-color: color-mix(in srgb, var(--md-sys-color-error) 45%, var(--md-sys-color-outline-variant));

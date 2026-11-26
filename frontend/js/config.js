@@ -32,7 +32,7 @@
     onSuccessCallback: null,
     listeners: []
   };
-  let pendingBackupId = null;
+  let backupBusy = false;
 
   // =========================================================================
   // GESTIÓN DE TEMAS (CLARO / OSCURO / SISTEMA)
@@ -167,8 +167,8 @@
       state.maskedKey = status.maskedKey || '';
       state.storageError = false;
       notifyListeners();
-    } catch (err) {
-      console.error('[config.js] Error consultando API key status:', err);
+    } catch {
+      console.error('[config.js] No se pudo consultar el estado de la clave.');
       state.hasKey = false;
       state.maskedKey = '';
       state.storageError = true;
@@ -200,8 +200,9 @@
    * Abre el modal Just-in-Time cuando una acción requiere obligatoriamente la clave
    * @param {Function} [onSuccess] Callback que se ejecuta tras ingresar la clave exitosamente
    */
-  async function requireApiKey(onSuccess = null) {
+  async function requireApiKey(onSuccess = null, isCurrent = () => true) {
     await refreshStatus();
+    if (!isCurrent()) return;
     if (state.hasKey) {
       if (typeof onSuccess === 'function') onSuccess();
       return;
@@ -543,6 +544,7 @@
       </div>
     `;
 
+    let pendingBackupId = null;
     const resetModalState = () => {
       state.isEditingKey = false;
       state.isConfirmingRemoveKey = false;
@@ -579,12 +581,19 @@
     };
 
     const backupStatus = document.getElementById('backup-operation-status');
+    const isBackupViewOpen = () => backupStatus?.isConnected && !modal.classList.contains('hidden');
+    const reportBackup = (message, type = 'info') => {
+      if (isBackupViewOpen()) setLiveStatus(backupStatus, message, type === 'error');
+      else window.uiMessage?.(message, type);
+    };
     const backupPreview = document.getElementById('backup-preview');
     const backupPreviewSummary = document.getElementById('backup-preview-summary');
     const replaceConfirm = document.getElementById('backup-replace-confirm');
     const formatBackupCounts = counts => `${counts.courses} ramos, ${counts.projects} proyectos, ${counts.drafts || 0} borradores y ${counts.trash || 0} elementos en la Papelera.`;
 
     document.getElementById('btn-export-backup')?.addEventListener('click', async (event) => {
+      if (backupBusy) return;
+      backupBusy = true;
       const button = event.currentTarget;
       button.disabled = true;
       button.textContent = 'Creando copia…';
@@ -593,27 +602,37 @@
         const result = await window.academicAPI?.exportBackup?.();
         if (!result) throw new Error('La función de copias de seguridad no está disponible.');
         if (result.canceled) {
-          setLiveStatus(backupStatus, '');
+          setLiveStatus(backupStatus, 'Creación de copia cancelada.');
           return;
         }
-        setLiveStatus(backupStatus, `Copia creada con ${formatBackupCounts(result.summary.counts)} Guardada en: ${result.filePath}`);
+        reportBackup(`Copia creada con ${formatBackupCounts(result.summary.counts)}`, 'success');
       } catch (err) {
-        setLiveStatus(backupStatus, 'No se pudo crear la copia de seguridad. Inténtalo de nuevo.', true);
+        reportBackup('No se pudo crear la copia de seguridad. Inténtalo de nuevo.', 'error');
       } finally {
+        backupBusy = false;
         button.disabled = false;
         button.textContent = 'Crear copia';
       }
     });
 
     document.getElementById('btn-preview-backup')?.addEventListener('click', async (event) => {
+      if (backupBusy) return;
+      backupBusy = true;
       const button = event.currentTarget;
       button.disabled = true;
       button.textContent = 'Revisando…';
-      setLiveStatus(backupStatus, '');
+      setLiveStatus(backupStatus, 'Revisando copia de seguridad…');
+      backupPreview.classList.add('hidden');
+      pendingBackupId = null;
       try {
         const result = await window.academicAPI?.previewBackup?.();
+        if (!isBackupViewOpen()) return;
         if (!result) throw new Error('La función de restauración no está disponible.');
-        if (result.canceled) return;
+        if (result.canceled) {
+          setLiveStatus(backupStatus, 'Selección de copia cancelada.');
+          return;
+        }
+        setLiveStatus(backupStatus, 'Copia lista para restaurar.');
         pendingBackupId = result.backupId;
         const exportedDate = result.exportedAt ? new Date(result.exportedAt) : null;
         const formattedExportDate = exportedDate && !Number.isNaN(exportedDate.getTime())
@@ -626,13 +645,15 @@
       } catch (err) {
         setLiveStatus(backupStatus, 'No se pudo leer la copia de seguridad. Comprueba el archivo e inténtalo de nuevo.', true);
       } finally {
+        backupBusy = false;
         button.disabled = false;
         button.textContent = 'Restaurar copia';
       }
     });
 
     async function restoreSelectedBackup(strategy, button) {
-      if (!pendingBackupId) return;
+      if (!pendingBackupId || backupBusy) return;
+      backupBusy = true;
       button.disabled = true;
       const previousText = button.textContent;
       button.textContent = 'Restaurando…';
@@ -641,12 +662,15 @@
         await window.academicAPI.restoreBackup(pendingBackupId, strategy);
         pendingBackupId = null;
         backupPreview.classList.add('hidden');
-        closeModal();
+        if (isBackupViewOpen()) closeModal();
         window.uiMessage?.('Copia restaurada. Se actualizará la biblioteca.', 'success');
-        await window.coursesManager?.navigateToHome?.();
-      } catch (err) {
-        setLiveStatus(backupStatus, 'No se pudo restaurar la copia de seguridad. Inténtalo de nuevo.', true);
+        Promise.resolve(window.coursesManager?.navigateToHome?.()).catch(() => {
+          window.uiMessage?.('Copia restaurada. No se pudo actualizar la biblioteca.', 'warning');
+        });
+      } catch {
+        reportBackup('No se pudo restaurar la copia de seguridad. Inténtalo de nuevo.', 'error');
       } finally {
+        backupBusy = false;
         button.disabled = false;
         button.textContent = previousText;
       }

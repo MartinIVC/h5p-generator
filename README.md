@@ -18,7 +18,7 @@ Si los datos locales no se pueden leer, la biblioteca muestra un error con la op
 
 ## Avisos
 
-La selección de documentos, la vista previa, el guardado y las copias de seguridad muestran su resultado dentro de la aplicación. Las copias de seguridad completadas también pueden producir una notificación del sistema cuando la ventana está en segundo plano y el sistema lo permite. Los avisos nativos nunca incluyen nombres de archivo, contenido de documentos ni claves.
+La aplicación muestra el progreso y el resultado en cada operación. En segundo plano puede emitir un aviso del sistema cuando una actividad queda lista, falla la generación o preparación, se guarda un archivo H5P, o se crea o restaura una copia de seguridad. La preferencia está en **Opciones y Configuración** y requiere soporte del escritorio. Los avisos usan textos sin nombres de archivo, rutas, contenido ni claves. Consulta la [validación de H5P-27](docs/H5P-27-validacion.md).
 
 ## Generación de actividades H5P
 
