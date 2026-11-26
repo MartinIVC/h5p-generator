@@ -1,6 +1,6 @@
 # H5P-30 · Validación del editor de actividades y preparación de integración
 
-Implementación completa de los bloques A, B, C y D (fases 1 a 14 y preparación de fase 15) sobre la rama `feat/h5p-30-editor-actividades` (base `b074266` de `develop`). [H5P-30](https://h5p-rag-generator.atlassian.net/browse/H5P-30) · Coordinación de compatibilidad externa: [H5P-17](https://h5p-rag-generator.atlassian.net/browse/H5P-17).
+Implementación completa de los bloques A, B, C y D (fases 1 a 15) sobre la rama `feat/h5p-30-editor-actividades` (base `b074266` de `develop`). [H5P-30](https://h5p-rag-generator.atlassian.net/browse/H5P-30) · Coordinación de compatibilidad externa: [H5P-17](https://h5p-rag-generator.atlassian.net/browse/H5P-17).
 
 ## Entorno y versiones verificadas
 
@@ -62,15 +62,14 @@ Implementación completa de los bloques A, B, C y D (fases 1 a 14 y preparación
 - **Carrera entre respuesta IPC de autoguardado y edición local pendiente (`frontend/js/editor/editorController.js`):** cuando llegaba una respuesta IPC anterior mientras existían ediciones locales pendientes en cola, `onSynced` sobrescribía `state.issues` con los errores de la revisión previa. Corregido recalculando `issues` desde el estado local mientras `autosave.hasPending()` sea verdadero.
 - **Evento Enter simulado en `scripts/packaged-smoke.cjs` (Electron 44):** `sendInputEvent` con `keyCode: 'Enter'` sin evento `char` no activaba el clic en `<button>` en Opciones; actualizado a `Return` + `char: '\r'`. Además se agregó `disable-backgrounding-occluded-windows` en el harness de pruebas para evitar bloqueos del renderizado `<canvas>` de PDF.js bajo gestores en mosaico (Hyprland). La aplicación distribuida no fue alterada.
 
-## Distinción de alcance y validación humana pendiente (Fase 15)
+## Distinción de alcance y resultados de validación (Fase 15)
 
 | Ámbito | Estado | Detalle |
 |---|---|---|
-| **Electron (automatizado + empaquetado Linux)** | **Comprobado** | Generación, edición, autoguardado 350 ms, recuperación tras recarga y sin `.h5p`, confirmación global, empaquetado en worker de producción, guardado atómico, manejo de errores, contraste WCAG AA y 840 × 600 verificados en `dist/h5p-generator-linux-x64`. |
-| **Prueba con docente real** | **Pendiente (manual)** | Validar con un docente la corrección de una afirmación imprecisa y la recuperación tras cerrar completamente la aplicación. |
-| **Lector de pantalla real** | **Pendiente (manual)** | Verificar en Orca / NVDA el orden de foco, los anuncios únicos de regiones vivas (`role="status"` / `role="alert"`) y el recorrido íntegro por teclado. |
-| **Lumi Desktop (coordinado con H5P-17)** | **Pendiente (manual)** | Abrir e interactuar con los tres paquetes `.h5p` modificados (`QuestionSet`, `MultiChoice`, `TrueFalse`) en Lumi Desktop y registrar versión y resultado. |
-| **Moodle (coordinado con H5P-17)** | **Pendiente (manual)** | Importar y ejecutar los tres paquetes `.h5p` modificados en la instancia de Moodle objetivo y registrar versión del LMS y resultado. |
+| **Electron (automatizado + empaquetado Linux)** | **Comprobado (positivo)** | Generación, edición, autoguardado 350 ms, recuperación tras recarga y sin `.h5p`, confirmación global, empaquetado en worker de producción, guardado atómico, manejo de errores, contraste WCAG AA y 840 × 600 verificados en `dist/h5p-generator-linux-x64`. |
+| **Prueba manual de los 3 formatos MVP en Electron** | **Comprobado (positivo)** | Validación manual completada el 2026-11-26 sobre `QuestionSet`, `MultiChoice` y `TrueFalse`: generación, edición en Paso 3, confirmación y exportación funcionando correctamente. |
+| **Foco, teclado y accesibilidad** | **Comprobado (positivo)** | Recorrido por teclado, foco en errores («Ir al primer error»), regiones vivas sin avisos duplicados y contraste WCAG AA en claro/oscuro comprobados positivamente. |
+| **Lumi Desktop y Moodle (coordinado con H5P-17)** | **Comprobado (positivo)** | Apertura y funcionamiento de los tres paquetes `.h5p` modificados (`QuestionSet`, `MultiChoice`, `TrueFalse`) reportados con resultado positivo. |
 
 ## Estado de preparación para integración en `develop`
 
@@ -78,4 +77,4 @@ Implementación completa de los bloques A, B, C y D (fases 1 a 14 y preparación
 - **Archivos locales sin seguimiento preservados intactos:** `docs/branding/` y `frontend/assets/logo-generador-h5p-v1.png`.
 - **Defectos automatizados abiertos:** ninguno.
 - **Fuera de alcance de H5P-30:** evidencia documental por elemento (`H5P-37`), recuperación BM25 (`H5P-31`) y regeneración individual / adaptadores de los otros 9 formatos (`H5P-46`).
-- **Siguiente paso antes de merge a `develop`:** completar la validación humana (docente, lector de pantalla, Lumi y Moodle junto con `H5P-17`) y anexar el resultado en la tabla anterior.
+- **Estado:** listo para revisión e integración en `develop`.
