@@ -133,13 +133,30 @@ test('prepareReviewed proyecta solo el contenido aprobado, preserva ediciones de
   assert.equal(JSON.stringify(capturedWorkerData[0]).includes(q1.id), false);
   assert.equal(JSON.stringify(capturedWorkerData[0]).includes('Instrucción privada'), false);
 
-  // Guardamos y verificamos el contenido del ZIP resultante
-  const saved = await generation.saveH5PFile({ packageId: prepared.packageId, suggestedName: 'revisado' }, { sender: owner });
+  // Un cambio posterior invalida el paquete recién preparado antes de guardar
+  const postEdit = await editor.updateEditor({
+    sessionId: opened.sessionId,
+    expectedRevision: prepared.revision,
+    operations: [{ type: 'setTitle', title: 'Evaluación aprobada v2' }]
+  }, { sender: owner });
+  assert.equal(postEdit.status, 'ok');
+  assert.equal(postEdit.activity.reviewedRevision, null);
+  const saveAfterEdit = await generation.saveH5PFile({ packageId: prepared.packageId, suggestedName: 'revisado' }, { sender: owner });
+  assert.equal(saveAfterEdit.code, 'REVISION_CONFLICT');
+
+  // Re-preparamos con la nueva revisión, guardamos y verificamos el contenido del ZIP resultante
+  const preparedV2 = await generation.prepareReviewed({
+    sessionId: opened.sessionId,
+    expectedRevision: postEdit.activity.revision
+  }, { sender: owner });
+  assert.equal(preparedV2.status, 'ok');
+
+  const saved = await generation.saveH5PFile({ packageId: preparedV2.packageId, suggestedName: 'revisado' }, { sender: owner });
   assert.equal(saved.status, 'ok');
   const zip = await JSZip.loadAsync(await fsp.readFile(destination));
   const h5pJson = JSON.parse(await zip.file('h5p.json').async('string'));
   const content = JSON.parse(await zip.file('content/content.json').async('string'));
-  assert.equal(h5pJson.title, 'Evaluación aprobada');
+  assert.equal(h5pJson.title, 'Evaluación aprobada v2');
   // Pregunta 2 pasó al índice 0 y Pregunta 1 pasó al índice 1
   assert.equal(content.questions[0].params.question, '<p>Pregunta 2</p>');
   assert.equal(content.questions[1].params.question, '<p>Pregunta 1</p>');
@@ -152,17 +169,6 @@ test('prepareReviewed proyecta solo el contenido aprobado, preserva ediciones de
   ]);
   assert.deepEqual(content.questions[1].params.answers.map(a => a.correct), [false, true, false, false]);
   assert.equal(content.questions[1].params.overallFeedback[0].feedback, 'Retroalimentación editada por el docente.');
-
-  // Un cambio posterior invalida el paquete recién preparado
-  const postEdit = await editor.updateEditor({
-    sessionId: opened.sessionId,
-    expectedRevision: prepared.revision,
-    operations: [{ type: 'setTitle', title: 'Título modificado después' }]
-  }, { sender: owner });
-  assert.equal(postEdit.status, 'ok');
-  assert.equal(postEdit.activity.reviewedRevision, null);
-  const saveAfterEdit = await generation.saveH5PFile({ packageId: prepared.packageId, suggestedName: 'revisado' }, { sender: owner });
-  assert.equal(saveAfterEdit.status, 'error');
 });
 
 test('prepareReviewed gestiona doble clic, cancelación y fallo del worker permitiendo reintentar sin llamar a Gemini', async t => {
